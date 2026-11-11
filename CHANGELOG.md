@@ -4,6 +4,7 @@
 
 - New menu banner: a bordered panel with the version, the three tools, and a language hint, replacing the single `====` line. ASCII only, so the menu still renders when stdout is piped or the console is not UTF-8. `CLI_VERSION` 1.2.0 → 1.3.0.
 - Two tests pin the banner (Indonesian and English) and the version shown in it. Full suite 116/116.
+- CI: Python 3.9 on Linux runs on `ubuntu-22.04` (`ubuntu-latest` has no 3.9 toolcache build and the source build needs OpenSSL 1.1). Other combinations stay on `ubuntu-latest`.
 
 ## 1.7.0 — 2026-11-12
 

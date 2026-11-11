@@ -15,6 +15,7 @@ import academic_cli
 import academic_tools as tools
 import citation_weaver
 import jargon_buster
+import skripsi_prompts
 
 REFS = tools.load_references(
     str(Path(__file__).resolve().parent.parent
@@ -24,11 +25,13 @@ REFS = tools.load_references(
 
 class TestAcademicTools(unittest.TestCase):
     def test_one_file_holds_everything(self):
-        self.assertEqual(tools.__version__, "1.1.1")
+        self.assertEqual(tools.__version__, "1.2.0")
         self.assertEqual(len(tools.DICTIONARY), 22)
         self.assertEqual(len(tools.STYLES), 6)
         self.assertEqual(len(tools.DISCIPLINES), 21)
-        for name in ("find_terms", "weave", "CLI", "jargon_main", "cite_main", "main"):
+        self.assertEqual(len(tools.PROMPTS), 15)
+        for name in ("find_terms", "weave", "fill_prompt", "CLI",
+                     "jargon_main", "cite_main", "prompts_main", "main"):
             self.assertTrue(hasattr(tools, name), f"missing {name}")
 
     def test_jargon_and_citation_work_from_the_one_file(self):
@@ -47,10 +50,12 @@ class TestAcademicTools(unittest.TestCase):
         self.assertIs(academic_cli.main, tools.main)
         self.assertEqual(jargon_buster.__version__, tools.JARGON_VERSION)
         self.assertEqual(citation_weaver.__version__, tools.CITATION_VERSION)
+        self.assertEqual(skripsi_prompts.__version__, tools.PROMPTS_VERSION)
 
     def test_old_entry_points_still_run(self):
         self.assertEqual(jargon_buster.main(["--list-terms", "--field", "general"]), 0)
         self.assertEqual(citation_weaver.main(["--list-styles"]), 0)
+        self.assertEqual(skripsi_prompts.main(["--list"]), 0)
         self.assertEqual(academic_cli.main(["--version"]), 0)
 
 

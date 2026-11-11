@@ -2,12 +2,13 @@
 """academic_tools — every feature of this repo in one file.
 
 Pure Python, no dependencies. Copy this single file anywhere and it
-works: a jargon translator, a citation weaver, and an interactive
-menu CLI (Claude-CLI style) on top of both.
+works: a jargon translator, a citation weaver, thesis prompts, and an
+interactive menu CLI (Claude-CLI style) on top of all three.
 
     python3 academic_tools.py                  # interactive menu (default)
     python3 academic_tools.py jargon ...       # straight to Jargon Buster
     python3 academic_tools.py cite ...         # straight to Citation Weaver
+    python3 academic_tools.py prompts ...      # straight to Thesis Prompts
 
 Jargon Buster: find known jargon in plain text and explain each term
 in plain language, with provenance. 22 terms, fields from physics to
@@ -32,6 +33,15 @@ One rule, everywhere in this file: NEVER invent a reference. A
 [cite:key] with no bibliography entry is marked [PERLU RUJUKAN: key] /
 [REFERENCE NEEDED: key], never filled in with a made-up paper.
 
+Thesis Prompts: 15 ready-made prompt templates for writing a thesis,
+from research roadmap to defense prep and publication. Pick one, fill
+its placeholders with your own title, theory, method, and data, then
+paste the result into the recommended AI tool.
+
+    python3 academic_tools.py prompts --list
+    python3 academic_tools.py prompts latar-belakang
+    python3 academic_tools.py prompts roadmap --set judul="..." --set teori="..." --set metode="..." --set bulan=6 --set tanggal="11 November 2026"
+
 The old entry points (jargon_buster.py, citation_weaver.py,
 academic_cli.py) still exist as thin wrappers around this file, so
 existing commands, demos, and imports keep working.
@@ -49,10 +59,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.1.1"
+__version__ = "1.2.0"
 JARGON_VERSION = "1.0.2"
 CITATION_VERSION = "1.0.0"
-CLI_VERSION = "1.0.0"
+PROMPTS_VERSION = "1.0.0"
+CLI_VERSION = "1.1.0"
 
 # ======================================================================
 # Jargon Buster
@@ -681,6 +692,417 @@ def cite_main(argv=None) -> int:
 
 
 # ======================================================================
+# Thesis Prompts (Prompt Skripsi)
+# ======================================================================
+# Ready-made prompt templates for writing a thesis (skripsi), one per
+# task: research roadmap, each chapter, defense prep, publication.
+# Each template has {placeholders} the student fills with their own
+# title, theory, method, data, etc., then pastes into the recommended
+# AI tool (ChatGPT, Grok, Claude, Gemini, Perplexity, Manus).
+# Templates are original wording written for this repo: they follow the
+# usual structure of thesis-writing prompts, they do not copy any
+# third-party prompt collection. The skill in
+# skills/research/skripsi-prompts/SKILL.md carries the same templates.
+# Rules: these prompts help the student write their own thesis. They
+# never write a whole thesis for the student, and no reference or data
+# is ever invented — a missing reference stays missing.
+PROMPTS = [
+    {
+        "id": "roadmap",
+        "name": "Roadmap Penelitian",
+        "name_en": "Research Roadmap",
+        "category": "Persiapan",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "teori", "label": "Teori yang digunakan", "label_en": "Theory used"},
+            {"key": "metode", "label": "Metode penelitian", "label_en": "Research method"},
+            {"key": "bulan", "label": "Jangka waktu (bulan)", "label_en": "Duration (months)"},
+            {"key": "tanggal", "label": "Tanggal mulai", "label_en": "Start date"},
+        ],
+        "template": (
+            "Saya sedang mengerjakan skripsi berjudul {judul}, memakai teori {teori} "
+            "dan metode {metode}. Bantu saya menyusun rencana kerja penelitian dari awal "
+            "sampai selesai: mulai dari merumuskan masalah, membaca literatur, menyiapkan "
+            "instrumen, mengumpulkan data, menganalisis, hingga menulis laporan dan "
+            "menyiapkan publikasi. Waktu yang saya punya {bulan} bulan, mulai {tanggal}. "
+            "Tuliskan sebagai daftar langkah berurutan dengan perkiraan durasi tiap langkahnya."
+        ),
+    },
+    {
+        "id": "latar-belakang",
+        "name": "Latar Belakang (Bab 1)",
+        "name_en": "Background (Chapter 1)",
+        "category": "Bab 1",
+        "tool": "Grok",
+        "fields": [
+            {"key": "topik", "label": "Topik penelitian", "label_en": "Research topic"},
+            {"key": "catatan", "label": "Catatan / poin dari pembimbing", "label_en": "Notes from supervisor"},
+            {"key": "paragraf", "label": "Jumlah paragraf", "label_en": "Number of paragraphs"},
+        ],
+        "template": (
+            "Saya sedang menulis bagian latar belakang untuk skripsi bertopik {topik}. "
+            "Berikut poin-poin dari saya dan dosen pembimbing: {catatan}. Tolong rangkai "
+            "poin-poin itu menjadi latar belakang yang runtut dengan struktur piramida "
+            "terbalik, dari isu umum ke konteks lokal, lalu ke masalah spesifik penelitian "
+            "saya. Sertakan data atau referensi pendukung bila ada, gunakan bahasa akademik "
+            "standar skripsi, dan buat dalam {paragraf} paragraf yang mengalir dan siap "
+            "dipakai di dokumen skripsi."
+        ),
+    },
+    {
+        "id": "banding-teori",
+        "name": "Membandingkan 3 Teori (Bab 2)",
+        "name_en": "Comparing 3 Theories (Chapter 2)",
+        "category": "Bab 2",
+        "tool": "Grok",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+        ],
+        "template": (
+            "Saya sedang menulis skripsi tentang {judul}. Tolong carikan tiga teori yang "
+            "relevan dengan topik ini, lalu bandingkan ketiganya dalam tabel: nama teori, "
+            "tokoh atau penelitinya, konsep utama, kelebihan dan keterbatasan, serta "
+            "relevansinya dengan penelitian saya. Di akhir, beri rekomendasi teori mana "
+            "yang paling cocok dijadikan landasan teori penelitian saya."
+        ),
+    },
+    {
+        "id": "review-terdahulu",
+        "name": "Review Penelitian Terdahulu (Bab 2)",
+        "name_en": "Review of Prior Research (Chapter 2)",
+        "category": "Bab 2",
+        "tool": "Grok",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "daftar", "label": "Daftar penelitian terdahulu", "label_en": "List of prior studies"},
+            {"key": "gaya", "label": "Gaya sitasi (mis. APA 7th)", "label_en": "Citation style (e.g. APA 7th)"},
+        ],
+        "template": (
+            "Saya sedang meneliti {judul}. Berikut daftar penelitian terdahulu yang saya "
+            "jadikan rujukan: {daftar}. Tolong buat ulasan kritis terhadap penelitian-"
+            "penelitian itu, dengan fokus pada metode, sampel, hasil, dan keterbatasannya. "
+            "Jelaskan celah penelitian (research gap) yang belum banyak diteliti dan "
+            "bagaimana penelitian saya bisa mengisinya. Tulis dalam bahasa akademik, "
+            "sekitar 3-4 paragraf, dengan sitasi gaya {gaya}."
+        ),
+    },
+    {
+        "id": "metodologi",
+        "name": "Metodologi Penelitian (Bab 3)",
+        "name_en": "Research Methodology (Chapter 3)",
+        "category": "Bab 3",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "jenis", "label": "Jenis penelitian", "label_en": "Research type"},
+            {"key": "metode", "label": "Metode penelitian", "label_en": "Research method"},
+            {"key": "populasi", "label": "Populasi dan sampel", "label_en": "Population and sample"},
+            {"key": "pengumpulan", "label": "Teknik pengumpulan data", "label_en": "Data collection technique"},
+            {"key": "analisis", "label": "Teknik analisis data", "label_en": "Data analysis technique"},
+        ],
+        "template": (
+            "Saya sedang menulis Bab 3 Metodologi Penelitian untuk skripsi berjudul {judul}. "
+            "Jenis penelitian saya: {jenis}. Metode yang digunakan: {metode}. Populasi dan "
+            "sampel: {populasi}. Teknik pengumpulan data: {pengumpulan}. Teknik analisis "
+            "data: {analisis}. Susunlah Bab 3 yang lengkap dan logis, mencakup desain "
+            "penelitian, definisi operasional variabel, populasi dan sampel, instrumen "
+            "penelitian, teknik pengumpulan data, dan teknik analisis data. Pastikan isinya "
+            "selaras dengan judul serta Bab 1 dan 2, dan jelaskan alasan metode ini paling "
+            "tepat untuk penelitian saya, dengan bahasa akademik yang rapi."
+        ),
+    },
+    {
+        "id": "hubungan-variabel",
+        "name": "Hubungan Antar Variabel (Bab 3)",
+        "name_en": "Relationships Between Variables (Chapter 3)",
+        "category": "Bab 3",
+        "tool": "ChatGPT / Grok",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "variabel_x", "label": "Variabel X", "label_en": "Variable X"},
+            {"key": "variabel_y", "label": "Variabel Y", "label_en": "Variable Y"},
+            {"key": "variabel_z", "label": "Variabel Z (bila ada)", "label_en": "Variable Z (if any)"},
+        ],
+        "template": (
+            "Saya sedang menulis Bab 3 skripsi berjudul {judul}. Variabel penelitian saya: "
+            "variabel X = {variabel_x}, variabel Y = {variabel_y}, variabel Z = "
+            "{variabel_z} (bila ada). Tolong buat paragraf yang menjelaskan hubungan antar "
+            "variabel ini berdasarkan teori yang relevan. Uraikan secara runtut, mulai dari "
+            "hubungan X ke Y, lalu Z bila ada. Jelaskan mengapa hubungan ini penting untuk "
+            "diteliti, dan dukung dengan minimal 3 referensi dari penelitian terdahulu "
+            "(format APA 7th)."
+        ),
+    },
+    {
+        "id": "hipotesis",
+        "name": "Perkiraan Hipotesis (Bab 3)",
+        "name_en": "Hypothesis Drafting (Chapter 3)",
+        "category": "Bab 3",
+        "tool": "Grok",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "variabel", "label": "Variabel yang diteliti", "label_en": "Variables studied"},
+        ],
+        "template": (
+            "Saya sedang menyusun hipotesis untuk skripsi berjudul {judul}. Variabel yang "
+            "saya teliti: {variabel}. Tolong carikan minimal 5 penelitian terdahulu yang "
+            "meneliti hubungan serupa. Ringkas temuan utama masing-masing penelitian, lalu "
+            "susun hipotesis yang logis dan bisa diuji. Format hasilnya: ringkasan penelitian "
+            "terdahulu (penulis, tahun, temuan, relevansi), sintesis hubungan antar penelitian "
+            "(pola, konsistensi, atau perdebatan yang ada), dan hipotesis saya (H0, H1, dst) "
+            "dalam format yang jelas dan siap dimasukkan ke Bab 3."
+        ),
+    },
+    {
+        "id": "mixed-methods",
+        "name": "Analisis Mixed-Methods (Bab 4)",
+        "name_en": "Mixed-Methods Analysis (Chapter 4)",
+        "category": "Bab 4",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "kuantitatif", "label": "Metode kuantitatif", "label_en": "Quantitative method"},
+            {"key": "kualitatif", "label": "Metode kualitatif", "label_en": "Qualitative method"},
+        ],
+        "template": (
+            "Saya sedang menganalisis data penelitian mixed method untuk skripsi berjudul "
+            "{judul}. Metode kuantitatif saya: {kuantitatif}. Metode kualitatif saya: "
+            "{kualitatif}. Saya akan melampirkan file data mentah saya. Tolong analisis "
+            "dengan langkah: (1) Analisis kuantitatif: bersihkan data dan jelaskan penanganan "
+            "missing value, lakukan uji statistik yang sesuai, sajikan hasil dalam tabel "
+            "beserta interpretasi (p-value, signifikansi, effect size), dan buat visualisasi "
+            "sederhana bila relevan. (2) Analisis kualitatif: lakukan coding tematik, sajikan "
+            "tema utama beserta kutipan perwakilan responden, dan interpretasikan maknanya. "
+            "(3) Integrasi: gabungkan kedua hasil, tunjukkan apakah keduanya saling "
+            "mendukung, melengkapi, atau bertentangan, dan buat kesimpulan sementara yang "
+            "menjawab rumusan masalah. Gunakan bahasa akademik yang jelas dan sistematis, "
+            "dengan format akhir yang siap dimasukkan ke Bab 4."
+        ),
+    },
+    {
+        "id": "saran",
+        "name": "Saran Penelitian (Bab 5)",
+        "name_en": "Research Suggestions (Chapter 5)",
+        "category": "Bab 5",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "hasil", "label": "Ringkasan hasil penelitian", "label_en": "Summary of findings"},
+        ],
+        "template": (
+            "Saya sedang menyusun Bab 5 skripsi berjudul {judul}. Berdasarkan hasil "
+            "penelitian saya berikut: {hasil}, tolong buatkan saran penelitian yang "
+            "konstruktif untuk tiga pihak: (1) praktisi atau industri, (2) akademisi, dan "
+            "(3) peneliti berikutnya. Tulis dengan bahasa akademik, masing-masing satu "
+            "paragraf, dan pastikan setiap saran bisa diterapkan dan relevan dengan temuan "
+            "penelitian saya."
+        ),
+    },
+    {
+        "id": "keterbatasan",
+        "name": "Keterbatasan + Peluang Penelitian (Bab 5)",
+        "name_en": "Limitations + Future Research (Chapter 5)",
+        "category": "Bab 5",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "metode", "label": "Metode penelitian", "label_en": "Research method"},
+            {"key": "data", "label": "Ringkasan data", "label_en": "Data summary"},
+        ],
+        "template": (
+            "Saya sedang menulis Bab 5 skripsi berjudul {judul}. Metode penelitian saya: "
+            "{metode}, dengan data: {data}. Tolong buatkan bagian keterbatasan penelitian "
+            "yang ditulis secara elegan dan profesional, tanpa melemahkan hasil penelitian, "
+            "lalu lanjutkan dengan peluang penelitian lanjutan. Berikan 3-5 ide penelitian "
+            "berikutnya yang relevan, misalnya metode baru, populasi berbeda, atau variabel "
+            "tambahan, dan jelaskan mengapa setiap ide penting untuk dikaji."
+        ),
+    },
+    {
+        "id": "review-draf",
+        "name": "Review Draf Skripsi (Persiapan Sidang)",
+        "name_en": "Thesis Draft Review (Defense Prep)",
+        "category": "Sidang",
+        "tool": "Claude / Manus",
+        "fields": [],
+        "template": (
+            "Saya akan melampirkan file skripsi saya (PDF/DOC). Tolong baca dan analisis "
+            "seluruh isinya, dan berperan sebagai dosen pembimbing sekaligus dosen penguji "
+            "yang objektif dan kritis. Beri masukan tentang bagian yang masih lemah, "
+            "berpotensi jadi revisi, atau bisa memicu pertanyaan saat seminar dan sidang. "
+            "Jelaskan secara spesifik letak masalahnya (bab atau subbab), alasan bagian itu "
+            "dinilai kurang kuat, dan aspek apa yang sebaiknya diperdalam, tanpa langsung "
+            "menuliskan revisinya. Sebutkan juga kekuatan skripsi saya, dari argumentasi, "
+            "teori, metodologi, analisis, sampai kebaruan penelitian. Terakhir, evaluasi "
+            "aspek teknis penulisan: sistematika, alur antarparagraf, konsistensi istilah, "
+            "kualitas sitasi dan daftar pustaka, format tabel atau gambar, serta potensi "
+            "kesalahan akademik lainnya. Sajikan evaluasi dalam kategori yang jelas, "
+            "diurutkan berdasarkan prioritas (tinggi, sedang, rendah), agar saya tahu "
+            "bagian mana yang harus diperbaiki dulu."
+        ),
+    },
+    {
+        "id": "ppt",
+        "name": "Skripsi Menjadi PowerPoint",
+        "name_en": "Thesis to PowerPoint",
+        "category": "Sidang",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "jumlah_slide", "label": "Jumlah slide", "label_en": "Number of slides"},
+        ],
+        "template": (
+            "Saya ingin mengubah skripsi saya berjudul {judul} menjadi slide presentasi "
+            "PowerPoint. Saya akan melampirkan file skripsinya. Tolong rangkum setiap bab "
+            "menjadi slide dengan judul yang singkat dan menarik. Isi tiap slide berupa "
+            "poin-poin penting (maksimal 5 poin per slide), ditambah 1-2 kalimat penjelas "
+            "untuk setiap slide agar saya tahu apa yang harus diucapkan. Ikuti struktur "
+            "presentasi skripsi: latar belakang, rumusan masalah, tujuan, tinjauan pustaka, "
+            "metode, hasil, pembahasan, kesimpulan, dan saran. Bila perlu, rekomendasikan "
+            "grafik, tabel, atau diagram untuk memperjelas. Hasil akhirnya adalah presentasi "
+            "sebanyak {jumlah_slide} slide yang siap dipakai tanpa banyak edit."
+        ),
+    },
+    {
+        "id": "cue-card",
+        "name": "Cue Card Presentasi",
+        "name_en": "Presentation Cue Cards",
+        "category": "Sidang",
+        "tool": "ChatGPT",
+        "fields": [],
+        "template": (
+            "Tolong buatkan cue card singkat dan padat untuk membantu saya saat presentasi "
+            "skripsi. Bagi per slide sesuai urutan PPT skripsi saya. Tulis poin-poin atau "
+            "kalimat kunci yang harus saya ucapkan, dengan bahasa lisan yang natural tapi "
+            "tetap profesional. Jangan terlalu panjang, cukup 2-3 kalimat per slide supaya "
+            "mudah dihafalkan. Tambahkan tips intonasi atau gestur (misalnya: senyum di awal, "
+            "lihat audiens saat menyebut hasil utama). Pastikan cue card ini membuat saya "
+            "percaya diri, tidak terdengar kaku, dan membantu menjawab kemungkinan pertanyaan "
+            "dari penguji."
+        ),
+    },
+    {
+        "id": "blog",
+        "name": "Skripsi Menjadi Artikel Blog",
+        "name_en": "Thesis to Blog Article",
+        "category": "Publikasi",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "platform", "label": "Platform / blog / media", "label_en": "Platform / blog / media"},
+            {"key": "kata", "label": "Panjang artikel (kata)", "label_en": "Article length (words)"},
+        ],
+        "template": (
+            "Saya ingin mengubah skripsi saya berjudul {judul} menjadi artikel pendek yang "
+            "siap dipublikasikan di {platform}. Saya akan melampirkan file skripsinya. "
+            "Tolong ambil intisarinya lalu tulis ulang dengan bahasa yang santai, mudah "
+            "dipahami pembaca awam, dan tetap menarik. Panjang artikel sekitar {kata} kata. "
+            "Susun dengan struktur yang runtut: mulai dari pembuka yang menarik perhatian "
+            "(fakta menarik, pertanyaan, atau fenomena terkini), lalu paparkan masalah yang "
+            "saya teliti dan relevansinya, jelaskan metode dan temuan utama secara singkat "
+            "tanpa terlalu banyak jargon, dan tutup dengan manfaat praktis penelitian ini "
+            "bagi pembaca. Bila perlu, tambahkan statistik, contoh kasus, atau call-to-action, "
+            "dan pastikan artikel mencantumkan kredit ke penelitian saya agar bisa dipakai "
+            "sebagai portofolio."
+        ),
+    },
+    {
+        "id": "jurnal",
+        "name": "Skripsi Menjadi Artikel Jurnal",
+        "name_en": "Thesis to Journal Article",
+        "category": "Publikasi",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "bagian", "label": "Bagian skripsi (mis. Pendahuluan/Bab 1)", "label_en": "Thesis section (e.g. Introduction/Chapter 1)"},
+            {"key": "jumlah", "label": "Jumlah paragraf/kata", "label_en": "Number of paragraphs/words"},
+        ],
+        "template": (
+            "Saya ingin memublikasikan jurnal berdasarkan skripsi saya. Ini bagian yang "
+            "perlu dirangkum menjadi paragraf yang lebih singkat untuk jurnal saya: {bagian}. "
+            "Buatkan maksimal sebanyak {jumlah} paragraf atau kata. Pertahankan sitasinya "
+            "dan jangan membuang inti tiap paragraf. Gunakan bahasa yang humanis dan tidak "
+            "terkesan robotik. Hindari kata yang berulang dan struktur kalimat yang generik, "
+            "variasikan panjang kalimat, dan hindari em-dash dan titik koma. Berikut paragraf "
+            "yang perlu dipersingkat: [tempel paragraf kamu di sini, satu bagian saja]."
+        ),
+    },
+]
+
+
+def list_prompts(category: str | None = None):
+    """All thesis prompts, optionally filtered by category."""
+    if category is None:
+        return list(PROMPTS)
+    return [p for p in PROMPTS if p["category"].lower() == category.lower()]
+
+
+def get_prompt(prompt_id: str):
+    """One prompt by id, or None when unknown."""
+    for p in PROMPTS:
+        if p["id"] == prompt_id:
+            return p
+    return None
+
+
+def fill_prompt(prompt_id: str, values: dict) -> str:
+    """Fill a prompt template with the student's own values.
+
+    Raises KeyError for an unknown prompt id, ValueError naming any
+    placeholder left empty. Never invents values: a missing field is
+    an error, not a guess.
+    """
+    prompt = get_prompt(prompt_id)
+    if prompt is None:
+        raise KeyError(f"unknown prompt: {prompt_id}")
+    missing = [f["key"] for f in prompt["fields"]
+               if f["key"] not in values or values[f["key"]] == ""]
+    if missing:
+        raise ValueError(f"missing values for: {', '.join(missing)}")
+    return prompt["template"].format(**values)
+
+
+def prompts_main(argv=None) -> int:
+    p = argparse.ArgumentParser(
+        description="Thesis prompts: ready-made prompts for each thesis chapter.")
+    p.add_argument("prompt_id", nargs="?", help="prompt id (see --list)")
+    p.add_argument("--list", action="store_true", help="list all prompts and exit")
+    p.add_argument("--category", help="only list prompts from this category, e.g. 'Bab 3'")
+    p.add_argument("--set", dest="set_values", action="append", default=[],
+                   help="fill a placeholder: --set judul='...' (repeatable)")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    args = p.parse_args(argv)
+
+    if args.list or not args.prompt_id:
+        for pr in list_prompts(category=args.category):
+            print(f"{pr['id']} — {pr['name']} ({pr['category']}, {pr['tool']})")
+        return 0
+
+    prompt = get_prompt(args.prompt_id)
+    if prompt is None:
+        p.error(f"unknown prompt: {args.prompt_id} (see --list)")
+        return 2
+
+    if not args.set_values:
+        print(prompt["template"])
+        return 0
+
+    values = {}
+    for item in args.set_values:
+        if "=" not in item:
+            p.error(f"--set needs key=value, got: {item}")
+            return 2
+        key, value = item.split("=", 1)
+        values[key.strip()] = value
+    try:
+        sys.stdout.write(fill_prompt(args.prompt_id, values) + "\n")
+    except ValueError as e:
+        p.error(str(e))
+        return 2
+    return 0
+
+
+# ======================================================================
 # Interactive menu CLI
 # ======================================================================
 DEFAULT_REFS = os.path.join(
@@ -690,10 +1112,14 @@ DEFAULT_REFS = os.path.join(
 
 STRINGS = {
     "id": {
-        "banner": "Academic Tools — Jargon Buster + Citation Weaver",
+        "banner": "Academic Tools — Jargon Buster + Citation Weaver + Prompt Skripsi",
         "menu_title": "Pilih alat:",
         "jargon": "Jargon Buster — terjemahkan istilah akademik",
         "cite": "Citation Weaver — sisipkan sitasi ke naskah",
+        "prompts": "Prompt Skripsi — template prompt untuk tiap bab",
+        "list_prompts": "Lihat daftar prompt",
+        "fill_prompt": "Isi prompt",
+        "pick_prompt": "Pilih prompt:",
         "lang": "Ganti bahasa (id/en)",
         "exit": "Keluar",
         "back": "Kembali",
@@ -722,10 +1148,14 @@ STRINGS = {
         "result": "Hasil:",
     },
     "en": {
-        "banner": "Academic Tools — Jargon Buster + Citation Weaver",
+        "banner": "Academic Tools — Jargon Buster + Citation Weaver + Thesis Prompts",
         "menu_title": "Choose a tool:",
         "jargon": "Jargon Buster — translate academic jargon",
         "cite": "Citation Weaver — weave citations into text",
+        "prompts": "Thesis Prompts — ready-made prompts for each chapter",
+        "list_prompts": "List prompts",
+        "fill_prompt": "Fill a prompt",
+        "pick_prompt": "Pick a prompt:",
         "lang": "Switch language (id/en)",
         "exit": "Exit",
         "back": "Back",
@@ -837,9 +1267,10 @@ class CLI:
             print(self.t["menu_title"])
             print(f"1. {self.t['jargon']}")
             print(f"2. {self.t['cite']}")
-            print(f"3. {self.t['lang']}")
+            print(f"3. {self.t['prompts']}")
+            print(f"4. {self.t['lang']}")
             print(f"0. {self.t['exit']}")
-            choice = self.ask_choice(self.t["choice"], 3)
+            choice = self.ask_choice(self.t["choice"], 4)
             if choice == -1:
                 continue
             if choice == 1:
@@ -847,6 +1278,8 @@ class CLI:
             elif choice == 2:
                 self.cite_menu()
             elif choice == 3:
+                self.prompts_menu()
+            elif choice == 4:
                 self.lang = "en" if self.lang == "id" else "id"
             elif choice == 0 or choice is None:
                 print(self.t["goodbye"])
@@ -964,19 +1397,66 @@ class CLI:
         print(f"\n{self.t['result']}\n{out}")
         self.pause()
 
+    # -- Thesis Prompts -------------------------------------------------
+
+    def prompts_menu(self):
+        while True:
+            print(f"\n--- {self.t['prompts']} ---")
+            print(f"1. {self.t['fill_prompt']}")
+            print(f"2. {self.t['list_prompts']}")
+            print(f"0. {self.t['back']}")
+            choice = self.ask_choice(self.t["choice"], 2)
+            if choice == -1:
+                continue
+            if choice == 1:
+                self.prompts_fill()
+            elif choice == 2:
+                for pr in list_prompts():
+                    print(f"  {pr['id']} — {pr['name']} ({pr['category']}, {pr['tool']})")
+                self.pause()
+            elif choice == 0 or choice is None:
+                return
+
+    def prompts_fill(self):
+        prompts = list_prompts()
+        print(f"\n{self.t['pick_prompt']}")
+        for i, pr in enumerate(prompts, 1):
+            print(f"  {i}. {pr['id']} — {pr['name']} ({pr['tool']})")
+        choice = self.ask_choice(self.t["choice"], len(prompts))
+        if choice is None or choice == 0:
+            return
+        pr = prompts[choice - 1]
+        values = {}
+        for f in pr["fields"]:
+            label = f["label"] if self.lang == "id" else f["label_en"]
+            values[f["key"]] = self.ask(f"{label}:")
+        try:
+            out = fill_prompt(pr["id"], values)
+        except ValueError as e:
+            print(e)
+            return
+        print(f"\n{self.t['result']}\n{out}")
+        print(f"\n({pr['tool']})")
+        self.pause()
+
 
 def main(argv=None) -> int:
-    """Entry point. No args -> interactive menu; jargon/cite -> passthrough."""
+    """Entry point. No args -> interactive menu; jargon/cite/prompts -> passthrough."""
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ("jargon", "cite"):
+    if argv and argv[0] in ("jargon", "cite", "prompts"):
         tool, rest = argv[0], argv[1:]
-        return jargon_main(rest) if tool == "jargon" else cite_main(rest)
+        if tool == "jargon":
+            return jargon_main(rest)
+        if tool == "cite":
+            return cite_main(rest)
+        return prompts_main(rest)
     if argv and argv[0] in ("-h", "--help"):
         print(__doc__)
         return 0
     if argv and argv[0] in ("-v", "--version"):
         print(f"academic_cli {CLI_VERSION} "
-              f"(jargon_buster {JARGON_VERSION}, citation_weaver {CITATION_VERSION})")
+              f"(jargon_buster {JARGON_VERSION}, citation_weaver {CITATION_VERSION}, "
+              f"skripsi_prompts {PROMPTS_VERSION})")
         return 0
     try:
         return CLI().run()

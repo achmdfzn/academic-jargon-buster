@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 — 2026-11-11
+
+- New: Thesis Prompts (Prompt Skripsi) — 15 ready-made prompt templates for thesis writing: research roadmap, Bab 1–5 (background, theory comparison, prior research review, methodology, variables, hypothesis, mixed-methods analysis, suggestions, limitations), defense prep (draft review, PowerPoint, cue cards), and publication (blog, journal). Pick a prompt, fill its placeholders with your own title/theory/method/data, paste into ChatGPT, Grok, Claude, Gemini, or Perplexity. Available as `python3 academic_tools.py prompts ...` and as menu option 3. New skill `skills/research/skripsi-prompts/` (v1.0.0) carries the same templates. Templates are original wording written for this repo; they guide the student's own writing and never write a whole thesis or invent references.
+- Menu CLI is now 1 Jargon Buster, 2 Citation Weaver, 3 Prompt Skripsi, 4 language switch (was 1–3); CLI version 1.1.0. Tests 43 → 61.
+
 ## 1.1.1 — 2026-11-11
 
 - Removed: a student thesis abstract demo and every mention of it, including from git history (history rewritten and force-pushed) — a thesis draft does not belong in a public repo. The Indonesian citation demo now uses the generic example. README rewritten shorter.

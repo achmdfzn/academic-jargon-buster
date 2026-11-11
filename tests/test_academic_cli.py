@@ -84,10 +84,29 @@ class TestAcademicCli(unittest.TestCase):
         self.assertIn("vancouver", out)
 
     def test_switch_language_to_english(self):
-        code, out = run_cli(["3", "0"])
+        code, out = run_cli(["4", "0"])
         self.assertEqual(code, 0)
         self.assertIn("Choose a tool", out)
         self.assertIn("Goodbye", out)
+
+    def test_prompts_list_from_menu(self):
+        code, out = run_cli(["3", "2", "", "0", "0"])
+        self.assertEqual(code, 0)
+        self.assertIn("roadmap", out)
+        self.assertIn("jurnal", out)
+
+    def test_prompts_fill_from_menu(self):
+        # 3=prompts, 1=fill, 1=roadmap, then 5 field values, ""=pause,
+        # 0=back, 0=exit
+        code, out = run_cli([
+            "3", "1", "1",
+            "Sistem Informasi", "TAM", "kualitatif", "6", "11 November 2026",
+            "",
+            "0", "0",
+        ])
+        self.assertEqual(code, 0)
+        self.assertIn("Sistem Informasi", out)
+        self.assertIn("ChatGPT", out)
 
     def test_passthrough_jargon_list_terms(self):
         buf = io.StringIO()

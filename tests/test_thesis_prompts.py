@@ -10,24 +10,43 @@ import skripsi_prompts
 
 
 class TestThesisPrompts(unittest.TestCase):
-    def test_fifteen_prompts_with_unique_ids(self):
-        self.assertEqual(len(tools.PROMPTS), 15)
+    def test_eighteen_prompts_with_unique_ids(self):
+        self.assertEqual(len(tools.PROMPTS), 18)
         ids = [p["id"] for p in tools.PROMPTS]
         self.assertEqual(len(ids), len(set(ids)))
+        for new_id in ("abstrak", "rumusan-masalah", "kata-pengantar"):
+            self.assertIn(new_id, ids)
 
     def test_every_prompt_has_required_fields(self):
         for p in tools.PROMPTS:
-            for key in ("id", "name", "name_en", "category", "tool", "fields", "template"):
+            for key in ("id", "name", "name_en", "category", "tool", "fields",
+                        "template", "template_en"):
                 self.assertIn(key, p, f"{p['id']} missing {key}")
             self.assertTrue(p["name"])
+            self.assertTrue(p["name_en"])
             self.assertTrue(p["template"])
+            self.assertTrue(p["template_en"])
             self.assertIsInstance(p["fields"], list)
 
     def test_every_placeholder_is_declared(self):
         for p in tools.PROMPTS:
             declared = {f["key"] for f in p["fields"]}
-            used = set(re.findall(r"\{(\w+)\}", p["template"]))
-            self.assertEqual(used, declared, f"{p['id']}: {used} vs {declared}")
+            for lang_key in ("template", "template_en"):
+                used = set(re.findall(r"\{(\w+)\}", p[lang_key]))
+                self.assertEqual(used, declared, f"{p['id']}.{lang_key}: {used} vs {declared}")
+
+    def test_english_template_is_a_translation_not_a_copy(self):
+        for p in tools.PROMPTS:
+            self.assertNotEqual(p["template"], p["template_en"],
+                                f"{p['id']}: English template identical to Indonesian")
+
+    def test_new_prompt_categories(self):
+        self.assertEqual({p["id"] for p in tools.list_prompts(category="Bab 1")},
+                         {"latar-belakang", "rumusan-masalah"})
+        self.assertEqual({p["id"] for p in tools.list_prompts(category="Abstrak")},
+                         {"abstrak"})
+        self.assertEqual({p["id"] for p in tools.list_prompts(category="Persiapan")},
+                         {"roadmap", "kata-pengantar"})
 
     def test_every_field_has_bilingual_labels(self):
         for p in tools.PROMPTS:
@@ -52,6 +71,35 @@ class TestThesisPrompts(unittest.TestCase):
         out = tools.fill_prompt("review-draf", {})
         self.assertIn("dosen penguji", out)
 
+    def test_fill_prompt_english_uses_english_template(self):
+        out = tools.fill_prompt("roadmap", {
+            "judul": "Sistem Informasi Manajemen",
+            "teori": "TAM",
+            "metode": "kualitatif",
+            "bulan": "6",
+            "tanggal": "11 November 2026",
+        }, lang="en")
+        self.assertIn("I am working on a thesis titled", out)
+        self.assertIn("Sistem Informasi Manajemen", out)
+        self.assertNotIn("Saya sedang mengerjakan", out)
+
+    def test_fill_new_prompts(self):
+        out = tools.fill_prompt("abstrak", {
+            "judul": "Sistem Informasi Manajemen Karang Taruna",
+            "masalah": "pendataan anggota masih manual",
+            "metode": "waterfall",
+            "hasil": "sistem berjalan baik",
+            "kunci": "sistem informasi, manajemen, SUS",
+        })
+        self.assertIn("150-250 kata", out)
+        out_en = tools.fill_prompt("kata-pengantar", {
+            "judul": "Sistem Informasi Manajemen",
+            "pembimbing": "Dr. Budi",
+            "ucapan": "orang tua dan teman-teman",
+        }, lang="en")
+        self.assertIn("preface", out_en)
+        self.assertIn("Dr. Budi", out_en)
+
     def test_fill_prompt_unknown_id_raises(self):
         with self.assertRaises(KeyError):
             tools.fill_prompt("tidak-ada", {})
@@ -73,7 +121,7 @@ class TestThesisPrompts(unittest.TestCase):
         bab3 = tools.list_prompts(category="Bab 3")
         self.assertEqual({p["id"] for p in bab3},
                          {"metodologi", "hubungan-variabel", "hipotesis"})
-        self.assertEqual(len(tools.list_prompts()), 15)
+        self.assertEqual(len(tools.list_prompts()), 18)
         self.assertEqual(tools.list_prompts(category="Tidak Ada"), [])
 
     def test_prompts_main_list(self):
@@ -82,7 +130,22 @@ class TestThesisPrompts(unittest.TestCase):
             self.assertEqual(tools.prompts_main(["--list"]), 0)
         out = buf.getvalue()
         self.assertIn("roadmap", out)
+        self.assertIn("abstrak", out)
         self.assertIn("jurnal", out)
+
+    def test_prompts_main_list_english_names(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.assertEqual(tools.prompts_main(["--list", "--lang", "en"]), 0)
+        out = buf.getvalue()
+        self.assertIn("Thesis Abstract", out)
+        self.assertIn("Research Roadmap", out)
+
+    def test_prompts_main_show_template_english(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.assertEqual(tools.prompts_main(["roadmap", "--lang", "en"]), 0)
+        self.assertIn("I am working on a thesis titled {judul}", buf.getvalue())
 
     def test_prompts_main_show_template(self):
         buf = io.StringIO()

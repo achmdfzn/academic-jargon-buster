@@ -25,11 +25,11 @@ REFS = tools.load_references(
 
 class TestAcademicTools(unittest.TestCase):
     def test_one_file_holds_everything(self):
-        self.assertEqual(tools.__version__, "1.5.0")
+        self.assertEqual(tools.__version__, "1.6.0")
         self.assertEqual(len(tools.DICTIONARY), 32)
         self.assertEqual(len(tools.STYLES), 6)
         self.assertEqual(len(tools.DISCIPLINES), 21)
-        self.assertEqual(len(tools.PROMPTS), 15)
+        self.assertEqual(len(tools.PROMPTS), 18)
         for name in ("find_terms", "weave", "fill_prompt", "lookup_reference",
                      "fetch_reference_by_doi", "search_reference_by_title",
                      "save_reference", "CLI",

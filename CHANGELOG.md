@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.0 — 2026-11-11
+
+- Thesis Prompts grew from 15 to 18 templates: new abstrak (abstract), rumusan-masalah (problem statement & objectives, Bab 1), and kata-pengantar (preface). Every template now has an English version with the same placeholders — `prompts <id> --lang en` or menu option 3 with language switched to English. 6 new tests (18 prompts, bilingual placeholders, English fill, new categories); full suite 104/104. Skill skripsi-prompts v1.1.0, templates verified in sync with code (18 × 2).
+
 ## 1.5.0 — 2026-11-11
 
 - Citation Weaver can now audit a manuscript before submission: `cite --refs refs.json --audit naskah.txt [--check-links]` (or menu Citation Weaver option 6) reports every `[cite:key]` / `\cite{key}` with no bibliography entry, every bibliography entry never cited, and — with `--check-links` — every cited DOI/arXiv/URL that no longer resolves (plain HEAD request; unreachable is reported, never faked). Exit 1 when a citation is missing or a link is dead, 0 when clean. 7 new tests; full suite 98/98. Citation Weaver skill v1.3.0.

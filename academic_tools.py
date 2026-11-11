@@ -69,10 +69,10 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 JARGON_VERSION = "1.0.3"
 CITATION_VERSION = "1.3.0"
-PROMPTS_VERSION = "1.0.0"
+PROMPTS_VERSION = "1.1.0"
 CLI_VERSION = "1.2.0"
 
 # ======================================================================
@@ -537,7 +537,7 @@ def load_references(path: str):
 # message instead of a made-up reference, and setting OPENALEX_API_KEY
 # (free at https://openalex.org/) raises the limit. No data is ever
 # invented: a failed lookup is an error, never a guess.
-LOOKUP_USER_AGENT = "academic-jargon-buster/1.5.0 (mailto:achmddfzn@proton.me)"
+LOOKUP_USER_AGENT = "academic-jargon-buster/1.6.0 (mailto:achmddfzn@proton.me)"
 CROSSREF_URL = "https://api.crossref.org/works/{doi}"
 OPENALEX_DOI_URL = "https://api.openalex.org/works/https://doi.org/{doi}"
 OPENALEX_SEARCH_URL = "https://api.openalex.org/works?search={q}&per-page=1"
@@ -1280,6 +1280,73 @@ PROMPTS = [
             "menyiapkan publikasi. Waktu yang saya punya {bulan} bulan, mulai {tanggal}. "
             "Tuliskan sebagai daftar langkah berurutan dengan perkiraan durasi tiap langkahnya."
         ),
+        "template_en": (
+            "I am working on a thesis titled {judul}, using {teori} theory and the "
+            "{metode} method. Help me build a work plan for the research from start to "
+            "finish: from formulating the problem, reading the literature, preparing "
+            "instruments, collecting data, analyzing, to writing the report and preparing "
+            "publication. I have {bulan} months, starting {tanggal}. Write it as an "
+            "ordered list of steps with an estimated duration for each step."
+        ),
+    },
+    {
+        "id": "abstrak",
+        "name": "Abstrak Skripsi",
+        "name_en": "Thesis Abstract",
+        "category": "Abstrak",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "masalah", "label": "Masalah yang diteliti", "label_en": "Problem studied"},
+            {"key": "metode", "label": "Metode penelitian", "label_en": "Research method"},
+            {"key": "hasil", "label": "Hasil utama penelitian", "label_en": "Main findings"},
+            {"key": "kunci", "label": "Kata kunci (3-5 kata)", "label_en": "Keywords (3-5 words)"},
+        ],
+        "template": (
+            "Saya sedang menulis abstrak skripsi berjudul {judul}. Masalah yang saya "
+            "teliti: {masalah}. Metode yang saya pakai: {metode}. Hasil utama penelitian "
+            "saya: {hasil}. Tolong susun abstrak dalam satu paragraf (sekitar 150-250 kata) "
+            "dengan struktur: latar belakang singkat, tujuan, metode, hasil utama, dan "
+            "kesimpulan. Akhiri dengan kata kunci: {kunci}. Gunakan bahasa akademik yang "
+            "ringkas dan jelas, tanpa menambahkan data atau klaim yang tidak saya sebutkan."
+        ),
+        "template_en": (
+            "I am writing the abstract for my thesis titled {judul}. The problem I "
+            "studied: {masalah}. The method I used: {metode}. My main findings: {hasil}. "
+            "Please draft the abstract as a single paragraph (about 150-250 words) with "
+            "this structure: brief background, objective, method, main findings, and "
+            "conclusion. End with keywords: {kunci}. Use concise, clear academic language, "
+            "and do not add any data or claims I did not mention."
+        ),
+    },
+    {
+        "id": "kata-pengantar",
+        "name": "Kata Pengantar",
+        "name_en": "Preface",
+        "category": "Persiapan",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "judul", "label": "Judul penelitian", "label_en": "Research title"},
+            {"key": "pembimbing", "label": "Nama dosen pembimbing", "label_en": "Supervisor's name"},
+            {"key": "ucapan", "label": "Pihak yang ingin diucapkan terima kasih", "label_en": "People to thank"},
+        ],
+        "template": (
+            "Saya sedang menulis kata pengantar skripsi berjudul {judul}, dibimbing oleh "
+            "{pembimbing}. Pihak-pihak yang ingin saya ucapkan terima kasih: {ucapan}. "
+            "Tolong susun kata pengantar yang sopan dan formal: buka dengan puji syukur, "
+            "sebutkan judul skripsi dan tujuannya, ucapkan terima kasih kepada pihak-pihak "
+            "di atas dengan kalimat yang tulus dan spesifik, lalu tutup dengan harapan "
+            "semoga skripsi ini bermanfaat. Jangan tambahkan nama atau pihak yang tidak "
+            "saya sebutkan."
+        ),
+        "template_en": (
+            "I am writing the preface for my thesis titled {judul}, supervised by "
+            "{pembimbing}. The people I want to thank: {ucapan}. Please draft a polite, "
+            "formal preface: open with gratitude, state the thesis title and its purpose, "
+            "thank the people above with sincere and specific sentences, then close with "
+            "a hope that this thesis will be useful. Do not add any names or parties I "
+            "did not mention."
+        ),
     },
     {
         "id": "latar-belakang",
@@ -1301,6 +1368,42 @@ PROMPTS = [
             "standar skripsi, dan buat dalam {paragraf} paragraf yang mengalir dan siap "
             "dipakai di dokumen skripsi."
         ),
+        "template_en": (
+            "I am writing the background section for a thesis on {topik}. Here are the "
+            "points from me and my supervisor: {catatan}. Please weave these points into "
+            "a coherent background with an inverted-pyramid structure, from the general "
+            "issue to the local context, then to the specific problem of my research. "
+            "Include supporting data or references where available, use standard academic "
+            "thesis language, and make it {paragraf} paragraphs that flow and are ready "
+            "to use in the thesis document."
+        ),
+    },
+    {
+        "id": "rumusan-masalah",
+        "name": "Rumusan Masalah & Tujuan (Bab 1)",
+        "name_en": "Problem Statement & Objectives (Chapter 1)",
+        "category": "Bab 1",
+        "tool": "ChatGPT",
+        "fields": [
+            {"key": "topik", "label": "Topik penelitian", "label_en": "Research topic"},
+            {"key": "masalah", "label": "Masalah yang dihadapi", "label_en": "Problem faced"},
+            {"key": "tujuan", "label": "Tujuan penelitian", "label_en": "Research objective"},
+        ],
+        "template": (
+            "Saya sedang menulis Bab 1 skripsi bertopik {topik}. Masalah yang saya "
+            "hadapi: {masalah}. Tujuan penelitian saya: {tujuan}. Tolong bantu saya "
+            "merumuskan masalah penelitian dalam bentuk pertanyaan penelitian yang jelas "
+            "dan terukur, lalu turunkan tujuan penelitian yang sesuai dengan pertanyaan "
+            "itu. Beri 2-3 rumusan masalah beserta tujuan masing-masing, dan jelaskan "
+            "singkat kenapa rumusan itu layak diteliti."
+        ),
+        "template_en": (
+            "I am writing Chapter 1 of my thesis on {topik}. The problem I am facing: "
+            "{masalah}. My research objective: {tujuan}. Please help me turn this into "
+            "clear, measurable research questions, then derive matching research objectives "
+            "for each question. Give 2-3 problem statements with their objectives, and "
+            "briefly explain why each is worth researching."
+        ),
     },
     {
         "id": "banding-teori",
@@ -1317,6 +1420,13 @@ PROMPTS = [
             "tokoh atau penelitinya, konsep utama, kelebihan dan keterbatasan, serta "
             "relevansinya dengan penelitian saya. Di akhir, beri rekomendasi teori mana "
             "yang paling cocok dijadikan landasan teori penelitian saya."
+        ),
+        "template_en": (
+            "I am writing a thesis about {judul}. Please find three theories relevant to "
+            "this topic, then compare them in a table: theory name, its figure or "
+            "researcher, main concepts, strengths and limitations, and relevance to my "
+            "research. At the end, recommend which theory fits best as the theoretical "
+            "foundation of my research."
         ),
     },
     {
@@ -1337,6 +1447,13 @@ PROMPTS = [
             "Jelaskan celah penelitian (research gap) yang belum banyak diteliti dan "
             "bagaimana penelitian saya bisa mengisinya. Tulis dalam bahasa akademik, "
             "sekitar 3-4 paragraf, dengan sitasi gaya {gaya}."
+        ),
+        "template_en": (
+            "I am researching {judul}. Here is the list of prior studies I am using as "
+            "references: {daftar}. Please write a critical review of these studies, "
+            "focusing on method, sample, findings, and limitations. Explain the research "
+            "gap that has not been widely studied and how my research can fill it. Write "
+            "in academic language, about 3-4 paragraphs, with citations in {gaya} style."
         ),
     },
     {
@@ -1363,6 +1480,16 @@ PROMPTS = [
             "selaras dengan judul serta Bab 1 dan 2, dan jelaskan alasan metode ini paling "
             "tepat untuk penelitian saya, dengan bahasa akademik yang rapi."
         ),
+        "template_en": (
+            "I am writing Chapter 3, Research Methodology, for a thesis titled {judul}. "
+            "My research type: {jenis}. Method used: {metode}. Population and sample: "
+            "{populasi}. Data collection technique: {pengumpulan}. Data analysis technique: "
+            "{analisis}. Draft a complete and logical Chapter 3, covering research design, "
+            "operational definitions of variables, population and sample, research "
+            "instruments, data collection techniques, and data analysis techniques. Make "
+            "sure the content aligns with the title and Chapters 1 and 2, and explain why "
+            "this method is the best fit for my research, in neat academic language."
+        ),
     },
     {
         "id": "hubungan-variabel",
@@ -1385,6 +1512,15 @@ PROMPTS = [
             "diteliti, dan dukung dengan minimal 3 referensi dari penelitian terdahulu "
             "(format APA 7th)."
         ),
+        "template_en": (
+            "I am writing Chapter 3 of a thesis titled {judul}. My research variables: "
+            "variable X = {variabel_x}, variable Y = {variabel_y}, variable Z = "
+            "{variabel_z} (if any). Please write a paragraph explaining the relationships "
+            "between these variables based on relevant theory. Lay it out in order, "
+            "starting with the X-to-Y relationship, then Z if any. Explain why this "
+            "relationship is important to study, and support it with at least 3 references "
+            "from prior research (APA 7th format)."
+        ),
     },
     {
         "id": "hipotesis",
@@ -1404,6 +1540,15 @@ PROMPTS = [
             "terdahulu (penulis, tahun, temuan, relevansi), sintesis hubungan antar penelitian "
             "(pola, konsistensi, atau perdebatan yang ada), dan hipotesis saya (H0, H1, dst) "
             "dalam format yang jelas dan siap dimasukkan ke Bab 3."
+        ),
+        "template_en": (
+            "I am drafting hypotheses for a thesis titled {judul}. The variables I am "
+            "studying: {variabel}. Please find at least 5 prior studies that examined "
+            "similar relationships. Summarize each study's main findings, then formulate "
+            "logical, testable hypotheses. Format the result as: summary of prior research "
+            "(author, year, findings, relevance), synthesis of the relationships between "
+            "studies (patterns, consistencies, or debates), and my hypotheses (H0, H1, "
+            "etc.) in a clear format ready for Chapter 3."
         ),
     },
     {
@@ -1431,6 +1576,20 @@ PROMPTS = [
             "menjawab rumusan masalah. Gunakan bahasa akademik yang jelas dan sistematis, "
             "dengan format akhir yang siap dimasukkan ke Bab 4."
         ),
+        "template_en": (
+            "I am analyzing mixed-method research data for a thesis titled {judul}. My "
+            "quantitative method: {kuantitatif}. My qualitative method: {kualitatif}. I "
+            "will attach my raw data files. Please analyze with these steps: (1) "
+            "Quantitative analysis: clean the data and explain how missing values are "
+            "handled, run the appropriate statistical tests, present the results in tables "
+            "with interpretation (p-value, significance, effect size), and make simple "
+            "visualizations where relevant. (2) Qualitative analysis: do thematic coding, "
+            "present the main themes with representative respondent quotes, and interpret "
+            "their meaning. (3) Integration: combine both results, show whether they "
+            "support, complement, or contradict each other, and draw a preliminary "
+            "conclusion that answers the problem statement. Use clear, systematic academic "
+            "language, with a final format ready for Chapter 4."
+        ),
     },
     {
         "id": "saran",
@@ -1449,6 +1608,13 @@ PROMPTS = [
             "(3) peneliti berikutnya. Tulis dengan bahasa akademik, masing-masing satu "
             "paragraf, dan pastikan setiap saran bisa diterapkan dan relevan dengan temuan "
             "penelitian saya."
+        ),
+        "template_en": (
+            "I am drafting Chapter 5 of a thesis titled {judul}. Based on my findings "
+            "below: {hasil}, please write constructive research suggestions for three "
+            "audiences: (1) practitioners or industry, (2) academics, and (3) future "
+            "researchers. Write in academic language, one paragraph each, and make sure "
+            "every suggestion is actionable and relevant to my findings."
         ),
     },
     {
@@ -1469,6 +1635,14 @@ PROMPTS = [
             "lalu lanjutkan dengan peluang penelitian lanjutan. Berikan 3-5 ide penelitian "
             "berikutnya yang relevan, misalnya metode baru, populasi berbeda, atau variabel "
             "tambahan, dan jelaskan mengapa setiap ide penting untuk dikaji."
+        ),
+        "template_en": (
+            "I am writing Chapter 5 of a thesis titled {judul}. My research method: "
+            "{metode}, with data: {data}. Please write a limitations section that is "
+            "elegant and professional, without weakening the findings, then continue with "
+            "opportunities for future research. Give 3-5 ideas for follow-up studies, such "
+            "as a new method, a different population, or additional variables, and explain "
+            "why each idea matters to study."
         ),
     },
     {
@@ -1493,6 +1667,20 @@ PROMPTS = [
             "diurutkan berdasarkan prioritas (tinggi, sedang, rendah), agar saya tahu "
             "bagian mana yang harus diperbaiki dulu."
         ),
+        "template_en": (
+            "I will attach my thesis file (PDF/DOC). Please read and analyze all of it, "
+            "and act as an objective, critical supervisor and examiner. Give feedback on "
+            "the parts that are still weak, could trigger revisions, or could prompt "
+            "questions during the seminar and defense. Explain specifically where the "
+            "problem is (chapter or subchapter), why that part is considered weak, and what "
+            "should be deepened, without writing the revision itself. Also mention my "
+            "thesis's strengths, from argumentation, theory, methodology, analysis, to "
+            "research novelty. Finally, evaluate the technical writing: structure, flow "
+            "between paragraphs, term consistency, citation and bibliography quality, table "
+            "or figure formatting, and other potential academic errors. Present the "
+            "evaluation in clear categories, ordered by priority (high, medium, low), so "
+            "I know which part to fix first."
+        ),
     },
     {
         "id": "ppt",
@@ -1515,6 +1703,17 @@ PROMPTS = [
             "grafik, tabel, atau diagram untuk memperjelas. Hasil akhirnya adalah presentasi "
             "sebanyak {jumlah_slide} slide yang siap dipakai tanpa banyak edit."
         ),
+        "template_en": (
+            "I want to turn my thesis titled {judul} into a PowerPoint presentation. I "
+            "will attach the thesis file. Please summarize each chapter into slides with "
+            "short, engaging titles. Each slide's content should be key points (at most 5 "
+            "points per slide), plus 1-2 explanatory sentences per slide so I know what to "
+            "say. Follow the thesis presentation structure: background, problem statement, "
+            "objectives, literature review, method, results, discussion, conclusions, and "
+            "suggestions. Where needed, recommend charts, tables, or diagrams for clarity. "
+            "The final result is a presentation of {jumlah_slide} slides ready to use with "
+            "little editing."
+        ),
     },
     {
         "id": "cue-card",
@@ -1532,6 +1731,16 @@ PROMPTS = [
             "lihat audiens saat menyebut hasil utama). Pastikan cue card ini membuat saya "
             "percaya diri, tidak terdengar kaku, dan membantu menjawab kemungkinan pertanyaan "
             "dari penguji."
+        ),
+        "template_en": (
+            "Please make short, compact cue cards to help me during my thesis "
+            "presentation. Split them per slide following my thesis PPT order. Write the "
+            "key points or sentences I must say, in natural spoken language that stays "
+            "professional. Keep it short, just 2-3 sentences per slide so it is easy to "
+            "memorize. Add tips on intonation or gestures (for example: smile at the start, "
+            "look at the audience when stating the main result). Make sure these cue cards "
+            "make me confident, not stiff, and help me answer possible questions from the "
+            "examiners."
         ),
     },
     {
@@ -1558,6 +1767,18 @@ PROMPTS = [
             "dan pastikan artikel mencantumkan kredit ke penelitian saya agar bisa dipakai "
             "sebagai portofolio."
         ),
+        "template_en": (
+            "I want to turn my thesis titled {judul} into a short article ready to publish "
+            "on {platform}. I will attach the thesis file. Please take its essence and "
+            "rewrite it in relaxed language that is easy for lay readers to understand, and "
+            "still engaging. The article should be about {kata} words long. Structure it in "
+            "order: start with an attention-grabbing opening (an interesting fact, a "
+            "question, or a current phenomenon), then present the problem I studied and its "
+            "relevance, briefly explain the method and main findings without too much "
+            "jargon, and close with the practical benefit of this research for readers. "
+            "Where needed, add statistics, case examples, or a call-to-action, and make "
+            "sure the article credits my research so it can serve as a portfolio."
+        ),
     },
     {
         "id": "jurnal",
@@ -1578,6 +1799,15 @@ PROMPTS = [
             "variasikan panjang kalimat, dan hindari em-dash dan titik koma. Berikut paragraf "
             "yang perlu dipersingkat: [tempel paragraf kamu di sini, satu bagian saja]."
         ),
+        "template_en": (
+            "I want to publish a journal article based on my thesis. This is the section "
+            "that needs to be condensed into shorter paragraphs for my journal: {bagian}. "
+            "Make at most {jumlah} paragraphs or words. Keep the citations and do not drop "
+            "the core of each paragraph. Use human, non-robotic language. Avoid repeated "
+            "words and generic sentence structures, vary sentence length, and avoid "
+            "em-dashes and semicolons. Here is the paragraph to shorten: [paste your "
+            "paragraph here, one section only]."
+        ),
     },
 ]
 
@@ -1597,9 +1827,11 @@ def get_prompt(prompt_id: str):
     return None
 
 
-def fill_prompt(prompt_id: str, values: dict) -> str:
+def fill_prompt(prompt_id: str, values: dict, lang: str = "id") -> str:
     """Fill a prompt template with the student's own values.
 
+    `lang` picks the template language ("id" or "en"); English falls
+    back to the Indonesian template when a prompt has no English one.
     Raises KeyError for an unknown prompt id, ValueError naming any
     placeholder left empty. Never invents values: a missing field is
     an error, not a guess.
@@ -1611,7 +1843,10 @@ def fill_prompt(prompt_id: str, values: dict) -> str:
                if f["key"] not in values or values[f["key"]] == ""]
     if missing:
         raise ValueError(f"missing values for: {', '.join(missing)}")
-    return prompt["template"].format(**values)
+    template = prompt["template"]
+    if lang == "en" and prompt.get("template_en"):
+        template = prompt["template_en"]
+    return template.format(**values)
 
 
 def prompts_main(argv=None) -> int:
@@ -1620,6 +1855,8 @@ def prompts_main(argv=None) -> int:
     p.add_argument("prompt_id", nargs="?", help="prompt id (see --list)")
     p.add_argument("--list", action="store_true", help="list all prompts and exit")
     p.add_argument("--category", help="only list prompts from this category, e.g. 'Bab 3'")
+    p.add_argument("--lang", choices=["id", "en"], default="id",
+                   help="template language (default: id)")
     p.add_argument("--set", dest="set_values", action="append", default=[],
                    help="fill a placeholder: --set judul='...' (repeatable)")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -1627,7 +1864,8 @@ def prompts_main(argv=None) -> int:
 
     if args.list or not args.prompt_id:
         for pr in list_prompts(category=args.category):
-            print(f"{pr['id']} — {pr['name']} ({pr['category']}, {pr['tool']})")
+            name = pr["name_en"] if args.lang == "en" else pr["name"]
+            print(f"{pr['id']} — {name} ({pr['category']}, {pr['tool']})")
         return 0
 
     prompt = get_prompt(args.prompt_id)
@@ -1636,7 +1874,10 @@ def prompts_main(argv=None) -> int:
         return 2
 
     if not args.set_values:
-        print(prompt["template"])
+        template = prompt["template"]
+        if args.lang == "en" and prompt.get("template_en"):
+            template = prompt["template_en"]
+        print(template)
         return 0
 
     values = {}
@@ -1647,7 +1888,7 @@ def prompts_main(argv=None) -> int:
         key, value = item.split("=", 1)
         values[key.strip()] = value
     try:
-        sys.stdout.write(fill_prompt(args.prompt_id, values) + "\n")
+        sys.stdout.write(fill_prompt(args.prompt_id, values, lang=args.lang) + "\n")
     except ValueError as e:
         p.error(str(e))
         return 2
@@ -2048,7 +2289,8 @@ class CLI:
                 self.prompts_fill()
             elif choice == 2:
                 for pr in list_prompts():
-                    print(f"  {pr['id']} — {pr['name']} ({pr['category']}, {pr['tool']})")
+                    name = pr["name_en"] if self.lang == "en" else pr["name"]
+                    print(f"  {pr['id']} — {name} ({pr['category']}, {pr['tool']})")
                 self.pause()
             elif choice == 0 or choice is None:
                 return
@@ -2057,7 +2299,8 @@ class CLI:
         prompts = list_prompts()
         print(f"\n{self.t['pick_prompt']}")
         for i, pr in enumerate(prompts, 1):
-            print(f"  {i}. {pr['id']} — {pr['name']} ({pr['tool']})")
+            name = pr["name_en"] if self.lang == "en" else pr["name"]
+            print(f"  {i}. {pr['id']} — {name} ({pr['tool']})")
         choice = self.ask_choice(self.t["choice"], len(prompts))
         if choice is None or choice == 0:
             return
@@ -2067,7 +2310,7 @@ class CLI:
             label = f["label"] if self.lang == "id" else f["label_en"]
             values[f["key"]] = self.ask(f"{label}:")
         try:
-            out = fill_prompt(pr["id"], values)
+            out = fill_prompt(pr["id"], values, lang=self.lang)
         except ValueError as e:
             print(e)
             return

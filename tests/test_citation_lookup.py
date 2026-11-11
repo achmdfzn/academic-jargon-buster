@@ -131,6 +131,20 @@ class TestLookupGetErrors(unittest.TestCase):
                 tools._lookup_get("https://example.org/")
         self.assertIn("OPENALEX_API_KEY", str(cm.exception))
 
+    def test_lookup_get_maps_401_to_api_key_hint(self):
+        with patch("urllib.request.urlopen", side_effect=self._http_error(401)):
+            with self.assertRaises(tools.LookupError) as cm:
+                tools._lookup_get("https://example.org/")
+        message = str(cm.exception)
+        self.assertIn("OPENALEX_API_KEY", message)
+        self.assertIn("openalex.org/settings/api", message)
+
+    def test_lookup_get_maps_403_to_api_key_hint(self):
+        with patch("urllib.request.urlopen", side_effect=self._http_error(403)):
+            with self.assertRaises(tools.LookupError) as cm:
+                tools._lookup_get("https://example.org/")
+        self.assertIn("OPENALEX_API_KEY", str(cm.exception))
+
     def test_lookup_get_maps_url_error(self):
         with patch("urllib.request.urlopen",
                    side_effect=urllib.error.URLError("no network")):

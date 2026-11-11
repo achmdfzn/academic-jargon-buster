@@ -1,7 +1,7 @@
 ---
 name: citation-weaver
 description: "Weave citations into narrative text automatically."
-version: 1.3.0
+version: 1.3.1
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -37,7 +37,7 @@ Automatically weave citations into narrative text for academic writing. Accepts 
 
 ## Reference lookup (v1.1.0)
 
-Build a bibliography without typing JSON by hand: fetch real metadata by DOI or title from Crossref and OpenAlex.
+Build a bibliography without typing JSON by hand: fetch real metadata by DOI or title from Crossref and OpenAlex. Crossref needs no key; OpenAlex has required a free key since February 2026.
 
 ```bash
 python3 academic_tools.py cite --lookup 10.1038/nature14539
@@ -48,9 +48,9 @@ python3 academic_tools.py cite --lookup 10.1038/nature14539 --key lecun2015 --ad
 Rules:
 
 - **DOI lookups try Crossref first, then OpenAlex.** Title searches use OpenAlex.
-- **Both APIs are free and need no key.** A polite mailto in the User-Agent puts requests in the APIs' polite pools.
+- **Crossref is free and needs no key.** A polite mailto in the User-Agent puts requests in the APIs' polite pools.
 - **Never invent a reference.** A failed lookup (not found, rate-limited, offline) is an error, never a guessed paper. A `[cite:key]` with no bibliography entry stays `[PERLU RUJUKAN: key]`.
-- **OpenAlex without a key shares one free daily budget per IP address.** On HTTP 429, the lookup fails with a clear message: try again later, or set `OPENALEX_API_KEY` (free at <https://openalex.org/>) to raise the limit.
+- **OpenAlex requires a free API key** (since February 2026; about $1 of free usage per key per day — a single DOI/ID lookup is free, a search costs roughly $0.001). Create one at <https://openalex.org/settings/api> and set `OPENALEX_API_KEY`. On HTTP 401/403 the lookup says the key is missing; on HTTP 429 it says the daily allowance is exhausted. Either way it fails with a clear message instead of inventing a reference.
 
 ## BibTeX export (v1.2.0)
 

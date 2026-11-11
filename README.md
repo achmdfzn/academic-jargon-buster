@@ -6,7 +6,7 @@ Student writing, minus the guesswork: this repo translates academic jargon into 
 
 ## The file
 
-`academic_tools.py` (v1.8.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, and an interactive menu CLI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.8.1) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, and an interactive menu CLI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -84,10 +84,12 @@ python3 academic_tools.py cite --lookup 10.1038/nature14539
 python3 academic_tools.py cite --lookup "Deep learning" --add-to my-refs.json
 ```
 
+Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key since February 2026 (about $0.001 per search under a ~$1/day free allowance). DOI lookups try Crossref first, so they keep working without a key.
+
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.8.0)
+academic_tools.py            # everything (v1.8.1)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -95,7 +97,7 @@ skills/research/             # the same three tools as agent skills
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 116 tests, stdlib unittest only
+tests/                       # 118 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -111,7 +113,7 @@ The `skills/research/` folders hold the same three tools as agent skills. They f
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 116 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 118 tests, no dependencies
 ```
 
 ## License

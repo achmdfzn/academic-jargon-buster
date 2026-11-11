@@ -69,9 +69,9 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.8.0"
+__version__ = "1.8.1"
 JARGON_VERSION = "1.0.4"
-CITATION_VERSION = "1.3.0"
+CITATION_VERSION = "1.3.1"
 PROMPTS_VERSION = "1.1.0"
 CLI_VERSION = "1.3.0"
 
@@ -542,14 +542,15 @@ def load_references(path: str):
 # Reference lookup (OpenAlex / Crossref)
 # ======================================================================
 # Fetch real reference metadata by DOI or title, so a bibliography can
-# be built without typing JSON by hand. Both APIs are free and need no
-# key. Crossref is tried first for DOIs; OpenAlex backs it up and also
-# powers title search. A polite mailto in the User-Agent puts requests
-# in the APIs' polite pools. OpenAlex without a key shares one daily
-# budget per IP address: on HTTP 429 the lookup fails with a clear
-# message instead of a made-up reference, and setting OPENALEX_API_KEY
-# (free at https://openalex.org/) raises the limit. No data is ever
-# invented: a failed lookup is an error, never a guess.
+# be built without typing JSON by hand. Crossref is free and needs no
+# key. OpenAlex has required a key for production use since February
+# 2026: the key is free, every key gets about $1 of free usage per day,
+# a single lookup by DOI or ID is free, and a search costs roughly
+# $0.001. The key is read from OPENALEX_API_KEY. Crossref is tried
+# first for DOIs; OpenAlex backs it up and powers title search. A
+# polite mailto in the User-Agent puts requests in the APIs' polite
+# pools. No data is ever invented: a failed lookup is an error, never
+# a guess.
 LOOKUP_USER_AGENT = (
     f"academic-jargon-buster/{__version__} (mailto:achmddfzn@proton.me)"
 )
@@ -571,11 +572,19 @@ def _lookup_get(url: str, timeout: int = 15):
     except urllib.error.HTTPError as e:
         if e.code == 404:
             raise LookupError("not found (HTTP 404)")
+        if e.code in (401, 403):
+            raise LookupError(
+                "API access denied (HTTP %d). OpenAlex has required a free API "
+                "key since February 2026: create one at "
+                "https://openalex.org/settings/api and set OPENALEX_API_KEY."
+                % e.code
+            )
         if e.code == 429:
             raise LookupError(
-                "rate limited by the API (HTTP 429). OpenAlex shares one free "
-                "daily budget per IP address; try again later, or set "
-                "OPENALEX_API_KEY (free at https://openalex.org/) to raise the limit."
+                "rate limited by the API (HTTP 429). OpenAlex allows about $1 "
+                "of free usage per key per day; try again later, or set "
+                "OPENALEX_API_KEY (free at https://openalex.org/settings/api) "
+                "to use your own daily allowance."
             )
         raise LookupError(f"lookup failed (HTTP {e.code})")
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.1 — 2026-11-12
+
+- OpenAlex lookup corrected for the February 2026 API change: a key is now required for production use (free, about $1 of usage per key per day; a single DOI/ID lookup is free, a search is about $0.001). HTTP 401/403 now fails with "create a free key at openalex.org/settings/api and set OPENALEX_API_KEY" instead of a bare HTTP code, and the 429 message no longer claims one budget per IP address. Crossref is unchanged and still needs no key, so DOI lookups work without one. Citation Weaver skill v1.3.1.
+- Two tests pin the 401 and 403 messages. Full suite 118/118.
+
 ## 1.8.0 — 2026-11-12
 
 - New menu banner: a bordered panel with the version, the three tools, and a language hint, replacing the single `====` line. ASCII only, so the menu still renders when stdout is piped or the console is not UTF-8. `CLI_VERSION` 1.2.0 → 1.3.0.

@@ -44,7 +44,7 @@ class TestAcademicCli(unittest.TestCase):
         )
 
     def test_english_banner_names_thesis_prompts(self):
-        code, out = run_cli(["4", "0"])
+        code, out = run_cli(["5", "0"])
         self.assertEqual(code, 0)
         self.assertIn("Thesis Prompts", out)
         self.assertIn("type a number", out)
@@ -103,7 +103,7 @@ class TestAcademicCli(unittest.TestCase):
         self.assertIn("vancouver", out)
 
     def test_switch_language_to_english(self):
-        code, out = run_cli(["4", "0"])
+        code, out = run_cli(["5", "0"])
         self.assertEqual(code, 0)
         self.assertIn("Choose a tool", out)
         self.assertIn("Goodbye", out)
@@ -164,6 +164,26 @@ class TestAcademicCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Verifikasi DOI", out)
         self.assertIn("lecun2015", out)
+
+    def test_analyze_from_menu(self):
+        import academic_tools as tools
+        fake_result = {
+            "devlin2019": {"doi": "10.18653/v1/N19-1423", "crossref": "ok",
+                           "openalex": "ok", "verdict": "ok"},
+        }
+        with patch.object(tools, "verify_reference_dois",
+                          return_value=fake_result):
+            # 4=analyze, 1=type text, text lines, ""=end, ""=refs (sample),
+            # ""=pause, 0=exit
+            code, out = run_cli([
+                "4", "1",
+                "Metode memakai purposive sampling [cite:devlin2019].", "",
+                "", "",
+                "0",
+            ])
+        self.assertEqual(code, 0)
+        self.assertIn("Skor kualitas", out)
+        self.assertIn("purposive sampling", out)
 
     def test_passthrough_jargon_list_terms(self):
         buf = io.StringIO()

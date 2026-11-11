@@ -11,6 +11,7 @@ from academic_tools import (
     fill_prompt,
     get_prompt,
     list_prompts,
+    prompts_main,
     prompts_main as main,
 )
 
@@ -20,6 +21,7 @@ __all__ = [
     "get_prompt",
     "list_prompts",
     "main",
+    "prompts_main",
 ]
 
 if __name__ == "__main__":

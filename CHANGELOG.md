@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.10.0 — 2026-11-12
+
+- `analyze_text_quality()` is finally wired up: new `analyze` subcommand (`python3 academic_tools.py analyze <file|--text> [--refs refs.json] [--lang id|en] [--json] [--no-verify]`) and menu option 4 (Quality Check). It checks jargon, audits citations, verifies DOIs, and prints one quality score 0–100 with recommendations; exits 1 when a citation is missing or a DOI is not found. `CLI_VERSION` 1.4.0 → 1.5.0.
+- Scoring fixes in `analyze_text_quality()`: the three 25-point parts now scale to 0–100 (a clean text scores 100, not 75); references without a DOI no longer count as failed verifications; recommendations are bilingual in full; entries without a DOI are no longer reported as unverified DOIs.
+- Shims re-export the full public surface: `citation_weaver` now exposes the lookup/verify family, `academic_cli` exposes `analyze_text_quality` / `format_analyze` / `format_banner` / `analyze_main`, and the `*_main` entry points are exported under their real names. The structure guard now checks this.
+- Sample bibliography: `devlin2019` (BERT) now carries its real DOI `10.18653/v1/N19-1423` (verified against Crossref), so `--verify` can be demonstrated on the bundled data; `references.bib` regenerated.
+- 11 new tests (engine, subcommand, menu, shim guard). Full suite 141/141.
+
 ## 1.9.0 — 2026-11-12
 
 - New `cite --refs refs.json --verify` and menu option 7: check every reference DOI against Crossref and OpenAlex. A DOI found in either source counts as real (arXiv and datasets register with DataCite, not Crossref); "not found" needs both sources to answer 404; a network error or a single checked source stays "unverified". Without `OPENALEX_API_KEY` the OpenAlex column reads `no key`, so a Crossref miss is never reported as fake. Exits 1 only when a DOI is missing from both sources. Output has an Indonesian and an English table with a summary line. Menu option 7 runs the same check; `CLI_VERSION` 1.3.0 → 1.4.0. Citation Weaver skill v1.4.0.

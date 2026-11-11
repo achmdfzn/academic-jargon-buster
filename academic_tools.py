@@ -69,11 +69,11 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.9.0"
+__version__ = "1.10.0"
 JARGON_VERSION = "1.0.4"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-CLI_VERSION = "1.4.0"
+CLI_VERSION = "1.5.0"
 
 # ======================================================================
 # Jargon Buster
@@ -1355,14 +1355,12 @@ def analyze_text_quality(
             result["doi_verification"] = doi_result
 
     # --- Quality score calculation ---
+    # Three parts of 25 (max 75), scaled to 0-100.
     score_parts = []
 
-    # Jargon coverage: percentage of text's jargon that is explained
-    if jargon_matches:
-        # Score max 25 points for jargon analysis presence
-        score_parts.append(25)
-    else:
-        score_parts.append(25)
+    # Jargon: every term found is explained by construction, so a run
+    # with terms scores 25; a text with no recognised jargon is neutral.
+    score_parts.append(25)
 
     # Citations completeness
     if references is not None:
@@ -1376,58 +1374,204 @@ def analyze_text_quality(
     else:
         score_parts.append(25)  # no refs to audit = neutral
 
-    # DOI verification quality
+    # DOI verification quality: only entries that actually carry a DOI
+    # count — a reference without one is not a failed verification.
     doi_result = result.get("doi_verification", {})
     if doi_result:
-        verdicts = list(doi_result.values())
-        ok_count = sum(1 for v in verdicts if v.get("verdict") == "ok")
-        total_count = len(verdicts)
-        if total_count > 0:
-            doi_score = 25 * (ok_count / total_count)
+        checkable = [v for v in doi_result.values() if v.get("doi")]
+        if checkable:
+            ok_count = sum(1 for v in checkable if v.get("verdict") == "ok")
+            score_parts.append(25 * (ok_count / len(checkable)))
         else:
-            doi_score = 25  # no DOIs to verify = neutral
-        score_parts.append(doi_score)
+            score_parts.append(25)  # no DOIs to verify = neutral
     else:
         score_parts.append(25)  # no references = neutral
 
     total_score = sum(score_parts)
-    result["quality_score"] = min(total_score, 100)
+    result["quality_score"] = round(min(total_score, 75) / 75 * 100)
 
     # --- Recommendations ---
+    en = lang == "en"
     recs = []
     if result["citations"]:
         cit = result["citations"]
         if cit["missing"]:
-            recs.append(
-                f"{len(cit['missing'])} sitasi di naskah tidak ada di bibliografi: "
-                + ", ".join(cit["missing"])
-            )
+            if en:
+                recs.append(
+                    f"{len(cit['missing'])} citations in the text have no bibliography entry: "
+                    + ", ".join(cit["missing"])
+                )
+            else:
+                recs.append(
+                    f"{len(cit['missing'])} sitasi di naskah tidak ada di bibliografi: "
+                    + ", ".join(cit["missing"])
+                )
         if cit["unused"]:
-            recs.append(
-                f"{len(cit['unused'])} entri di bibliografi tidak pernah dikutip: "
-                + ", ".join(cit["unused"][:5])
-            )
+            if en:
+                recs.append(
+                    f"{len(cit['unused'])} bibliography entries are never cited: "
+                    + ", ".join(cit["unused"][:5])
+                )
+            else:
+                recs.append(
+                    f"{len(cit['unused'])} entri di bibliografi tidak pernah dikutip: "
+                    + ", ".join(cit["unused"][:5])
+                )
     if result["doi_verification"]:
         dv = result["doi_verification"]
-        unverified_or_missing = [k for k, v in dv.items() if v["verdict"] in ("unverified", "missing", "no-doi")]
-        if unverified_or_missing:
-            recs.append(
-                f"{len(unverified_or_missing)} DOI {'belum terverifikasi' if lang == 'id' else 'unverified'}: "
-                + ", ".join(unverified_or_missing)
-            )
+        bad = [k for k, v in dv.items()
+               if v["verdict"] in ("unverified", "missing")]
+        if bad:
+            if en:
+                recs.append(
+                    f"{len(bad)} DOIs unverified: " + ", ".join(bad)
+                )
+            else:
+                recs.append(
+                    f"{len(bad)} DOI belum terverifikasi: " + ", ".join(bad)
+                )
     if not jargon_matches:
-        recs.append(
-            "Tidak ditemukan jargon akademik yang dikenali — pertimbangkan "
-            + ("menambahkan istilah ke dictionary.json" if lang == "id"
-               else "adding terms to the dictionary")
-        )
+        if en:
+            recs.append(
+                "No recognised academic jargon found — consider adding "
+                "terms to the dictionary"
+            )
+        else:
+            recs.append(
+                "Tidak ditemukan jargon akademik yang dikenali — pertimbangkan "
+                "menambahkan istilah ke dictionary.json"
+            )
     if not references:
-        recs.append(
-            "Tambahkan bibliografi JSON untuk audit sitasi dan verifikasi DOI."
-        )
+        if en:
+            recs.append(
+                "Add a bibliography JSON file for citation audit and DOI verification."
+            )
+        else:
+            recs.append(
+                "Tambahkan bibliografi JSON untuk audit sitasi dan verifikasi DOI."
+            )
     result["recommendations"] = recs
 
     return result
+
+
+_ANALYZE_STRINGS = {
+    "id": {
+        "heading": "Analisis Kualitas Naskah",
+        "score": "Skor kualitas",
+        "jargon": "Istilah jargon ditemukan",
+        "jargon_none": "Tidak ada istilah jargon yang dikenali.",
+        "citations": "Sitasi",
+        "cited": "dikutip",
+        "missing": "hilang dari bibliografi",
+        "unused": "tak terpakai",
+        "doi": "Verifikasi DOI",
+        "doi_none": "Tidak ada DOI untuk diverifikasi.",
+        "recs": "Rekomendasi",
+        "recs_none": "Tidak ada rekomendasi — naskah sudah rapi.",
+        "no_refs": "Tanpa bibliografi: audit sitasi dan verifikasi DOI dilewati.",
+    },
+    "en": {
+        "heading": "Text Quality Analysis",
+        "score": "Quality score",
+        "jargon": "Jargon terms found",
+        "jargon_none": "No recognised jargon terms.",
+        "citations": "Citations",
+        "cited": "cited",
+        "missing": "missing from bibliography",
+        "unused": "unused",
+        "doi": "DOI verification",
+        "doi_none": "No DOIs to verify.",
+        "recs": "Recommendations",
+        "recs_none": "No recommendations — the text is in good shape.",
+        "no_refs": "No bibliography: citation audit and DOI verification skipped.",
+    },
+}
+
+
+def format_analyze(result: dict, lang: str = "id") -> str:
+    """Render an analyze_text_quality() result as readable text."""
+    s = _ANALYZE_STRINGS.get(lang, _ANALYZE_STRINGS["id"])
+    lines = [s["heading"], "", f"{s['score']}: {result['quality_score']}/100"]
+    jargon = result["jargon"]
+    if jargon:
+        lines.append(f"{s['jargon']}: {len(jargon)}")
+        for item in jargon:
+            lines.append(f"  - {item['term']}: {item['translation']}")
+    else:
+        lines.append(s["jargon_none"])
+    cit = result["citations"]
+    if cit is None:
+        lines.append(s["no_refs"])
+    else:
+        lines.append(
+            f"{s['citations']}: {len(cit['cited'])} {s['cited']}, "
+            f"{len(cit['missing'])} {s['missing']}, "
+            f"{len(cit['unused'])} {s['unused']}"
+        )
+        if cit["missing"]:
+            lines.append("  " + ", ".join(cit["missing"]))
+    dv = result["doi_verification"]
+    if dv:
+        ok = sum(1 for v in dv.values() if v.get("verdict") == "ok")
+        with_doi = sum(1 for v in dv.values() if v.get("doi"))
+        lines.append(f"{s['doi']}: {ok}/{with_doi} ok")
+        bad = [k for k, v in dv.items()
+               if v.get("doi") and v.get("verdict") != "ok"]
+        if bad:
+            lines.append("  " + ", ".join(bad))
+    else:
+        lines.append(s["doi_none"])
+    recs = result["recommendations"]
+    lines.append(f"{s['recs']}:")
+    if recs:
+        for r in recs:
+            lines.append(f"  - {r}")
+    else:
+        lines.append(f"  {s['recs_none']}")
+    return "\n".join(lines) + "\n"
+
+
+def analyze_main(argv=None) -> int:
+    p = argparse.ArgumentParser(
+        description="Check an academic text: jargon, citations, and DOI "
+                    "verification in one pass.")
+    p.add_argument("input", nargs="?", help="plain-text file to analyze")
+    p.add_argument("--text", help="analyze this text instead of a file")
+    p.add_argument("--refs", help="bibliography JSON file (optional; without "
+                   "it, citation audit and DOI checks are skipped)")
+    p.add_argument("--lang", choices=["id", "en"], default="id",
+                   help="output language (default: id)")
+    p.add_argument("--no-verify", action="store_true",
+                   help="skip DOI verification even when --refs is given")
+    p.add_argument("--json", action="store_true",
+                   help="print the raw result as JSON instead of readable text")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    args = p.parse_args(argv)
+
+    if args.text:
+        text = args.text
+    elif args.input:
+        with open(args.input, encoding="utf-8") as f:
+            text = f.read()
+    else:
+        p.error("give a file or --text")
+        return 2
+
+    references = None
+    if args.refs:
+        references = load_references(args.refs)
+    result = analyze_text_quality(text, references, lang=args.lang,
+                                  verify_dois=not args.no_verify)
+    if args.json:
+        sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    else:
+        sys.stdout.write(format_analyze(result, lang=args.lang))
+    bad_doi = any(v.get("verdict") == "missing"
+                  for v in result["doi_verification"].values())
+    missing = result["citations"]["missing"] if result["citations"] else []
+    return 1 if missing or bad_doi else 0
+
 
 def cite_main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Weave citations into narrative text.")
@@ -2219,6 +2363,7 @@ STRINGS = {
         "jargon": "Jargon Buster — terjemahkan istilah akademik",
         "cite": "Citation Weaver — sisipkan sitasi ke naskah",
         "prompts": "Prompt Skripsi — template prompt untuk tiap bab",
+        "analyze": "Analisis Kualitas — cek jargon, sitasi, dan DOI sekaligus",
         "list_prompts": "Lihat daftar prompt",
         "fill_prompt": "Isi prompt",
         "pick_prompt": "Pilih prompt:",
@@ -2269,6 +2414,7 @@ STRINGS = {
         "jargon": "Jargon Buster — translate academic jargon",
         "cite": "Citation Weaver — weave citations into text",
         "prompts": "Thesis Prompts — ready-made prompts for each chapter",
+        "analyze": "Quality Check — jargon, citations, and DOIs in one pass",
         "list_prompts": "List prompts",
         "fill_prompt": "Fill a prompt",
         "pick_prompt": "Pick a prompt:",
@@ -2426,9 +2572,10 @@ class CLI:
             print(f"1. {self.t['jargon']}")
             print(f"2. {self.t['cite']}")
             print(f"3. {self.t['prompts']}")
-            print(f"4. {self.t['lang']}")
+            print(f"4. {self.t['analyze']}")
+            print(f"5. {self.t['lang']}")
             print(f"0. {self.t['exit']}")
-            choice = self.ask_choice(self.t["choice"], 4)
+            choice = self.ask_choice(self.t["choice"], 5)
             if choice == -1:
                 continue
             if choice == 1:
@@ -2438,6 +2585,8 @@ class CLI:
             elif choice == 3:
                 self.prompts_menu()
             elif choice == 4:
+                self.analyze_menu()
+            elif choice == 5:
                 self.lang = "en" if self.lang == "id" else "id"
             elif choice == 0 or choice is None:
                 print(self.t["goodbye"])
@@ -2548,6 +2697,19 @@ class CLI:
             return
         result = verify_reference_dois(load_references(refs_path))
         print(f"\n{format_verification(result, lang=self.lang)}")
+        self.pause()
+
+    def analyze_menu(self):
+        text = self.read_text()
+        if not text:
+            return
+        refs_path = self.ask(self.t["refs"], DEFAULT_REFS)
+        if not os.path.isfile(refs_path):
+            print(f"{self.t['refs_missing']} {refs_path}")
+            return
+        refs = load_references(refs_path)
+        result = analyze_text_quality(text, refs, lang=self.lang)
+        print(f"\n{format_analyze(result, lang=self.lang)}")
         self.pause()
 
     def cite_export_bibtex(self):
@@ -2677,12 +2839,14 @@ class CLI:
 def main(argv=None) -> int:
     """Entry point. No args -> interactive menu; jargon/cite/prompts -> passthrough."""
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ("jargon", "cite", "prompts"):
+    if argv and argv[0] in ("jargon", "cite", "prompts", "analyze"):
         tool, rest = argv[0], argv[1:]
         if tool == "jargon":
             return jargon_main(rest)
         if tool == "cite":
             return cite_main(rest)
+        if tool == "analyze":
+            return analyze_main(rest)
         return prompts_main(rest)
     if argv and argv[0] in ("-h", "--help"):
         print(__doc__)

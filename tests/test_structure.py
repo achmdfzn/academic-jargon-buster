@@ -64,6 +64,21 @@ class TestCoreStaysOneFile(unittest.TestCase):
             citation_weaver.__version__, academic_tools.CITATION_VERSION
         )
         self.assertEqual(skripsi_prompts.__version__, academic_tools.PROMPTS_VERSION)
+        # Every public helper must be reachable through its shim, not
+        # only through academic_tools (audit 2026-11-12: the lookup /
+        # verify / analyze family was missing from the shims).
+        for name in ("lookup_reference", "fetch_reference_by_doi",
+                     "search_reference_by_title", "save_reference",
+                     "reference_key", "verify_reference_dois",
+                     "format_verification", "cite_main"):
+            self.assertTrue(hasattr(citation_weaver, name), name)
+            self.assertIn(name, citation_weaver.__all__)
+        for name in ("analyze_text_quality", "format_analyze",
+                     "format_banner", "analyze_main"):
+            self.assertTrue(hasattr(academic_cli, name), name)
+            self.assertIn(name, academic_cli.__all__)
+        self.assertIn("jargon_main", jargon_buster.__all__)
+        self.assertIn("prompts_main", skripsi_prompts.__all__)
 
 
 class TestDocsMatchTheRepo(unittest.TestCase):

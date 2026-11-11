@@ -10,6 +10,7 @@ from academic_tools import (
     DISCIPLINES,
     STYLES,
     cite_main as main,
+    export_bibtex,
     format_reference,
     load_references,
     style_for_discipline,
@@ -19,6 +20,7 @@ from academic_tools import (
 __all__ = [
     "DISCIPLINES",
     "STYLES",
+    "export_bibtex",
     "format_reference",
     "load_references",
     "main",

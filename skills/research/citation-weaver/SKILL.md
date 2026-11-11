@@ -1,7 +1,7 @@
 ---
 name: citation-weaver
 description: "Weave citations into narrative text automatically."
-version: 1.1.0
+version: 1.2.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -51,5 +51,16 @@ Rules:
 - **Both APIs are free and need no key.** A polite mailto in the User-Agent puts requests in the APIs' polite pools.
 - **Never invent a reference.** A failed lookup (not found, rate-limited, offline) is an error, never a guessed paper. A `[cite:key]` with no bibliography entry stays `[PERLU RUJUKAN: key]`.
 - **OpenAlex without a key shares one free daily budget per IP address.** On HTTP 429, the lookup fails with a clear message: try again later, or set `OPENALEX_API_KEY` (free at <https://openalex.org/>) to raise the limit.
+
+## BibTeX export (v1.2.0)
+
+Export a bibliography JSON file to a `.bib` file ready for LaTeX / Overleaf:
+
+```bash
+python3 academic_tools.py cite --refs my-refs.json --export-bibtex --out my-refs.bib
+# or print to stdout: omit --out
+```
+
+Entry types follow the stored `type`: `article` → `@article`, `book` → `@book`, `conference` → `@inproceedings`, `chapter` → `@incollection`, anything else → `@misc`. arXiv IDs become `eprint` + `archivePrefix`. Chapter page ranges split out of the venue into `pages = {189--194}`. LaTeX special characters (`& % $ # _ { } ~ ^ \`) are escaped. Only fields actually present are exported — a missing title simply means no title field, never an invented one. A sample export of the bundled bibliography lives in `demos/citation-weaver/references.bib`.
 - **Keys are automatic** (first author family name + year, e.g. `lecun2015`) and get a letter suffix on collision (`lecun2015a`). Use `--key` to pick your own.
 - In the interactive menu, Citation Weaver option 4 looks a reference up and offers to save it to a bibliography file of your choice.

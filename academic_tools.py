@@ -69,9 +69,9 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 JARGON_VERSION = "1.0.3"
-CITATION_VERSION = "1.1.0"
+CITATION_VERSION = "1.2.0"
 PROMPTS_VERSION = "1.0.0"
 CLI_VERSION = "1.2.0"
 
@@ -537,7 +537,7 @@ def load_references(path: str):
 # message instead of a made-up reference, and setting OPENALEX_API_KEY
 # (free at https://openalex.org/) raises the limit. No data is ever
 # invented: a failed lookup is an error, never a guess.
-LOOKUP_USER_AGENT = "academic-jargon-buster/1.3.0 (mailto:achmddfzn@proton.me)"
+LOOKUP_USER_AGENT = "academic-jargon-buster/1.4.0 (mailto:achmddfzn@proton.me)"
 CROSSREF_URL = "https://api.crossref.org/works/{doi}"
 OPENALEX_DOI_URL = "https://api.openalex.org/works/https://doi.org/{doi}"
 OPENALEX_SEARCH_URL = "https://api.openalex.org/works?search={q}&per-page=1"
@@ -910,6 +910,97 @@ def weave(text: str, references: dict, style: str = "apa", lang: str = "id"):
     return "\n".join(lines) + "\n", woven
 
 
+# ======================================================================
+# BibTeX export
+# ======================================================================
+# Turn a bibliography JSON file into a .bib file ready for LaTeX /
+# Overleaf. Entry types follow the stored "type": article -> @article,
+# book -> @book, conference -> @inproceedings, chapter -> @incollection,
+# anything else -> @misc. Only fields actually present are exported —
+# nothing is invented, and a missing title simply means no title field.
+# LaTeX special characters in author/title/venue are escaped.
+_BIBTEX_TYPES = {
+    "article": "article",
+    "book": "book",
+    "conference": "inproceedings",
+    "chapter": "incollection",
+}
+
+_BIBTEX_ESCAPES = {
+    "\\": r"\textbackslash{}",
+    "{": r"\{",
+    "}": r"\}",
+    "&": r"\&",
+    "%": r"\%",
+    "$": r"\$",
+    "#": r"\#",
+    "_": r"\_",
+    "~": r"\textasciitilde{}",
+    "^": r"\textasciicircum{}",
+}
+
+
+def _bibtex_escape(text) -> str:
+    return "".join(_BIBTEX_ESCAPES.get(ch, ch) for ch in str(text))
+
+
+def _bibtex_pages(pages) -> str:
+    """Normalise a pages value to BibTeX form, e.g. '189-194' -> '189--194'."""
+    p = str(pages).replace("pp. ", "").strip()
+    return p.replace("--", "-").replace("-", "--")
+
+
+def _bibtex_entry(key: str, ref: dict) -> str:
+    entry_type = _BIBTEX_TYPES.get(ref.get("type", ""), "misc")
+    fields = []
+    authors = ref.get("authors") or []
+    if authors:
+        fields.append(("author", " and ".join(_bibtex_escape(a) for a in authors)))
+    if ref.get("title"):
+        fields.append(("title", _bibtex_escape(ref["title"])))
+    venue = ref.get("venue", "")
+    pages = ref.get("pages", "")
+    if entry_type == "incollection" and ", pp. " in venue:
+        venue, _, pp = venue.partition(", pp. ")
+        pages = pages or pp
+    if entry_type == "article":
+        if venue:
+            fields.append(("journal", _bibtex_escape(venue)))
+    elif entry_type == "book":
+        if venue:
+            fields.append(("publisher", _bibtex_escape(venue)))
+    elif entry_type in ("inproceedings", "incollection"):
+        if venue:
+            fields.append(("booktitle", _bibtex_escape(venue)))
+    elif venue:
+        fields.append(("note", _bibtex_escape(venue)))
+    if ref.get("volume"):
+        fields.append(("volume", str(ref["volume"])))
+    if ref.get("issue"):
+        fields.append(("number", str(ref["issue"])))
+    if pages:
+        fields.append(("pages", _bibtex_pages(pages)))
+    if ref.get("year"):
+        fields.append(("year", str(ref["year"])))
+    if ref.get("doi"):
+        fields.append(("doi", ref["doi"]))
+    if ref.get("arxiv"):
+        fields.append(("eprint", ref["arxiv"]))
+        fields.append(("archivePrefix", "arXiv"))
+    if ref.get("url"):
+        fields.append(("url", ref["url"]))
+    lines = [f"@{entry_type}{{{key},"]
+    for name, value in fields:
+        lines.append(f"  {name} = {{{value}}},")
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def export_bibtex(references: dict) -> str:
+    """Export a bibliography dict {key: ref} to BibTeX text, sorted by key."""
+    return "\n\n".join(_bibtex_entry(k, references[k]) for k in sorted(references)) + "\n"
+
+
 def cite_main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Weave citations into narrative text.")
     p.add_argument("input", nargs="?", help="plain-text file with [cite:key] markers")
@@ -925,6 +1016,10 @@ def cite_main(argv=None) -> int:
     p.add_argument("--key", help="bibliography key to use with --add-to (default: auto)")
     p.add_argument("--add-to", metavar="REFS.JSON",
                    help="with --lookup: append the fetched reference to this bibliography file")
+    p.add_argument("--export-bibtex", action="store_true",
+                   help="export the bibliography to BibTeX (.bib) instead of weaving")
+    p.add_argument("--out", metavar="FILE",
+                   help="with --export-bibtex: write the .bib file here (default: stdout)")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = p.parse_args(argv)
 
@@ -947,6 +1042,20 @@ def cite_main(argv=None) -> int:
             print(f"Saved as [{key}] in {args.add_to}")
         else:
             print(json.dumps(ref, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.export_bibtex:
+        if not args.refs:
+            p.error("--refs <bibliography.json> is required with --export-bibtex")
+            return 2
+        references = load_references(args.refs)
+        bib = export_bibtex(references)
+        if args.out:
+            with open(args.out, "w", encoding="utf-8") as f:
+                f.write(bib)
+            print(f"Wrote {len(references)} entries to {args.out}")
+        else:
+            sys.stdout.write(bib)
         return 0
 
     style = args.style
@@ -1435,6 +1544,9 @@ STRINGS = {
         "lookup_save": "Simpan ke file (kosong = jangan simpan)",
         "lookup_saved": "Tersimpan sebagai",
         "lookup_failed": "Pencarian gagal:",
+        "bibtex": "Export bibliografi ke BibTeX (.bib)",
+        "bibtex_out": "Simpan ke file .bib (kosong = tampilkan saja)",
+        "bibtex_saved": "BibTeX tersimpan:",
         "press_enter": "Tekan Enter untuk kembali...",
         "result": "Hasil:",
     },
@@ -1477,6 +1589,9 @@ STRINGS = {
         "lookup_save": "Save to file (empty = don't save)",
         "lookup_saved": "Saved as",
         "lookup_failed": "Lookup failed:",
+        "bibtex": "Export bibliography to BibTeX (.bib)",
+        "bibtex_out": "Save to .bib file (empty = print only)",
+        "bibtex_saved": "BibTeX saved:",
         "press_enter": "Press Enter to go back...",
         "result": "Result:",
     },
@@ -1635,8 +1750,9 @@ class CLI:
             print(f"2. {self.t['list_styles']}")
             print(f"3. {self.t['list_majors']}")
             print(f"4. {self.t['lookup']}")
+            print(f"5. {self.t['bibtex']}")
             print(f"0. {self.t['back']}")
-            choice = self.ask_choice(self.t["choice"], 4)
+            choice = self.ask_choice(self.t["choice"], 5)
             if choice == -1:
                 continue
             if choice == 1:
@@ -1651,8 +1767,26 @@ class CLI:
                 self.pause()
             elif choice == 4:
                 self.cite_lookup()
+            elif choice == 5:
+                self.cite_export_bibtex()
             elif choice == 0 or choice is None:
                 return
+
+    def cite_export_bibtex(self):
+        refs_path = self.ask(self.t["refs"], DEFAULT_REFS)
+        if not os.path.isfile(refs_path):
+            print(f"{self.t['refs_missing']} {refs_path}")
+            return
+        out = self.ask(self.t["bibtex_out"])
+        refs = load_references(refs_path)
+        bib = export_bibtex(refs)
+        if out:
+            with open(out, "w", encoding="utf-8") as f:
+                f.write(bib)
+            print(f"{self.t['bibtex_saved']} {len(refs)} entries -> {out}")
+        else:
+            print(f"\n{bib}")
+        self.pause()
 
     def cite_lookup(self):
         query = self.ask(self.t["lookup_query"])

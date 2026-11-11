@@ -33,7 +33,7 @@ Pick a number, follow the prompts: type text or read a file, pick a field, a cit
 | Tool | In short |
 | --- | --- |
 | **Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source. 32 terms — physics, machine learning, usability, software engineering, research methods — including Indonesian aliases. |
-| **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography. 6 styles (APA, MLA, Chicago, IEEE, Harvard, Vancouver), 21 majors with a recommended style each. New: look up real references by DOI or title from Crossref/OpenAlex instead of typing bibliography JSON by hand. |
+| **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography. 6 styles (APA, MLA, Chicago, IEEE, Harvard, Vancouver), 21 majors with a recommended style each. Look up real references by DOI or title from Crossref/OpenAlex instead of typing bibliography JSON by hand. New: export the bibliography to BibTeX (`.bib`) for LaTeX/Overleaf. |
 | **Prompt Skripsi** | 15 ready-made prompt templates for thesis writing — roadmap, Bab 1–5, defense prep, publication. Pick one, fill in your title, theory, and method, paste the result into ChatGPT, Grok, Claude, Gemini, or Perplexity. |
 | **Menu CLI** | One command, all three tools, bilingual prompts. |
 

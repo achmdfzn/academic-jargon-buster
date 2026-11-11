@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0 — 2026-11-11
+
+- Citation Weaver can now export a bibliography to BibTeX: `cite --refs refs.json --export-bibtex [--out refs.bib]`, or menu Citation Weaver option 5. Entry types follow the stored type (article, book, conference → @inproceedings, chapter → @incollection, other → @misc); arXiv IDs become `eprint` + `archivePrefix`, chapter page ranges split out of the venue into `pages = {189--194}`, LaTeX special characters are escaped, and only fields actually present are exported — nothing is invented. Sample output in `demos/citation-weaver/references.bib`. 9 new tests; full suite 91/91. Citation Weaver skill v1.2.0.
+
 ## 1.3.1 — 2026-11-11
 
 - Dictionary grew from 22 to 32 terms: 10 research-methods terms students meet in almost every thesis — validity / validitas, reliability / reliabilitas, triangulation / triangulasi, purposive sampling, thematic analysis, operational definition, literature review. Every source verified the same day: Creswell & Creswell 2018 ('Research Design', 5th ed.), Denzin 1978 ('The Research Act', 2nd ed.), Patton 2015 ('Qualitative Research & Evaluation Methods', 4th ed.), Braun & Clarke 2006 ('Using thematic analysis in psychology'), Boote & Beile 2005 ('Scholars before researchers'). A regression test pins all 10 terms and their sources. Jargon Buster skill v1.0.3.

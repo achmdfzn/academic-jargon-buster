@@ -76,7 +76,7 @@ class TestCoreStaysOneFile(unittest.TestCase):
         for name in ("analyze_text_quality", "format_analyze",
                      "format_banner", "analyze_main", "check_style",
                      "suggest_style_fixes", "format_suggestions",
-                     "humanize_main"):
+                     "humanize_main", "apply_suggestions"):
             self.assertTrue(hasattr(academic_cli, name), name)
             self.assertIn(name, academic_cli.__all__)
         self.assertIn("jargon_main", jargon_buster.__all__)

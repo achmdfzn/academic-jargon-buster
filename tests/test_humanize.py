@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import academic_tools as tools
 from academic_tools import (
     analyze_text_quality,
+    apply_suggestions,
     format_suggestions,
     humanize_main,
     suggest_style_fixes,
@@ -235,16 +236,205 @@ class TestHumanizeMain(unittest.TestCase):
             humanize_main([])
 
     def test_menu_humanize(self):
-        # 5=humanize, 1=type text, text, ""=end, ""=pause, 0=exit
+        # 5=humanize, 1=type text, text, ""=end, ""=skip save, ""=pause,
+        # 0=exit
         code, out = run_cli([
             "5", "1",
             "Penelitian ini melakukan pengukuran terhadap suhu ruangan.",
-            "", "",
+            "", "", "",
             "0",
         ])
         self.assertEqual(code, 0)
         self.assertIn("Saran rewrite gaya", out)
         self.assertIn("Penelitian ini mengukur suhu ruangan.", out)
+
+    def test_menu_humanize_save_fixed(self):
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".txt", delete=False,
+                encoding="utf-8") as f:
+            out_path = f.name
+        try:
+            # 5=humanize, 1=type text, text, ""=end, path=save,
+            # ""=pause, 0=exit
+            code, out = run_cli([
+                "5", "1",
+                "Penelitian ini melakukan pengukuran terhadap suhu ruangan.",
+                "", out_path, "",
+                "0",
+            ])
+            self.assertEqual(code, 0)
+            with open(out_path, encoding="utf-8") as f:
+                saved = f.read()
+            self.assertEqual(saved,
+                             "Penelitian ini mengukur suhu ruangan.")
+            self.assertIn("Tersimpan", out)
+        finally:
+            os.unlink(out_path)
+
+
+class TestApplySuggestions(unittest.TestCase):
+    def test_apply_light_verb(self):
+        text = "Penelitian ini melakukan pengukuran terhadap suhu ruangan."
+        fixed = apply_suggestions(text, suggest_style_fixes(text))
+        self.assertEqual(fixed["text"],
+                         "Penelitian ini mengukur suhu ruangan.")
+        self.assertEqual(len(fixed["applied"]), 1)
+        self.assertEqual(fixed["skipped"], [])
+
+    def test_apply_sebesar(self):
+        text = "Suhu mengalami peningkatan sebesar 12%."
+        fixed = apply_suggestions(text, suggest_style_fixes(text))
+        self.assertEqual(fixed["text"], "Suhu naik 12%.")
+
+    def test_apply_connector_and_yang_mana(self):
+        text = ("Selain itu, penelitian memakai purposive sampling. "
+                "Sistem menggunakan pendingin alami, yang mana hal ini "
+                "mengurangi konsumsi.")
+        fixed = apply_suggestions(text, suggest_style_fixes(text))
+        self.assertEqual(
+            fixed["text"],
+            "Penelitian memakai purposive sampling. "
+            "Sistem menggunakan pendingin alami. "
+            "Hal ini mengurangi konsumsi.")
+
+    def test_apply_skips_guidance_only(self):
+        text = "Simulasi dilakukan dengan perangkat lunak."
+        fixed = apply_suggestions(text, suggest_style_fixes(text))
+        self.assertEqual(fixed["text"], text)
+        self.assertEqual(fixed["applied"], [])
+        self.assertEqual(len(fixed["skipped"]), 1)
+
+    def test_apply_stiff_text(self):
+        result = suggest_style_fixes(STIFF, limit=None)
+        fixed = apply_suggestions(STIFF, result)
+        self.assertEqual(len(fixed["applied"]), 9)
+        self.assertEqual(
+            sorted({s["pattern"] for s in fixed["skipped"]}),
+            ["passive", "rhythm"])
+        self.assertIn("Penelitian ini mengukur suhu ruangan.",
+                      fixed["text"])
+        self.assertIn("Pengujian dilakukan dengan metode. Hasilnya "
+                      "ditunjukkan pada tabel.", fixed["text"])
+        self.assertNotIn("Selain itu", fixed["text"])
+        self.assertNotIn("yang mana", fixed["text"])
+
+    def test_apply_is_idempotent(self):
+        result = suggest_style_fixes(STIFF, limit=None)
+        once = apply_suggestions(STIFF, result)["text"]
+        twice = apply_suggestions(
+            once, suggest_style_fixes(once, limit=None))["text"]
+        self.assertEqual(once, twice)
+
+    def test_apply_skips_overlapping_spans(self):
+        # A connector span and a light-verb span that overlap:
+        # only the first (by position) is applied.
+        text = ("Selain itu, penelitian ini melakukan pengukuran "
+                "terhadap suhu.")
+        result = suggest_style_fixes(text)
+        self.assertEqual(result["count"], 2)
+        overlapping = {
+            "pattern": "connectors",
+            "original": "Selain itu, penelitian ini melakukan pengukuran",
+            "replacement": "",
+            "context": result["suggestions"][0]["context"],
+            "fixed": None,
+            "note": "",
+            "start": 0,
+            "end": len("Selain itu, penelitian ini melakukan pengukuran"),
+        }
+        result["suggestions"].append(overlapping)
+        fixed = apply_suggestions(text, result)
+        # The overlapping suggestion is skipped; the real ones apply.
+        self.assertIn("Penelitian ini mengukur suhu.",
+                      fixed["text"])
+
+    def test_humanize_apply_writes_humanized_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "naskah.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("Penelitian ini melakukan pengukuran terhadap "
+                        "suhu ruangan.")
+            code = humanize_main([path, "--apply"])
+            self.assertEqual(code, 1)
+            out_path = os.path.join(d, "naskah.humanized.txt")
+            with open(out_path, encoding="utf-8") as f:
+                self.assertEqual(f.read(),
+                                 "Penelitian ini mengukur suhu ruangan.")
+
+    def test_humanize_apply_in_place_keeps_backup(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "naskah.txt")
+            original = ("Penelitian ini melakukan pengukuran terhadap "
+                        "suhu ruangan.")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(original)
+            code = humanize_main([path, "--apply", "--in-place"])
+            self.assertEqual(code, 1)
+            with open(path, encoding="utf-8") as f:
+                self.assertEqual(f.read(),
+                                 "Penelitian ini mengukur suhu ruangan.")
+            with open(path + ".bak", encoding="utf-8") as f:
+                self.assertEqual(f.read(), original)
+
+    def test_humanize_apply_out(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "naskah.txt")
+            dst = os.path.join(d, "hasil.txt")
+            with open(src, "w", encoding="utf-8") as f:
+                f.write("Selain itu, penelitian memakai purposive sampling.")
+            code = humanize_main([src, "--apply", "--out", dst])
+            self.assertEqual(code, 1)
+            with open(dst, encoding="utf-8") as f:
+                self.assertEqual(
+                    f.read(), "Penelitian memakai purposive sampling.")
+
+    def test_humanize_apply_text_prints_fixed(self):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = humanize_main([
+                "--text",
+                "Penelitian ini melakukan pengukuran terhadap suhu ruangan.",
+                "--apply",
+            ])
+        self.assertEqual(code, 1)
+        self.assertIn("Penelitian ini mengukur suhu ruangan.",
+                      buf.getvalue())
+
+    def test_humanize_apply_json_carries_fixed_text(self):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = humanize_main([
+                "--text",
+                "Penelitian ini melakukan pengukuran terhadap suhu ruangan.",
+                "--apply", "--json",
+            ])
+        self.assertEqual(code, 1)
+        parsed = json.loads(buf.getvalue())
+        self.assertEqual(parsed["fixed_text"],
+                         "Penelitian ini mengukur suhu ruangan.")
+        self.assertEqual(parsed["applied"], 1)
+        self.assertEqual(parsed["skipped"], 0)
+
+    def test_humanize_apply_in_place_needs_file(self):
+        with self.assertRaises(SystemExit):
+            humanize_main(["--text", "x", "--apply", "--in-place"])
+
+    def test_humanize_out_and_in_place_conflict(self):
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".txt", delete=False,
+                encoding="utf-8") as f:
+            f.write("Penelitian ini melakukan pengukuran terhadap suhu.")
+            path = f.name
+        try:
+            with self.assertRaises(SystemExit):
+                humanize_main([path, "--apply", "--out", "x.txt",
+                               "--in-place"])
+        finally:
+            os.unlink(path)
 
 
 class TestAnalyzeSuggest(unittest.TestCase):

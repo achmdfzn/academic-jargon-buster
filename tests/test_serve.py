@@ -86,6 +86,35 @@ class TestServe(unittest.TestCase):
         self.assertIsNone(res["citations"])
         self.assertEqual(res["quality_score"], 100)
 
+    def test_humanize_with_apply(self):
+        status, body = _request(self.base, "POST", "/api/humanize", {
+            "text": "Penelitian ini melakukan pengukuran terhadap "
+                    "suhu ruangan. Selain itu, penelitian ini melakukan "
+                    "analisis terhadap data yang diperoleh.",
+            "lang": "id", "apply": True})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertEqual(res["count"], 4)
+        self.assertIn("Penelitian ini mengukur suhu ruangan.",
+                      res["fixed_text"])
+        self.assertIn("Penelitian ini menganalisis data yang diperoleh.",
+                      res["fixed_text"])
+
+    def test_humanize_without_apply_has_no_fixed_text(self):
+        status, body = _request(self.base, "POST", "/api/humanize", {
+            "text": "Penelitian ini melakukan pengukuran terhadap "
+                    "suhu ruangan.",
+            "lang": "id"})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertNotIn("fixed_text", res)
+
+    def test_humanize_empty_text_is_400(self):
+        status, body = _request(self.base, "POST", "/api/humanize",
+                                {"text": "  "})
+        self.assertEqual(status, 400)
+        self.assertIn("error", json.loads(body))
+
     def test_analyze_empty_text_is_400(self):
         status, body = _request(self.base, "POST", "/api/analyze",
                                 {"text": "  "})

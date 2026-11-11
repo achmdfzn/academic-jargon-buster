@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.14.0 — 2026-11-12
+
+- `humanize` gains `--apply`: the mechanical suggestions are written out (light verbs, connectors, "yang mana"), guidance-only ones are skipped for the author, and overlapping spans are never double-applied. Edits run from the end of the text backwards so offsets stay valid; only the neighbourhood of each edit is touched (a doubled space at the splice is collapsed, a sentence-initial letter is re-capitalized only when the edit itself starts or ends a sentence). Output defaults to `<file>.humanized.txt` — the original is never touched unless you pass `--out <path>` or `--in-place` (which keeps a `.bak` copy). `--text --apply` prints the fixed text; `--json` carries `fixed_text` plus applied/skipped counts. `suggest_style_fixes()` takes `limit=None` so apply sees every suggestion, not just the first 10 shown. `CLI_VERSION` 1.8.0 → 1.9.0.
+- Web UI: new `/api/humanize` endpoint (suggestions, plus `fixed_text` when `apply: true`) and a "Salin teks yang diperbaiki" button on the suggestions card. The interactive menu's Humanize option now asks where to save the fixed text (empty = skip).
+- 18 new tests. Full suite 206/206. `apply_suggestions()` is re-exported by the `academic_cli` shim and pinned by the structure guard.
+
 ## 1.13.0 — 2026-11-12
 
 - New `humanize` subcommand: style rewrite suggestions (before/after per pattern), built on the v1.11.0 style check — the missing half of Opsi B. Light verbs get a concrete verb ("melakukan pengukuran terhadap" → "mengukur", from an original noun→verb table written from Indonesian grammar); connectors are dropped (with the next word re-capitalized); "yang mana" splits the sentence. Passive voice, "dimana", flat rhythm, and light verbs with no known verb form get guidance instead of a made-up rewrite. Nothing is changed — suggestions only, the author edits by hand. Exits 1 when it has suggestions, 0 when the style is already fluent. `CLI_VERSION` 1.7.0 → 1.8.0.

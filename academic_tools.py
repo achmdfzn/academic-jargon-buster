@@ -85,11 +85,11 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.13.0"
+__version__ = "1.14.0"
 JARGON_VERSION = "1.0.4"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-CLI_VERSION = "1.8.0"
+CLI_VERSION = "1.9.0"
 
 # ======================================================================
 # Jargon Buster
@@ -1578,15 +1578,17 @@ _SUGGEST_NOTES = {
 }
 
 
-def suggest_style_fixes(text: str, lang: str = "id") -> dict:
+def suggest_style_fixes(text: str, lang: str = "id",
+                        limit: int | None = 10) -> dict:
     """Propose rewrite suggestions for stiff-style patterns in `text`.
 
-    Returns {"suggestions": [...first 10...], "count": total}. Each
-    suggestion carries pattern, original, replacement (None when the
-    fix needs a human decision), context (the sentence), fixed (the
-    sentence with the replacement applied, or None), note, and the
-    span offsets. Nothing is changed: the caller shows these and the
-    author edits by hand.
+    Returns {"suggestions": [...first `limit`...], "count": total}.
+    Each suggestion carries pattern, original, replacement (None when
+    the fix needs a human decision), context (the sentence), fixed
+    (the sentence with the replacement applied, or None), note, and
+    the span offsets. Nothing is changed: the caller shows these and
+    the author edits by hand. Pass limit=None to get every
+    suggestion (used by --apply, which must not miss the tail).
     """
     notes = _SUGGEST_NOTES.get(lang, _SUGGEST_NOTES["id"])
     spans = _sentence_spans(text)
@@ -1719,7 +1721,8 @@ def suggest_style_fixes(text: str, lang: str = "id") -> dict:
     for sug in suggestions:
         sug["fixed"] = _fixed_sentence(text, sug)
     total = len(suggestions)
-    return {"suggestions": suggestions[:10], "count": total}
+    shown = suggestions if limit is None else suggestions[:limit]
+    return {"suggestions": shown, "count": total}
 
 
 _SUGGEST_STRINGS = {
@@ -1781,6 +1784,74 @@ def format_suggestions(result: dict, lang: str = "id") -> str:
         lines.append(s["more"].format(shown=len(suggestions),
                                       total=result["count"]))
     return "\n".join(lines) + "\n"
+
+
+def _apply_one(text: str, sug: dict) -> str:
+    """Return `text` with one mechanical suggestion's span replaced.
+
+    Only the neighbourhood of the edit is touched: a double space
+    created at the splice is collapsed, and a sentence-initial letter
+    is capitalized only when the edit itself starts a sentence or
+    ends one (a "yang mana" split). Text the suggestion does not
+    cover is left exactly as it was.
+    """
+    start, end = sug["start"], sug["end"]
+    repl = sug["replacement"] or ""
+    left, right = text[:start], text[end:]
+    # Drop one space only where the splice would otherwise double it:
+    # the replacement ends in a space followed by one, or an empty
+    # replacement between two spaces (or at the start of the text).
+    # Anything else — including pre-existing double spaces — is left
+    # alone.
+    if right.startswith(" "):
+        if repl.endswith(" "):
+            right = right[1:]
+        elif not repl and (not left or left.endswith(" ")):
+            right = right[1:]
+    new = left + repl + right
+    before = text[:start].rstrip()
+    at_sent_start = not before or before[-1] in ".!?"
+    ends_sentence = bool(repl) and repl[-1] in ".!?"
+    target = None
+    if ends_sentence:
+        target = start + len(repl)
+    elif at_sent_start:
+        target = start
+    if target is not None:
+        m = re.search(r"[A-Za-z]", new[target:])
+        if m:
+            i = target + m.start()
+            new = new[:i] + new[i].upper() + new[i + 1:]
+    return new
+
+
+def apply_suggestions(text: str, result: dict) -> dict:
+    """Apply the mechanical suggestions of a suggest_style_fixes()
+    result to `text` and return the fixed text plus a report.
+
+    Returns {"text": fixed text, "applied": [...], "skipped": [...]}.
+    Guidance-only suggestions (replacement None) are skipped — they
+    need a human decision — and so is any suggestion whose span
+    overlaps one already applied. Edits run from the end of the text
+    backwards, so earlier offsets stay valid.
+    """
+    applied, skipped = [], []
+    used = []  # (start, end) spans already applied, original coords
+    new = text
+    for sug in sorted(result["suggestions"],
+                      key=lambda s: s["start"], reverse=True):
+        if sug["replacement"] is None:
+            skipped.append(sug)
+            continue
+        if any(sug["start"] < e and s < sug["end"] for s, e in used):
+            skipped.append(sug)
+            continue
+        new = _apply_one(new, sug)
+        used.append((sug["start"], sug["end"]))
+        applied.append(sug)
+    applied.reverse()
+    skipped.reverse()
+    return {"text": new, "applied": applied, "skipped": skipped}
 
 
 def analyze_text_quality(
@@ -2179,15 +2250,23 @@ def analyze_main(argv=None) -> int:
 def humanize_main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description="Suggest style rewrites for Indonesian academic prose "
-                    "(before/after per pattern). Nothing is changed: review "
-                    "each suggestion and edit by hand. Exits 1 when it has "
-                    "suggestions, 0 when the style is already fluent.")
+                    "(before/after per pattern). Nothing is changed unless "
+                    "--apply is given: then the mechanical suggestions are "
+                    "written out and the guidance-only ones are left for "
+                    "the author. Exits 1 when it has suggestions, 0 when "
+                    "the style is already fluent.")
     p.add_argument("input", nargs="?", help="plain-text file to check")
     p.add_argument("--text", help="check this text instead of a file")
     p.add_argument("--lang", choices=["id", "en"], default="id",
                    help="output language (default: id)")
     p.add_argument("--json", action="store_true",
                    help="print the raw result as JSON instead of readable text")
+    p.add_argument("--apply", action="store_true",
+                   help="apply the mechanical suggestions")
+    p.add_argument("--out", help="write the fixed text here (default: "
+                   "<file>.humanized.txt, or stdout for --text)")
+    p.add_argument("--in-place", action="store_true",
+                   help="overwrite the input file (keeps a .bak copy)")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = p.parse_args(argv)
 
@@ -2199,11 +2278,61 @@ def humanize_main(argv=None) -> int:
     else:
         p.error("give a file or --text")
         return 2
-    result = suggest_style_fixes(text, lang=args.lang)
+    if args.in_place and not args.input:
+        p.error("--in-place needs a file input")
+        return 2
+    if args.out and args.in_place:
+        p.error("--out and --in-place cannot be combined")
+        return 2
+    result = suggest_style_fixes(text, lang=args.lang,
+                                 limit=None if args.apply else 10)
+    fixed = apply_suggestions(text, result) if args.apply else None
     if args.json:
+        if fixed is not None:
+            result["fixed_text"] = fixed["text"]
+            result["applied"] = len(fixed["applied"])
+            result["skipped"] = len(fixed["skipped"])
         sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     else:
         sys.stdout.write(format_suggestions(result, lang=args.lang))
+    if fixed is not None:
+        en = args.lang == "en"
+        n_applied, n_skipped = len(fixed["applied"]), len(fixed["skipped"])
+        report = (
+            f"Applied: {n_applied} mechanical suggestions; "
+            f"skipped: {n_skipped} (need a human decision)."
+            if en else
+            f"Diterapkan: {n_applied} saran mekanis; "
+            f"dilewati: {n_skipped} (butuh keputusan manual).")
+        if args.in_place:
+            bak = args.input + ".bak"
+            with open(args.input, encoding="utf-8") as f:
+                original = f.read()
+            with open(bak, "w", encoding="utf-8") as f:
+                f.write(original)
+            with open(args.input, "w", encoding="utf-8") as f:
+                f.write(fixed["text"])
+            done = (f"File updated: {args.input} (backup: {bak})"
+                    if en else
+                    f"File diperbarui: {args.input} (salinan: {bak})")
+            sys.stdout.write(f"{report}\n{done}\n")
+        elif args.out:
+            with open(args.out, "w", encoding="utf-8") as f:
+                f.write(fixed["text"])
+            sys.stdout.write(f"{report}\n"
+                             + (f"Saved to: {args.out}"
+                                if en else f"Tersimpan di: {args.out}") + "\n")
+        elif args.input:
+            stem, ext = os.path.splitext(args.input)
+            out_path = f"{stem}.humanized{ext or '.txt'}"
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write(fixed["text"])
+            sys.stdout.write(f"{report}\n"
+                             + (f"Saved to: {out_path}"
+                                if en else f"Tersimpan di: {out_path}") + "\n")
+        elif not args.json:
+            sys.stderr.write(f"{report}\n")
+            sys.stdout.write(fixed["text"])
     return 1 if result["count"] else 0
 
 
@@ -3038,6 +3167,10 @@ STRINGS = {
         "audit": "Audit sitasi (cek rujukan hilang/tak terpakai)",
         "audit_check_links": "Cek juga DOI/link masih hidup? (y = ya, kosong = tidak)",
         "verify": "Verifikasi DOI referensi (Crossref/OpenAlex)",
+        "save_fixed": "Simpan hasil perbaikan ke file (kosong = tidak)",
+        "saved_fixed": "Tersimpan",
+        "applied": "diterapkan",
+        "skipped": "dilewati",
         "press_enter": "Tekan Enter untuk kembali...",
         "result": "Hasil:",
     },
@@ -3090,6 +3223,10 @@ STRINGS = {
         "audit": "Audit citations (check missing/unused references)",
         "audit_check_links": "Also check DOI/links are still alive? (y = yes, empty = no)",
         "verify": "Verify reference DOIs (Crossref/OpenAlex)",
+        "save_fixed": "Save the fixed text to a file (empty = skip)",
+        "saved_fixed": "Saved",
+        "applied": "applied",
+        "skipped": "skipped",
         "press_enter": "Press Enter to go back...",
         "result": "Result:",
     },
@@ -3357,6 +3494,19 @@ class CLI:
             return
         result = suggest_style_fixes(text, lang=self.lang)
         print(f"\n{format_suggestions(result, lang=self.lang)}")
+        mechanical = [s for s in result["suggestions"]
+                      if s["replacement"] is not None]
+        if mechanical:
+            path = self.ask(self.t["save_fixed"])
+            if path:
+                full = suggest_style_fixes(text, lang=self.lang,
+                                           limit=None)
+                fixed = apply_suggestions(text, full)
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(fixed["text"])
+                print(f"{self.t['saved_fixed']}: {path} "
+                      f"({len(fixed['applied'])} {self.t['applied']}, "
+                      f"{len(fixed['skipped'])} {self.t['skipped']})")
         self.pause()
 
     def cite_export_bibtex(self):
@@ -3873,9 +4023,40 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       if (sg.count > sg.suggestions.length) {
         h += "<p>Menampilkan " + sg.suggestions.length + " dari " + sg.count + " saran.</p>";
       }
+      h += '<div class="actions"><button id="copy-fixed-btn" onclick="copyFixedText()">Salin teks yang diperbaiki</button> <span class="status" id="copy-fixed-status"></span></div>';
       h += "</div>";
     }
     return h;
+  }
+
+  async function copyFixedText() {
+    var btn = $("copy-fixed-btn");
+    var status = $("copy-fixed-status");
+    if (!btn) return;
+    btn.disabled = true;
+    status.textContent = "Menyalin…";
+    try {
+      var res = await post("/api/humanize", {
+        text: $("analyze-text").value,
+        lang: $("analyze-lang").value,
+        apply: true
+      });
+      var fixed = res.fixed_text || "";
+      var n = (res.suggestions || []).filter(function (s) { return s.replacement !== null; }).length;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(fixed);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = fixed;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      status.textContent = "Disalin — " + n + " saran diterapkan.";
+    } catch (e) {
+      status.textContent = "Gagal: " + e.message;
+    } finally { btn.disabled = false; }
   }
 
   $("analyze-btn").addEventListener("click", async function () {
@@ -4122,6 +4303,8 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
             body = _read_json_body(self)
             if self.path == "/api/analyze":
                 self._send_json(200, self._analyze(body))
+            elif self.path == "/api/humanize":
+                self._send_json(200, self._humanize(body))
             elif self.path == "/api/jargon":
                 self._send_json(200, self._jargon(body))
             elif self.path == "/api/cite":
@@ -4148,6 +4331,18 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         return analyze_text_quality(
             text, refs, lang=lang, verify_dois=bool(body.get("verify")),
             suggest=bool(body.get("suggest")))
+
+    def _humanize(self, body: dict) -> dict:
+        text = str(body.get("text") or "").strip()
+        if not text:
+            raise ValueError("teks kosong")
+        lang = body.get("lang") or "id"
+        if lang not in ("id", "en"):
+            raise ValueError("lang harus 'id' atau 'en'")
+        result = suggest_style_fixes(text, lang=lang, limit=None)
+        if body.get("apply"):
+            result["fixed_text"] = apply_suggestions(text, result)["text"]
+        return result
 
     def _jargon(self, body: dict) -> dict:
         text = str(body.get("text") or "").strip()

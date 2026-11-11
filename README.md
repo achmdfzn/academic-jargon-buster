@@ -6,7 +6,7 @@ Student writing, minus the guesswork: this repo translates academic jargon into 
 
 ## The file
 
-`academic_tools.py` (v1.13.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, never applied silently), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.14.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, applied only with `--apply`), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -19,7 +19,7 @@ python3 academic_tools.py serve           # web UI at http://127.0.0.1:8000/
 
 ```
   +==============================================================+
-  | Academic Tools                                       v1.13.0 |
+  | Academic Tools                                       v1.14.0 |
   +--------------------------------------------------------------+
   | Jargon Buster  |  Citation Weaver  |  Prompt Skripsi         |
   | id  |  ketik angka, Enter untuk memilih                      |
@@ -44,9 +44,9 @@ Pick a number, follow the prompts: type text or read a file, pick a field, a cit
 | **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography. 6 styles (APA, MLA, Chicago, IEEE, Harvard, Vancouver), 21 majors with a recommended style each. Look up real references by DOI or title from Crossref/OpenAlex instead of typing bibliography JSON by hand. Export the bibliography to BibTeX (`.bib`) for LaTeX/Overleaf. Audit a manuscript's citations — find markers with no bibliography entry, entries never cited, and (optionally) dead DOI/arXiv links. Verify reference DOIs across Crossref and OpenAlex: a DOI found in either source is real; "not found" requires both to answer 404. |
 | **Prompt Skripsi** | 18 ready-made prompt templates for thesis writing — roadmap, abstract, preface, problem statement, Bab 1–5, defense prep, publication. Every template has an Indonesian and an English version (`--lang en`). Pick one, fill in your title, theory, and method, paste the result into ChatGPT, Grok, Claude, Gemini, or Perplexity. |
 | **Quality Check** | One pass over a manuscript: jargon found and explained, citations audited (missing / never used), DOIs verified, and stiff Indonesian prose flagged (light verbs, stacked connectors, passive pile-ups, calqued relatives, flat sentence rhythm) — one quality score 0–100 with recommendations. A style report, not a rewrite and not a detector dodge. Exits 1 when a citation is missing or a DOI is not found. Add `--suggest` for rewrite suggestions in the same pass. |
-| **Humanize** | Style rewrite suggestions, shown before/after per pattern: light verbs become direct verbs ("melakukan pengukuran terhadap" → "mengukur"), connectors are dropped, "yang mana" splits the sentence. Passive voice, "dimana", flat rhythm, and unknown light verbs get guidance instead of a made-up rewrite. Nothing is changed — the author edits by hand. Exits 1 when it has suggestions. |
+| **Humanize** | Style rewrite suggestions, shown before/after per pattern: light verbs become direct verbs ("melakukan pengukuran terhadap" → "mengukur"), connectors are dropped, "yang mana" splits the sentence. Passive voice, "dimana", flat rhythm, and unknown light verbs get guidance instead of a made-up rewrite. Nothing is changed unless you pass `--apply`: then the mechanical suggestions are written to `<file>.humanized.txt` (or `--out`, or `--in-place` with a `.bak` backup), guidance-only ones are left for the author, and overlapping spans are skipped. Exits 1 when it has suggestions. |
 | **Menu CLI** | One command, all five tools, bilingual prompts. |
-| **Web UI** | The same four tools in a browser page: `python3 academic_tools.py serve`, then open http://127.0.0.1:8000/. The Analisis Kualitas tab has a "Saran rewrite gaya" checkbox. Localhost only, zero external resources — no CDN, no webfonts, no analytics. |
+| **Web UI** | The same four tools in a browser page: `python3 academic_tools.py serve`, then open http://127.0.0.1:8000/. The Analisis Kualitas tab has a "Saran rewrite gaya" checkbox, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. Localhost only, zero external resources — no CDN, no webfonts, no analytics. |
 
 **The rule:** never invent a reference. A `[cite:key]` with no bibliography entry prints as `[PERLU RUJUKAN: key]` — a gap to fill, not a paper to fake.
 
@@ -93,6 +93,8 @@ python3 academic_tools.py analyze demos/citation-weaver/contoh_id.txt --refs dem
 python3 academic_tools.py analyze --text "... [cite:devlin2019]." --refs demos/citation-weaver/references.json --json
 python3 academic_tools.py analyze demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json --suggest
 python3 academic_tools.py humanize demos/jargon-buster/test_paper.txt
+python3 academic_tools.py humanize naskah.txt --apply
+python3 academic_tools.py humanize naskah.txt --apply --in-place
 python3 academic_tools.py serve --port 8000
 ```
 
@@ -101,7 +103,7 @@ Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key sin
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.13.0)
+academic_tools.py            # everything (v1.14.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -109,7 +111,7 @@ skills/research/             # the same three tools as agent skills
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 188 tests, stdlib unittest only
+tests/                       # 206 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -127,7 +129,7 @@ The `skills/research/` folders hold the same three tools as agent skills. They f
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 188 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 206 tests, no dependencies
 ```
 
 ## License

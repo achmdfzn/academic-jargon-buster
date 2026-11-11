@@ -33,20 +33,30 @@ Never claim an academic-jargon-buster feature you haven't verified. When in doub
 
 # Academic Jargon Buster
 
-Translate academic jargon and technical terminology to plain English (or user's preferred language) while preserving scientific accuracy. Accept paper PDFs, TeX files, or raw text, identify jargon via discipline-specific dictionaries, and provide side-by-side translation with provenance citations.
+Translate academic jargon and technical terminology to plain language (Indonesian or English) while preserving scientific accuracy. The tool works on plain text: it finds terms from a 32-term discipline dictionary (with Indonesian aliases), explains each one in place, and names its source. It does not read PDFs or TeX files — paste the text.
 
 ## Input Methods
 
-- **PDF upload** — extract text, detect technical terms via field-aware dictionary
-- **TeX source** — parse LaTeX, preserve math environment markers, translate surrounding text
-- **Plain text** — paste paper excerpt, get inline annotation
+- **Plain text** — paste a paper excerpt or a thesis paragraph, get inline annotation
+- **File** — point the CLI at a `.txt` file
+- **Dictionary file** — a `dictionary.json` next to the tool adds the user's own terms (merged over the built-in dictionary)
 
 ## Output Formats
 
-- **Annotated Markdown** — original text with jargon highlighted and translation in parentheses
-- **Term List CSV** — jargon term, definition, source discipline, confidence score
-- **Side-by-side View** — original paragraph with translation beneath, suitable for lecture notes
-- **Notion/Obsidian Block** — embeddable block with syntax for knowledge-base linking
+- **Annotated Markdown** — original text with each jargon term followed by its plain-language translation
+- **Term List CSV** — jargon term, translation, field, source
+- **Term list** — `jargon --list-terms [--field <discipline>]` prints every term in the dictionary
+
+## Quality check (analyze)
+
+The jargon half of the one-pass quality check (see `academic-quality-check`): `analyze` runs the same dictionary over a manuscript and counts it as one of four 25-point components — jargon found and explained, citations audited, DOIs verified, style checked — one score 0–100.
+
+```bash
+python3 academic_tools.py analyze naskah.txt --refs my-refs.json
+python3 academic_tools.py analyze --text "The renormalization group ..." --json
+```
+
+Without `--refs` the citation and DOI components are skipped (neutral). Exit code is 1 when a citation is missing or a DOI is not found. In the interactive menu, this is option 4, Analisis Kualitas.
 
 ## Discipline Dictionaries (sample coverage)
 
@@ -69,10 +79,12 @@ Translate academic jargon and technical terminology to plain English (or user's 
 
 ## Known Limitations
 
+- 32 dictionary terms is a sample, not a glossary. New terms need a real source.
 - Specialized sub-field jargon may not be in default dictionary
 - Mathematical notation not translated (preserved as-is)
 - Low-quality OCR input may produce false term detection
 - Cross-discipline terms require manual verification
+- PDF and TeX files are not read — paste plain text instead
 
 ## Update Dictionary
 

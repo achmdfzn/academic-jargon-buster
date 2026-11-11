@@ -2,11 +2,27 @@
 
 **One Python file. Every feature. Zero invented references.**
 
-Student writing, minus the guesswork: this repo translates academic jargon into plain language, weaves citations into narrative text, and hands you ready-made prompts for every thesis chapter. Indonesian and English. One file, no install, no dependencies — copy `academic_tools.py` anywhere and run it.
+Your thesis draft is stiff. This one file loosens it up: it translates the jargon, weaves in real citations, suggests rewrites you approve, and scores the whole thing. Indonesian and English. One file, no install, no dependencies — copy `academic_tools.py` anywhere and run it.
+
+```text
+$ python3 academic_tools.py humanize naskah.txt --apply
+In:  Penelitian ini melakukan pengukuran terhadap suhu ruangan. Selain itu,
+     penelitian ini melakukan analisis terhadap data yang diperoleh.
+Out: Penelitian ini mengukur suhu ruangan. Penelitian ini menganalisis
+     data yang diperoleh.
+```
+
+## Why this one
+
+- **One file, zero dependencies.** No install step, no package manager, no API key for the core tools. Copy it anywhere and it runs — Python 3.9 or newer.
+- **It never invents a reference.** A `[cite:key]` with no bibliography entry prints as `[PERLU RUJUKAN: key]` — a gap to fill, not a paper to fake. DOI checks need both Crossref and OpenAlex to say 404 before calling one fake.
+- **Suggestions, not silent rewrites.** Every rewrite is shown before/after, and nothing changes unless you pass `--apply`. The original is never touched: results go to `<file>.humanized.txt`.
+- **Indonesian first.** The style signals are calibrated for Indonesian academic prose — light verbs, stacked connectors, `yang mana` calques — not translated English rules.
+- **The web UI stays home.** `serve` runs on localhost only, with no CDN, no webfonts, no analytics. Your draft never leaves your machine.
 
 ## The file
 
-`academic_tools.py` (v1.14.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, applied only with `--apply`), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.15.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, applied only with `--apply`), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -19,7 +35,7 @@ python3 academic_tools.py serve           # web UI at http://127.0.0.1:8000/
 
 ```
   +==============================================================+
-  | Academic Tools                                       v1.14.0 |
+  | Academic Tools                                       v1.15.0 |
   +--------------------------------------------------------------+
   | Jargon Buster  |  Citation Weaver  |  Prompt Skripsi         |
   | id  |  ketik angka, Enter untuk memilih                      |
@@ -103,20 +119,20 @@ Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key sin
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.14.0)
+academic_tools.py            # everything (v1.15.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
-skills/research/             # the same three tools as agent skills
+skills/research/             # four skills: the three tools + a quality-check skill
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 206 tests, stdlib unittest only
+tests/                       # 210 tests, stdlib unittest only
 ```
 
 ## Skills
 
-The `skills/research/` folders hold the same three tools as agent skills. They follow the standard agent-skill format, so they also work in agents that load skills from a folder.
+The `skills/research/` folders hold the same tools as agent skills: the three tools plus `academic-quality-check`, which documents the quality check, the style check, Humanize, and the web UI. They follow the standard agent-skill format, so they also work in agents that load skills from a folder.
 
 ## Limits, honestly
 
@@ -129,7 +145,7 @@ The `skills/research/` folders hold the same three tools as agent skills. They f
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 206 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 210 tests, no dependencies
 ```
 
 ## License

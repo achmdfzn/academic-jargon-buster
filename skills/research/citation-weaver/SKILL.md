@@ -67,6 +67,17 @@ python3 academic_tools.py cite --refs my-refs.json --verify
 - **References without a DOI are `no DOI`.** Use `--audit --check-links` for arXiv IDs and plain URLs.
 - Exit code is 1 only when a DOI is missing from both sources, 0 otherwise — safe for a CI step. Menu option 7 runs the same check.
 
+## Quality check (analyze)
+
+The citation and DOI half of the one-pass quality check (see `academic-quality-check`): `analyze` audits every `[cite:key]` / `\cite{key}` in a manuscript against the bibliography and verifies every DOI, as two of four 25-point components — jargon found and explained, citations audited, DOIs verified, style checked — one score 0–100.
+
+```bash
+python3 academic_tools.py analyze naskah.txt --refs my-refs.json
+python3 academic_tools.py analyze naskah.txt --refs my-refs.json --suggest
+```
+
+The citation component scores 25 when no marker is missing from the bibliography; the DOI component scores 25 when every DOI that exists is found in Crossref or OpenAlex (entries without a DOI do not count as failures). `--suggest` adds the Humanize rewrite suggestions to the same pass. Without `--refs` both components are skipped (neutral). Exit code is 1 when a citation is missing or a DOI is not found. In the interactive menu, this is option 4, Analisis Kualitas.
+
 ## BibTeX export (v1.2.0)
 
 Export a bibliography JSON file to a `.bib` file ready for LaTeX / Overleaf:

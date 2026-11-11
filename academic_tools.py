@@ -85,10 +85,11 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.14.0"
+__version__ = "1.15.0"
 JARGON_VERSION = "1.0.4"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
+QUALITY_VERSION = "1.0.0"
 CLI_VERSION = "1.9.0"
 
 # ======================================================================

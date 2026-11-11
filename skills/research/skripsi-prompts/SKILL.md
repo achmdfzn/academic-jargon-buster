@@ -225,6 +225,25 @@ Placeholders: bagian, jumlah.
 English:
 
 > I want to publish a journal article based on my thesis. This is the section that needs to be condensed into shorter paragraphs for my journal: {bagian}. Make at most {jumlah} paragraphs or words. Keep the citations and do not drop the core of each paragraph. Use human, non-robotic language. Avoid repeated words and generic sentence structures, vary sentence length, and avoid em-dashes and semicolons. Here is the paragraph to shorten: [paste your paragraph here, one section only].
+## After drafting: Humanize and check the draft
+
+A filled prompt produces a draft, not a finished chapter. Two more tools in the same file finish the job (see `academic-quality-check`):
+
+**Humanize — style rewrite suggestions.** Stiff Indonesian prose gets concrete before/after suggestions: light verbs become direct verbs ("melakukan pengukuran terhadap" → "mengukur"), connectors are dropped, "yang mana" splits the sentence. Passive voice, `dimana`, and flat rhythm get guidance instead of a made-up rewrite. Nothing changes unless `--apply` is given, and then only the mechanical suggestions — the original is never touched (output goes to `<file>.humanized.txt` unless `--out` or `--in-place` with a `.bak` backup is passed).
+
+```bash
+python3 academic_tools.py humanize draf-bab1.txt
+python3 academic_tools.py humanize draf-bab1.txt --apply
+```
+
+**Quality check — one pass before submission.** `analyze` scores the draft 0–100 across jargon, citations, DOI verification, and style, and lists what to fix. Add `--suggest` for the Humanize suggestions in the same pass.
+
+```bash
+python3 academic_tools.py analyze draf-bab1.txt --refs my-refs.json --suggest
+```
+
+In the interactive menu, Humanize is option 5 and Analisis Kualitas is option 4.
+
 ## Usage
 
 ```bash

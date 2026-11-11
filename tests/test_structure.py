@@ -131,10 +131,43 @@ class TestSkillVersions(unittest.TestCase):
             "academic-jargon-buster": academic_tools.JARGON_VERSION,
             "citation-weaver": academic_tools.CITATION_VERSION,
             "skripsi-prompts": academic_tools.PROMPTS_VERSION,
+            "academic-quality-check": academic_tools.QUALITY_VERSION,
         }
         for name, version in expected.items():
             meta = self._frontmatter(f"skills/research/{name}/SKILL.md")
             self.assertEqual(meta["version"], version, name)
+
+
+class TestSkillDocsCoverTheTools(unittest.TestCase):
+    """The skills must document the features the code actually has.
+
+    analyze/humanize/serve landed in v1.10.0–v1.14.0 with no skill
+    update; this guard stops that gap from reopening.
+    """
+
+    def test_jargon_skill_documents_analyze(self):
+        text = read_text("skills/research/academic-jargon-buster/SKILL.md")
+        self.assertIn("Quality check (analyze)", text)
+        self.assertIn("academic-quality-check", text)
+        self.assertNotIn("PDF upload", text)
+
+    def test_citation_skill_documents_analyze(self):
+        text = read_text("skills/research/citation-weaver/SKILL.md")
+        self.assertIn("Quality check (analyze)", text)
+        self.assertIn("academic-quality-check", text)
+
+    def test_prompts_skill_documents_humanize_and_analyze(self):
+        text = read_text("skills/research/skripsi-prompts/SKILL.md")
+        self.assertIn("Humanize", text)
+        self.assertIn("Quality check", text)
+        self.assertIn("academic-quality-check", text)
+
+    def test_quality_check_skill_covers_all_four_tools(self):
+        text = read_text("skills/research/academic-quality-check/SKILL.md")
+        for keyword in ("analyze", "check_style", "Humanize",
+                        "apply_suggestions", "serve", "/api/humanize",
+                        "--apply", "--in-place"):
+            self.assertIn(keyword, text, keyword)
 
 
 if __name__ == "__main__":

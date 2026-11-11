@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.15.0 — 2026-11-12
+
+- New skill `academic-quality-check` (v1.0.0, `QUALITY_VERSION`): documents the features that landed in v1.10.0–v1.14.0 with no skill coverage — the one-pass quality check (`analyze`, four 25-point components), the style check (five signals with thresholds), Humanize (suggest + `--apply`), and the web UI (`serve`, six JSON endpoints). The three existing skills now point at it: jargon-buster documents the analyze jargon half, citation-weaver the citation/DOI half, skripsi-prompts the Humanize + analyze workflow after drafting. The jargon-buster skill also stops claiming PDF/TeX input it never had — plain text only. A structure guard now checks that the skills document these features, so the gap cannot reopen.
+- README rewritten around a before/after demo and a "Why this one" section (one file, zero dependencies, never invents a reference, suggestions not silent rewrites, Indonesian first, localhost-only web UI). Still 0 emoji. GitHub About rewritten to match.
+- 4 new tests (skill-docs guard). Full suite 210/210.
+
 ## 1.14.0 — 2026-11-12
 
 - `humanize` gains `--apply`: the mechanical suggestions are written out (light verbs, connectors, "yang mana"), guidance-only ones are skipped for the author, and overlapping spans are never double-applied. Edits run from the end of the text backwards so offsets stay valid; only the neighbourhood of each edit is touched (a doubled space at the splice is collapsed, a sentence-initial letter is re-capitalized only when the edit itself starts or ends a sentence). Output defaults to `<file>.humanized.txt` — the original is never touched unless you pass `--out <path>` or `--in-place` (which keeps a `.bak` copy). `--text --apply` prints the fixed text; `--json` carries `fixed_text` plus applied/skipped counts. `suggest_style_fixes()` takes `limit=None` so apply sees every suggestion, not just the first 10 shown. `CLI_VERSION` 1.8.0 → 1.9.0.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2 — 2026-11-11 (continued)
+
+- Citation Weaver sample bibliography grew from 4 to 7 references: Brooke 1996 (SUS), Likert 1932, Ferraiolo & Kuhn 1992 (RBAC) — all real and verified, taken from the same user abstract as the new jargon terms. New demo `demos/citation-weaver/contoh_id.txt`: the user's real abstract with `[cite:...]` markers, weaving to IEEE [1][2][3] with a full Daftar Pustaka and zero missing references.
+
 ## 1.0.2 — 2026-11-11
 
 - Dictionary grew from 13 to 22 terms: 9 terms from a real user abstract (a student abstract management information system, SUS evaluation): System Usability Scale, usability, Object Relational Mapping, Likert scale, authentication, role-based access control — plus Indonesian aliases used in the source text (skala Likert, autentikasi, hak akses berbasis peran). Sources are real: Brooke 1996 (SUS), Likert 1932, ISO 9241-11, Ferraiolo & Kuhn 1992 (RBAC). The abstract that previously matched 0 terms now matches 6 distinct terms. Deliberately NOT added: bare "framework" — it is ordinary academic English ("mathematical framework", "theoretical framework") and would false-positive on almost any paper; covered by a regression test.

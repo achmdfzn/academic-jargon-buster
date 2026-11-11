@@ -1,1 +1,111 @@
-{"brown2020":{"arxiv":"2005.14165","authors":["Brown, Tom","Mann, Benjamin","Ryder, Nick","Subbiah, Melanie","Kaplan, Jared","Dhariwal, Prafulla","Neelakantan, Arvind","Shyam, Pranav","Sastry, Girish","Askell, Amanda","Agarwal, Sandhini","Herbert-Voss, Ariel","Krueger, Gretchen","Henighan, Tom","Child, Rewon","Ramesh, Aditya","Ziegler, Daniel","Wu, Jeffrey","Winter, Clemens","Hesse, Chris","Chen, Mark","Sigler, Eric","Litwin, Mateusz","Gray, Scott","Chess, Benjamin","Clark, Jack","Berner, Christopher","McCandlish, Sam","Radford, Alec","Sutskever, Ilya","Amodei, Dario"],"title":"Language Models are Few-Shot Learners","type":"conference","venue":"Advances in Neural Information Processing Systems 33","year":2020},"devlin2019":{"arxiv":"1810.04805","authors":["Devlin, Jacob","Chang, Ming-Wei","Lee, Kenton","Toutanova, Kristina"],"title":"BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding","type":"conference","venue":"Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies","year":2019},"goodfellow2016":{"authors":["Goodfellow, Ian","Bengio, Yoshua","Courville, Aaron"],"title":"Deep Learning","type":"book","venue":"MIT Press","year":2016},"vaswani2017":{"arxiv":"1706.03762","authors":["Vaswani, Ashish","Shazeer, Noam","Parmar, Niki","Uszkoreit, Jakob","Jones, Llion","Gomez, Aidan N.","Kaiser, Lukasz","Polosukhin, Illia"],"title":"Attention Is All You Need","type":"conference","venue":"Advances in Neural Information Processing Systems 30","year":2017}}
+{
+  "brooke1996": {
+    "authors": [
+      "Brooke, John"
+    ],
+    "title": "SUS: A 'quick and dirty' usability scale",
+    "type": "chapter",
+    "venue": "Usability Evaluation in Industry (Taylor & Francis), pp. 189-194",
+    "year": 1996
+  },
+  "brown2020": {
+    "arxiv": "2005.14165",
+    "authors": [
+      "Brown, Tom",
+      "Mann, Benjamin",
+      "Ryder, Nick",
+      "Subbiah, Melanie",
+      "Kaplan, Jared",
+      "Dhariwal, Prafulla",
+      "Neelakantan, Arvind",
+      "Shyam, Pranav",
+      "Sastry, Girish",
+      "Askell, Amanda",
+      "Agarwal, Sandhini",
+      "Herbert-Voss, Ariel",
+      "Krueger, Gretchen",
+      "Henighan, Tom",
+      "Child, Rewon",
+      "Ramesh, Aditya",
+      "Ziegler, Daniel",
+      "Wu, Jeffrey",
+      "Winter, Clemens",
+      "Hesse, Chris",
+      "Chen, Mark",
+      "Sigler, Eric",
+      "Litwin, Mateusz",
+      "Gray, Scott",
+      "Chess, Benjamin",
+      "Clark, Jack",
+      "Berner, Christopher",
+      "McCandlish, Sam",
+      "Radford, Alec",
+      "Sutskever, Ilya",
+      "Amodei, Dario"
+    ],
+    "title": "Language Models are Few-Shot Learners",
+    "type": "conference",
+    "venue": "Advances in Neural Information Processing Systems 33",
+    "year": 2020
+  },
+  "devlin2019": {
+    "arxiv": "1810.04805",
+    "authors": [
+      "Devlin, Jacob",
+      "Chang, Ming-Wei",
+      "Lee, Kenton",
+      "Toutanova, Kristina"
+    ],
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+    "type": "conference",
+    "venue": "Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies",
+    "year": 2019
+  },
+  "ferraiolo1992": {
+    "authors": [
+      "Ferraiolo, David",
+      "Kuhn, Richard"
+    ],
+    "title": "Role-based access control",
+    "type": "conference",
+    "venue": "Proceedings of the 15th National Computer Security Conference",
+    "year": 1992
+  },
+  "goodfellow2016": {
+    "authors": [
+      "Goodfellow, Ian",
+      "Bengio, Yoshua",
+      "Courville, Aaron"
+    ],
+    "title": "Deep Learning",
+    "type": "book",
+    "venue": "MIT Press",
+    "year": 2016
+  },
+  "likert1932": {
+    "authors": [
+      "Likert, Rensis"
+    ],
+    "title": "A technique for the measurement of attitudes",
+    "type": "article",
+    "venue": "Archives of Psychology, 22(140)",
+    "year": 1932
+  },
+  "vaswani2017": {
+    "arxiv": "1706.03762",
+    "authors": [
+      "Vaswani, Ashish",
+      "Shazeer, Noam",
+      "Parmar, Niki",
+      "Uszkoreit, Jakob",
+      "Jones, Llion",
+      "Gomez, Aidan N.",
+      "Kaiser, Lukasz",
+      "Polosukhin, Illia"
+    ],
+    "title": "Attention Is All You Need",
+    "type": "conference",
+    "venue": "Advances in Neural Information Processing Systems 30",
+    "year": 2017
+  }
+}

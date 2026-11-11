@@ -109,7 +109,8 @@ mathematical framework.
 │   ├── test_paper.txt              # jargon sample text
 │   └── citation-weaver/
 │       ├── example_usage.py
-│       ├── references.json         # 4 real sample references
+│       ├── references.json         # 7 real sample references
+│       └── contoh_id.txt # real Indonesian abstract, cited
 │       ├── contoh_id.txt           # Indonesian example
 │       └── example_en.txt          # English example
 ├── docs/

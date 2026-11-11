@@ -6,19 +6,20 @@ Student writing, minus the guesswork: this repo translates academic jargon into 
 
 ## The file
 
-`academic_tools.py` (v1.11.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), and an interactive menu CLI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.12.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
 ```bash
 git clone https://github.com/achmdfzn/academic-jargon-buster.git
 cd academic-jargon-buster
-python3 academic_tools.py
+python3 academic_tools.py                 # interactive menu
+python3 academic_tools.py serve           # web UI at http://127.0.0.1:8000/
 ```
 
 ```
   +==============================================================+
-  | Academic Tools                                       v1.11.0 |
+  | Academic Tools                                       v1.12.0 |
   +--------------------------------------------------------------+
   | Jargon Buster  |  Citation Weaver  |  Prompt Skripsi         |
   | id  |  ketik angka, Enter untuk memilih                      |
@@ -43,6 +44,7 @@ Pick a number, follow the prompts: type text or read a file, pick a field, a cit
 | **Prompt Skripsi** | 18 ready-made prompt templates for thesis writing — roadmap, abstract, preface, problem statement, Bab 1–5, defense prep, publication. Every template has an Indonesian and an English version (`--lang en`). Pick one, fill in your title, theory, and method, paste the result into ChatGPT, Grok, Claude, Gemini, or Perplexity. |
 | **Quality Check** | One pass over a manuscript: jargon found and explained, citations audited (missing / never used), DOIs verified, and stiff Indonesian prose flagged (light verbs, stacked connectors, passive pile-ups, calqued relatives, flat sentence rhythm) — one quality score 0–100 with recommendations. A style report, not a rewrite and not a detector dodge. Exits 1 when a citation is missing or a DOI is not found. |
 | **Menu CLI** | One command, all four tools, bilingual prompts. |
+| **Web UI** | The same four tools in a browser page: `python3 academic_tools.py serve`, then open http://127.0.0.1:8000/. Localhost only, zero external resources — no CDN, no webfonts, no analytics. |
 
 **The rule:** never invent a reference. A `[cite:key]` with no bibliography entry prints as `[PERLU RUJUKAN: key]` — a gap to fill, not a paper to fake.
 
@@ -87,6 +89,7 @@ python3 academic_tools.py cite --lookup "Deep learning" --add-to my-refs.json
 python3 academic_tools.py cite --refs demos/citation-weaver/references.json --verify
 python3 academic_tools.py analyze demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json
 python3 academic_tools.py analyze --text "... [cite:devlin2019]." --refs demos/citation-weaver/references.json --json
+python3 academic_tools.py serve --port 8000
 ```
 
 Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key since February 2026 (about $0.001 per search under a ~$1/day free allowance). DOI lookups try Crossref first, so they keep working without a key. `--verify` checks every DOI against Crossref and OpenAlex; a DOI found in either source is real, "not found" needs both to answer 404, and without the key the OpenAlex column reads `no key` and such a DOI stays "unverified" rather than being called fake. It exits 1 only when a DOI is missing from both sources; references without a DOI are reported as `no DOI` (use `--audit --check-links` for arXiv IDs and URLs).
@@ -94,7 +97,7 @@ Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key sin
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.11.0)
+academic_tools.py            # everything (v1.12.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -102,7 +105,7 @@ skills/research/             # the same three tools as agent skills
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 148 tests, stdlib unittest only
+tests/                       # 161 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -115,11 +118,12 @@ The `skills/research/` folders hold the same three tools as agent skills. They f
 - Citation formatting here is simplified — check the official style guide before submitting.
 - Math notation is kept as-is; low-quality OCR can misfire.
 - Style signals are calibrated for Indonesian academic prose — on English text, only sentence rhythm is actually judged.
+- The web UI runs on localhost only and needs JavaScript for the buttons to work.
 
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 148 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 161 tests, no dependencies
 ```
 
 ## License

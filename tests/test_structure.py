@@ -45,8 +45,8 @@ class TestCoreStaysOneFile(unittest.TestCase):
                 imported.add(node.module.split(".")[0])
         stdlib = getattr(sys, "stdlib_module_names", None)
         if stdlib is None:  # Python 3.9 has no stdlib_module_names
-            stdlib = {"__future__", "argparse", "csv", "io", "json", "os",
-                      "re", "sys", "urllib"}
+            stdlib = {"__future__", "argparse", "csv", "http", "io", "json",
+                      "os", "re", "sys", "urllib"}
         self.assertEqual(imported - set(stdlib), set())
 
     def test_shims_reexport_the_core(self):

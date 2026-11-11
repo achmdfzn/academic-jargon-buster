@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.12.0 — 2026-11-12
+
+- New `serve` subcommand: a local web UI for all four tools, built from this file alone (`python3 academic_tools.py serve`, then open http://127.0.0.1:8000/). Stdlib `http.server` plus an embedded page and a small JSON API (`/api/analyze`, `/api/jargon`, `/api/cite`, `/api/prompts`, `/api/prompts/fill`). Localhost only, 1 MB request cap, honest 400/404/500 errors. `CLI_VERSION` 1.6.0 → 1.7.0.
+- The page is designed from our own brief, guided by the anti-slop purpose test (every visual choice must serve the work) and design-system thinking (tokens + components): a tool page, not a landing page — no hero, no gradients, paper background with ink text and one restrained green accent, system font stack, real Indonesian copy. Zero external resources: no CDN, no webfonts, no analytics — it works offline and sends nothing anywhere.
+- 13 new tests (live HTTP against an ephemeral localhost port, including a no-external-resources check on the page). Full suite 161/161. The stdlib-import guard's Python 3.9 fallback list now includes `http`.
+
 ## 1.11.0 — 2026-11-12
 
 - `analyze` gains a fourth component: a rule-based style check for stiff Indonesian academic prose (`check_style()`), written from Indonesian grammar, not copied from any other project. Five signals, five points each: light-verb constructions ("melakukan pengukuran"), stacked connectors, passive pile-ups, "yang mana"/"dimana" as relative pronouns, and flat sentence rhythm (60%+ of sentences within two words of the mean length). The score is now four parts of 25 (jargon, citations, DOI, style) = 100, no scaling. Style findings appear in the readable output, in `--json`, and as bilingual recommendations. A style report, not a rewrite and not a detector dodge. `CLI_VERSION` 1.5.0 → 1.6.0.

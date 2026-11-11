@@ -59,6 +59,11 @@ dodge: flagged patterns are suggestions for the author's own edit.
     python3 academic_tools.py analyze demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json
     python3 academic_tools.py analyze --text "... [cite:devlin2019]." --refs demos/citation-weaver/references.json --json
 
+Local web UI: the same four tools in a browser page, served from
+this file alone (stdlib http.server, no external resources).
+
+    python3 academic_tools.py serve [--port 8000]   # then open http://127.0.0.1:8000/
+
 The old entry points (jargon_buster.py, citation_weaver.py,
 academic_cli.py) still exist as thin wrappers around this file, so
 existing commands, demos, and imports keep working.
@@ -68,6 +73,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import http.server
 import io
 import json
 import os
@@ -79,11 +85,11 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.11.0"
+__version__ = "1.12.0"
 JARGON_VERSION = "1.0.4"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-CLI_VERSION = "1.6.0"
+CLI_VERSION = "1.7.0"
 
 # ======================================================================
 # Jargon Buster
@@ -3104,10 +3110,712 @@ class CLI:
         self.pause()
 
 
+# ======================================================================
+# Local web UI (serve) — the same four tools in a browser page
+# ======================================================================
+# Design direction (our own brief, written for this page):
+# - A tool page, not a landing page: no hero, the work (paste text,
+#   press Analyze) is at the top; every section earns its place.
+# - Paper background, ink text, one restrained green accent. No
+#   gradients, no decoration without a purpose.
+# - System font stack, one type scale, real Indonesian copy, honest
+#   labels (a score is a score, not a verdict).
+# - Zero external resources: no CDN, no webfonts, no analytics —
+#   the page works offline and sends nothing anywhere.
+# - Keyboard-accessible tabs and buttons, visible focus outlines.
+# The HTML is a raw string so the JavaScript stays verbatim.
+WEB_UI_HTML = r"""<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Academic Tools — Analisis Kualitas</title>
+<style>
+  :root {
+    --paper: #fafaf7;
+    --card: #ffffff;
+    --ink: #1d1d1a;
+    --muted: #6b6b64;
+    --line: #e2e2da;
+    --accent: #206040;
+    --accent-ink: #ffffff;
+    --warn: #8a5a00;
+    --bad: #9b2c2c;
+    --radius: 6px;
+    --space: 16px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  header {
+    border-bottom: 1px solid var(--line);
+    background: var(--card);
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 var(--space); }
+  header .wrap { padding-top: 20px; padding-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h1 .ver {
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 2px 8px; margin-left: 8px; vertical-align: middle;
+  }
+  header p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+  nav.tabs { display: flex; gap: 4px; margin-top: 16px; flex-wrap: wrap; }
+  nav.tabs button {
+    appearance: none; border: 1px solid transparent; background: none;
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--muted);
+    padding: 8px 12px; border-radius: var(--radius) var(--radius) 0 0; cursor: pointer;
+  }
+  nav.tabs button[aria-selected="true"] {
+    color: var(--ink); background: var(--paper);
+    border-color: var(--line); border-bottom-color: var(--paper);
+  }
+  nav.tabs button:focus-visible, button:focus-visible, select:focus-visible,
+  textarea:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  main .wrap { padding-top: 24px; padding-bottom: 48px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 0 0 6px; }
+  label .hint { font-weight: 400; color: var(--muted); }
+  textarea, select, input[type="text"] {
+    width: 100%; font: inherit; color: var(--ink);
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--card); padding: 10px 12px;
+  }
+  textarea { min-height: 180px; resize: vertical; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+  .row > div { flex: 1 1 180px; }
+  .actions { margin-top: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  button.primary {
+    appearance: none; border: 1px solid var(--accent); background: var(--accent);
+    color: var(--accent-ink); font: inherit; font-weight: 600;
+    padding: 10px 18px; border-radius: var(--radius); cursor: pointer;
+  }
+  button.primary:disabled { opacity: 0.55; cursor: wait; }
+  button.ghost {
+    appearance: none; border: 1px solid var(--line); background: var(--card);
+    color: var(--ink); font: inherit; padding: 8px 14px;
+    border-radius: var(--radius); cursor: pointer;
+  }
+  details { margin-top: 12px; font-size: 14px; }
+  details summary { cursor: pointer; font-weight: 600; }
+  details textarea { min-height: 110px; margin-top: 8px; }
+  .status { font-size: 14px; color: var(--muted); }
+  .error {
+    margin-top: 16px; padding: 12px 14px; border: 1px solid var(--bad);
+    border-radius: var(--radius); color: var(--bad); background: #fdf6f6;
+    display: none; font-size: 14px;
+  }
+  .error.show { display: block; }
+  .result { margin-top: 24px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 16px; margin-top: 12px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 8px; }
+  .card h2 .meta { font-weight: 400; color: var(--muted); font-size: 13px; }
+  .card ul { margin: 0; padding-left: 20px; }
+  .card li { margin: 4px 0; }
+  .card li .src { color: var(--muted); font-size: 13px; }
+  .score { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .score .num { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .score .of { color: var(--muted); }
+  .score .bar { flex: 1 1 160px; height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; min-width: 120px; }
+  .score .bar span { display: block; height: 100%; background: var(--accent); }
+  .flag { color: var(--warn); font-weight: 600; }
+  pre {
+    white-space: pre-wrap; word-wrap: break-word; font: inherit;
+    margin: 0; background: var(--card);
+  }
+  .bib { font-size: 14px; color: var(--ink); }
+  footer { border-top: 1px solid var(--line); padding: 20px 0 32px; font-size: 13px; color: var(--muted); }
+  @media (max-width: 560px) {
+    .score .num { font-size: 32px; }
+    nav.tabs button { padding: 8px 8px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Academic Tools <span class="ver">v__ACADEMIC_TOOLS_VERSION__</span></h1>
+    <p>Satu file Python untuk tulisan mahasiswa: terjemahkan jargon, sisipkan sitasi, cek kualitas naskah, dan isi template prompt skripsi.</p>
+    <nav class="tabs" role="tablist" aria-label="Alat">
+      <button role="tab" data-tab="analyze" aria-selected="true">Analisis Kualitas</button>
+      <button role="tab" data-tab="jargon" aria-selected="false">Jargon Buster</button>
+      <button role="tab" data-tab="cite" aria-selected="false">Citation Weaver</button>
+      <button role="tab" data-tab="prompts" aria-selected="false">Prompt Skripsi</button>
+    </nav>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+
+    <section class="panel active" id="panel-analyze" role="tabpanel" aria-label="Analisis Kualitas">
+      <label for="analyze-text">Tempel naskah <span class="hint">— satu atau beberapa paragraf, bahasa Indonesia</span></label>
+      <textarea id="analyze-text" placeholder="Tempel naskah di sini, misalnya satu paragraf Bab 1 atau abstrak."></textarea>
+      <div class="row">
+        <div>
+          <label for="analyze-refs">Bibliografi</label>
+          <select id="analyze-refs">
+            <option value="sample">Contoh bawaan (7 referensi)</option>
+            <option value="none">Tanpa bibliografi</option>
+          </select>
+        </div>
+        <div>
+          <label for="analyze-lang">Bahasa hasil</label>
+          <select id="analyze-lang">
+            <option value="id">Indonesia</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <label style="font-weight:400"><input type="checkbox" id="analyze-verify"> Verifikasi DOI <span class="hint">(butuh internet)</span></label>
+        </div>
+      </div>
+      <details>
+        <summary>Atau tempel bibliografi JSON sendiri</summary>
+        <textarea id="analyze-refs-json" placeholder='{"devlin2019": {"title": "BERT: ...", "year": 2019}}'></textarea>
+      </details>
+      <div class="actions">
+        <button class="primary" id="analyze-btn">Analisis naskah</button>
+        <span class="status" id="analyze-status"></span>
+      </div>
+      <div class="error" id="analyze-error"></div>
+      <div class="result" id="analyze-result"></div>
+    </section>
+
+    <section class="panel" id="panel-jargon" role="tabpanel" aria-label="Jargon Buster">
+      <label for="jargon-text">Tempel teks <span class="hint">— istilah akademik yang dikenali akan dijelaskan</span></label>
+      <textarea id="jargon-text" placeholder="Tempel teks di sini."></textarea>
+      <div class="actions">
+        <button class="primary" id="jargon-btn">Cari istilah</button>
+        <span class="status" id="jargon-status"></span>
+      </div>
+      <div class="error" id="jargon-error"></div>
+      <div class="result" id="jargon-result"></div>
+    </section>
+
+    <section class="panel" id="panel-cite" role="tabpanel" aria-label="Citation Weaver">
+      <label for="cite-text">Tempel naskah dengan penanda sitasi <span class="hint">— contoh: [cite:devlin2019]</span></label>
+      <textarea id="cite-text" placeholder="Tulis naskah dengan [cite:kunci] di tempat sitasi."></textarea>
+      <div class="row">
+        <div>
+          <label for="cite-refs">Bibliografi</label>
+          <select id="cite-refs">
+            <option value="sample">Contoh bawaan (7 referensi)</option>
+            <option value="none">Tanpa bibliografi</option>
+          </select>
+        </div>
+        <div>
+          <label for="cite-style">Gaya sitasi</label>
+          <select id="cite-style">
+            <option value="apa">APA</option>
+            <option value="mla">MLA</option>
+            <option value="chicago">Chicago</option>
+            <option value="ieee">IEEE</option>
+            <option value="harvard">Harvard</option>
+            <option value="vancouver">Vancouver</option>
+          </select>
+        </div>
+        <div>
+          <label for="cite-lang">Bahasa hasil</label>
+          <select id="cite-lang">
+            <option value="id">Indonesia</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+      </div>
+      <details>
+        <summary>Atau tempel bibliografi JSON sendiri</summary>
+        <textarea id="cite-refs-json" placeholder='{"devlin2019": {"title": "BERT: ...", "year": 2019}}'></textarea>
+      </details>
+      <div class="actions">
+        <button class="primary" id="cite-btn">Sisipkan sitasi</button>
+        <span class="status" id="cite-status"></span>
+      </div>
+      <div class="error" id="cite-error"></div>
+      <div class="result" id="cite-result"></div>
+    </section>
+
+    <section class="panel" id="panel-prompts" role="tabpanel" aria-label="Prompt Skripsi">
+      <label for="prompt-select">Pilih prompt</label>
+      <select id="prompt-select"></select>
+      <div class="row" id="prompt-fields" style="margin-top:16px"></div>
+      <div class="row">
+        <div>
+          <label for="prompt-lang">Bahasa prompt</label>
+          <select id="prompt-lang">
+            <option value="id">Indonesia</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="prompt-btn">Isi prompt</button>
+        <button class="ghost" id="prompt-copy" disabled>Salin hasil</button>
+        <span class="status" id="prompt-status"></span>
+      </div>
+      <div class="error" id="prompt-error"></div>
+      <div class="result" id="prompt-result"></div>
+    </section>
+
+  </div>
+</main>
+<footer>
+  <div class="wrap">
+    Berjalan lokal di komputer Anda — halaman ini tidak mengirim data ke mana pun. Skor gaya hanya laporan: baca, lalu sunting sendiri. Referensi yang tidak ada di bibliografi tidak pernah dikarang.
+  </div>
+</footer>
+<script>
+(function () {
+  "use strict";
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
+    });
+  }
+  function showError(id, msg) {
+    var el = $(id);
+    el.textContent = msg;
+    el.classList.add("show");
+  }
+  function clearError(id) { $(id).classList.remove("show"); $(id).textContent = ""; }
+  async function post(path, body) {
+    var r = await fetch(path, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)
+    });
+    var data = await r.json();
+    if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+    return data;
+  }
+  function refsPayload(modeEl, jsonEl) {
+    var custom = jsonEl.value.trim();
+    if (custom) return {refs_json: custom};
+    return {refs: modeEl.value};
+  }
+
+  document.querySelectorAll("nav.tabs button").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll("nav.tabs button").forEach(function (b) {
+        b.setAttribute("aria-selected", b === btn ? "true" : "false");
+      });
+      document.querySelectorAll(".panel").forEach(function (p) {
+        p.classList.toggle("active", p.id === "panel-" + btn.dataset.tab);
+      });
+    });
+  });
+
+  function renderAnalyze(res, lang) {
+    var h = "";
+    h += '<div class="card"><h2>Skor kualitas</h2><div class="score">'
+      + '<span class="num">' + res.quality_score + '</span><span class="of">/ 100</span>'
+      + '<div class="bar"><span style="width:' + res.quality_score + '%"></span></div></div></div>';
+    if (res.jargon && res.jargon.length) {
+      h += '<div class="card"><h2>Istilah jargon <span class="meta">' + res.jargon.length + ' ditemukan</span></h2><ul>';
+      res.jargon.forEach(function (j) {
+        h += "<li><strong>" + esc(j.term) + "</strong> — " + esc(j.translation)
+          + ' <span class="src">(' + esc(j.field) + "; " + esc(j.source) + ")</span></li>";
+      });
+      h += "</ul></div>";
+    } else {
+      h += '<div class="card"><h2>Istilah jargon</h2><p>Tidak ada istilah jargon yang dikenali.</p></div>';
+    }
+    if (res.citations) {
+      var c = res.citations;
+      h += '<div class="card"><h2>Sitasi</h2><p>' + c.cited.length + " dikutip, "
+        + c.missing.length + " hilang dari bibliografi, "
+        + c.unused.length + " tak terpakai.</p>";
+      if (c.missing.length) h += "<p><strong>Hilang:</strong> " + esc(c.missing.join(", ")) + "</p>";
+      h += "</div>";
+    } else {
+      h += '<div class="card"><h2>Sitasi</h2><p>Tanpa bibliografi: audit sitasi dilewati.</p></div>';
+    }
+    var dv = res.doi_verification || {};
+    var keys = Object.keys(dv);
+    if (keys.length) {
+      var ok = keys.filter(function (k) { return dv[k].verdict === "ok"; }).length;
+      var withDoi = keys.filter(function (k) { return dv[k].doi; }).length;
+      h += '<div class="card"><h2>Verifikasi DOI</h2><p>' + ok + " dari " + withDoi + " DOI terverifikasi.</p></div>";
+    }
+    var st = res.style;
+    if (st) {
+      if (st.flagged.length) {
+        h += '<div class="card"><h2>Gaya <span class="meta">' + st.style_score + "/25</span></h2><ul>";
+        st.flagged.forEach(function (name) {
+          var s = st.signals[name];
+          var label = {nominalization: "Verba ringan", connectors: "Konektor",
+            passive: "Verba pasif", yang_mana: "'yang mana'/'dimana'",
+            rhythm: "Ritme kalimat"}[name] || name;
+          if (name === "rhythm") {
+            h += "<li>" + label + ": " + Math.round(s.same_length_share * 100)
+              + "% kalimat hampir sama panjang</li>";
+          } else {
+            h += "<li>" + label + ": " + s.count
+              + (s.examples && s.examples.length ? " (" + esc(s.examples.join(", ")) + ")" : "") + "</li>";
+          }
+        });
+        h += "</ul></div>";
+      } else {
+        h += '<div class="card"><h2>Gaya <span class="meta">' + st.style_score + '/25</span></h2><p>Tidak ada pola kaku yang terdeteksi.</p></div>';
+      }
+    }
+    if (res.recommendations && res.recommendations.length) {
+      h += '<div class="card"><h2>Rekomendasi</h2><ul>';
+      res.recommendations.forEach(function (r) { h += "<li>" + esc(r) + "</li>"; });
+      h += "</ul></div>";
+    }
+    return h;
+  }
+
+  $("analyze-btn").addEventListener("click", async function () {
+    var btn = $("analyze-btn");
+    clearError("analyze-error");
+    $("analyze-result").innerHTML = "";
+    var text = $("analyze-text").value.trim();
+    if (!text) { showError("analyze-error", "Tempel naskah dulu."); return; }
+    btn.disabled = true;
+    $("analyze-status").textContent = "Menganalisis…";
+    try {
+      var body = refsPayload($("analyze-refs"), $("analyze-refs-json"));
+      body.text = text;
+      body.lang = $("analyze-lang").value;
+      body.verify = $("analyze-verify").checked;
+      var res = await post("/api/analyze", body);
+      $("analyze-result").innerHTML = renderAnalyze(res, body.lang);
+      $("analyze-status").textContent = "";
+    } catch (e) {
+      showError("analyze-error", "Gagal: " + e.message);
+      $("analyze-status").textContent = "";
+    } finally { btn.disabled = false; }
+  });
+
+  $("jargon-btn").addEventListener("click", async function () {
+    var btn = $("jargon-btn");
+    clearError("jargon-error");
+    $("jargon-result").innerHTML = "";
+    var text = $("jargon-text").value.trim();
+    if (!text) { showError("jargon-error", "Tempel teks dulu."); return; }
+    btn.disabled = true;
+    $("jargon-status").textContent = "Mencari istilah…";
+    try {
+      var res = await post("/api/jargon", {text: text});
+      var h = "";
+      if (res.matches.length) {
+        h += '<div class="card"><h2>Istilah ditemukan <span class="meta">' + res.matches.length + "</span></h2><ul>";
+        res.matches.forEach(function (m) {
+          h += "<li><strong>" + esc(m.term) + "</strong> — " + esc(m.translation)
+            + ' <span class="src">(' + esc(m.field) + "; " + esc(m.source) + ")</span></li>";
+        });
+        h += "</ul></div>";
+      } else {
+        h += '<div class="card"><h2>Istilah ditemukan</h2><p>Tidak ada istilah kamus yang cocok dengan teks ini.</p></div>';
+      }
+      $("jargon-result").innerHTML = h;
+      $("jargon-status").textContent = "";
+    } catch (e) {
+      showError("jargon-error", "Gagal: " + e.message);
+      $("jargon-status").textContent = "";
+    } finally { btn.disabled = false; }
+  });
+
+  $("cite-btn").addEventListener("click", async function () {
+    var btn = $("cite-btn");
+    clearError("cite-error");
+    $("cite-result").innerHTML = "";
+    var text = $("cite-text").value.trim();
+    if (!text) { showError("cite-error", "Tempel naskah dulu."); return; }
+    btn.disabled = true;
+    $("cite-status").textContent = "Menyisipkan sitasi…";
+    try {
+      var body = refsPayload($("cite-refs"), $("cite-refs-json"));
+      body.text = text;
+      body.style = $("cite-style").value;
+      body.lang = $("cite-lang").value;
+      var res = await post("/api/cite", body);
+      $("cite-result").innerHTML = '<div class="card"><h2>Hasil</h2><pre class="bib">'
+        + esc(res.output) + "</pre></div>";
+      $("cite-status").textContent = "";
+    } catch (e) {
+      showError("cite-error", "Gagal: " + e.message);
+      $("cite-status").textContent = "";
+    } finally { btn.disabled = false; }
+  });
+
+  var promptsCache = null;
+  async function loadPrompts() {
+    var r = await fetch("/api/prompts");
+    var data = await r.json();
+    promptsCache = data.prompts;
+    var sel = $("prompt-select");
+    var groups = {};
+    data.prompts.forEach(function (p) {
+      (groups[p.category] = groups[p.category] || []).push(p);
+    });
+    Object.keys(groups).forEach(function (cat) {
+      var og = document.createElement("optgroup");
+      og.label = cat;
+      groups[cat].forEach(function (p) {
+        var o = document.createElement("option");
+        o.value = p.id;
+        o.textContent = p.name;
+        og.appendChild(o);
+      });
+      sel.appendChild(og);
+    });
+    renderPromptFields();
+  }
+  function currentPrompt() {
+    var id = $("prompt-select").value;
+    return promptsCache.find(function (p) { return p.id === id; });
+  }
+  function renderPromptFields() {
+    var p = currentPrompt();
+    var box = $("prompt-fields");
+    box.innerHTML = "";
+    if (!p) return;
+    p.fields.forEach(function (f) {
+      var div = document.createElement("div");
+      var lab = document.createElement("label");
+      lab.textContent = f.label;
+      lab.setAttribute("for", "pf-" + f.key);
+      var inp = document.createElement("input");
+      inp.type = "text";
+      inp.id = "pf-" + f.key;
+      inp.dataset.key = f.key;
+      div.appendChild(lab);
+      div.appendChild(inp);
+      box.appendChild(div);
+    });
+  }
+  $("prompt-select").addEventListener("change", renderPromptFields);
+  $("prompt-btn").addEventListener("click", async function () {
+    var btn = $("prompt-btn");
+    clearError("prompt-error");
+    $("prompt-result").innerHTML = "";
+    var p = currentPrompt();
+    if (!p) { showError("prompt-error", "Pilih prompt dulu."); return; }
+    var values = {};
+    document.querySelectorAll("#prompt-fields input").forEach(function (inp) {
+      values[inp.dataset.key] = inp.value;
+    });
+    btn.disabled = true;
+    $("prompt-status").textContent = "Mengisi prompt…";
+    try {
+      var res = await post("/api/prompts/fill", {
+        id: p.id, values: values, lang: $("prompt-lang").value
+      });
+      $("prompt-result").innerHTML = '<div class="card"><h2>Hasil</h2><pre>'
+        + esc(res.text) + "</pre></div>";
+      $("prompt-copy").disabled = false;
+      $("prompt-status").textContent = "";
+    } catch (e) {
+      showError("prompt-error", "Gagal: " + e.message);
+      $("prompt-status").textContent = "";
+    } finally { btn.disabled = false; }
+  });
+  $("prompt-copy").addEventListener("click", async function () {
+    var pre = document.querySelector("#prompt-result pre");
+    if (!pre) return;
+    try {
+      await navigator.clipboard.writeText(pre.textContent);
+      $("prompt-status").textContent = "Disalin.";
+    } catch (e) {
+      $("prompt-status").textContent = "Tidak bisa menyalin otomatis — blok lalu salin manual.";
+    }
+  });
+
+  loadPrompts().catch(function (e) {
+    showError("prompt-error", "Gagal memuat daftar prompt: " + e.message);
+  });
+})();
+</script>
+</body>
+</html>
+"""
+
+
+_MAX_BODY = 1_000_000  # 1 MB cap on API request bodies
+
+
+def _load_ui_references(payload: dict) -> dict | None:
+    """Resolve the UI's refs choice: 'sample' (default), 'none', or
+    a pasted bibliography JSON string under 'refs_json'."""
+    if payload.get("refs_json"):
+        try:
+            refs = json.loads(payload["refs_json"])
+        except (json.JSONDecodeError, TypeError) as e:
+            raise ValueError(f"bibliografi JSON tidak valid: {e}")
+        if not isinstance(refs, dict):
+            raise ValueError("bibliografi JSON harus berupa objek {kunci: referensi}")
+        return refs
+    if payload.get("refs", "sample") == "none":
+        return None
+    return load_references(DEFAULT_REFS)
+
+
+def _read_json_body(handler) -> dict:
+    length = int(handler.headers.get("Content-Length") or 0)
+    if length > _MAX_BODY:
+        raise ValueError("badan permintaan terlalu besar (maks 1 MB)")
+    raw = handler.rfile.read(length) if length else b"{}"
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise ValueError("badan permintaan harus JSON yang valid")
+    if not isinstance(body, dict):
+        raise ValueError("badan permintaan harus berupa objek JSON")
+    return body
+
+
+class _UIHandler(http.server.BaseHTTPRequestHandler):
+    """Serves the embedded page plus a small JSON API for the four tools."""
+
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *args):  # keep the console quiet
+        pass
+
+    def _send_json(self, status: int, payload: dict) -> None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _send_page(self) -> None:
+        data = WEB_UI_HTML.replace(
+            "__ACADEMIC_TOOLS_VERSION__", __version__).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        if self.path in ("/", "/index.html"):
+            self._send_page()
+        elif self.path == "/api/prompts":
+            self._send_json(200, {"prompts": [
+                {"id": p["id"], "name": p["name"], "name_en": p["name_en"],
+                 "category": p["category"], "tool": p["tool"],
+                 "fields": p["fields"]}
+                for p in PROMPTS
+            ]})
+        else:
+            self._send_json(404, {"error": "tidak ditemukan"})
+
+    def do_POST(self):
+        try:
+            body = _read_json_body(self)
+            if self.path == "/api/analyze":
+                self._send_json(200, self._analyze(body))
+            elif self.path == "/api/jargon":
+                self._send_json(200, self._jargon(body))
+            elif self.path == "/api/cite":
+                self._send_json(200, self._cite(body))
+            elif self.path == "/api/prompts/fill":
+                self._send_json(200, self._fill_prompt(body))
+            else:
+                self._send_json(404, {"error": "tidak ditemukan"})
+        except ValueError as e:
+            self._send_json(400, {"error": str(e)})
+        except (LookupError, KeyError) as e:
+            self._send_json(400, {"error": str(e)})
+        except Exception:
+            self._send_json(500, {"error": "kesalahan server, coba lagi"})
+
+    def _analyze(self, body: dict) -> dict:
+        text = str(body.get("text") or "").strip()
+        if not text:
+            raise ValueError("teks kosong")
+        lang = body.get("lang") or "id"
+        if lang not in ("id", "en"):
+            raise ValueError("lang harus 'id' atau 'en'")
+        refs = _load_ui_references(body)
+        return analyze_text_quality(
+            text, refs, lang=lang, verify_dois=bool(body.get("verify")))
+
+    def _jargon(self, body: dict) -> dict:
+        text = str(body.get("text") or "").strip()
+        if not text:
+            raise ValueError("teks kosong")
+        field = body.get("field") or None
+        matches = find_terms(text, field)
+        return {"matches": matches, "count": len(matches)}
+
+    def _cite(self, body: dict) -> dict:
+        text = str(body.get("text") or "").strip()
+        if not text:
+            raise ValueError("teks kosong")
+        refs = _load_ui_references(body)
+        if refs is None:
+            raise ValueError("sitasi butuh bibliografi (pilih contoh bawaan atau tempel JSON)")
+        style = body.get("style") or "apa"
+        if style not in STYLES:
+            raise ValueError(f"gaya tidak dikenal: {style}")
+        lang = body.get("lang") or "id"
+        if lang not in ("id", "en"):
+            raise ValueError("lang harus 'id' atau 'en'")
+        output, woven = weave(text, refs, style=style, lang=lang)
+        return {"output": output, "woven": woven}
+
+    def _fill_prompt(self, body: dict) -> dict:
+        prompt_id = str(body.get("id") or "")
+        prompt = get_prompt(prompt_id)
+        if prompt is None:
+            raise ValueError(f"prompt tidak dikenal: {prompt_id}")
+        values = body.get("values") or {}
+        if not isinstance(values, dict):
+            raise ValueError("values harus berupa objek {kunci: nilai}")
+        lang = body.get("lang") or "id"
+        if lang not in ("id", "en"):
+            raise ValueError("lang harus 'id' atau 'en'")
+        return {"text": fill_prompt(prompt_id, values, lang=lang)}
+
+
+def make_server(host: str = "127.0.0.1", port: int = 8000):
+    """Build the local web UI server (port 0 picks a free port)."""
+    return http.server.ThreadingHTTPServer((host, port), _UIHandler)
+
+
+def serve_main(argv=None) -> int:
+    p = argparse.ArgumentParser(
+        description="Serve a local web UI for all four tools (localhost only).")
+    p.add_argument("--port", type=int, default=8000,
+                   help="port to listen on (default: 8000)")
+    p.add_argument("--host", default="127.0.0.1",
+                   help="interface to bind (default: 127.0.0.1, localhost only)")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    args = p.parse_args(argv)
+    server = make_server(args.host, args.port)
+    host, port = server.server_address[:2]
+    print(f"Academic Tools v{__version__} — buka http://{host}:{port}/")
+    print("Berhenti dengan Ctrl-C. Hanya localhost; tidak ada data yang keluar dari komputer ini.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nBerhenti.")
+    return 0
+
+
 def main(argv=None) -> int:
     """Entry point. No args -> interactive menu; jargon/cite/prompts -> passthrough."""
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ("jargon", "cite", "prompts", "analyze"):
+    if argv and argv[0] in ("jargon", "cite", "prompts", "analyze", "serve"):
         tool, rest = argv[0], argv[1:]
         if tool == "jargon":
             return jargon_main(rest)
@@ -3115,6 +3823,8 @@ def main(argv=None) -> int:
             return cite_main(rest)
         if tool == "analyze":
             return analyze_main(rest)
+        if tool == "serve":
+            return serve_main(rest)
         return prompts_main(rest)
     if argv and argv[0] in ("-h", "--help"):
         print(__doc__)

@@ -1,6 +1,6 @@
-# hermes-academic-jargon-buster
+# Academic Jargon Buster
 
-Translate academic jargon to plain English — a Hermes skill, plus a small runnable reference implementation.
+Translate academic jargon to plain English — plus a small runnable reference implementation.
 
 - **Skill:** `skills/research/academic-jargon-buster/SKILL.md` (v1.0.0, MIT)
 - **Demo:** `jargon_buster.py` — pure Python, no dependencies, works standalone

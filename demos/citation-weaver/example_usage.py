@@ -1,7 +1,7 @@
 """Example usage of citation-weaver (standalone demo).
 
 Run from the repo root:
-    python3 demos/example_usage.py
+    python3 demos/citation-weaver/example_usage.py
 
 Uses the sample bibliography in demos/citation-weaver/references.json — seven real,
 verifiable references (Vaswani et al. 2017, Devlin et al. 2019,

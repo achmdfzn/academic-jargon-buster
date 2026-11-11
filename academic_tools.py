@@ -14,7 +14,7 @@ Jargon Buster: find known jargon in plain text and explain each term
 in plain language, with provenance. 32 terms, fields from physics to
 usability to software engineering, plus Indonesian aliases.
 
-    python3 academic_tools.py jargon demos/test_paper.txt
+    python3 academic_tools.py jargon demos/jargon-buster/test_paper.txt
     python3 academic_tools.py jargon --text "The renormalization group ..." --field physics
     python3 academic_tools.py jargon --list-terms [--field general]
     python3 academic_tools.py jargon --update-dictionary --from new_terms.json

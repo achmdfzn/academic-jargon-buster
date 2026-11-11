@@ -1,7 +1,7 @@
 """Example usage of academic-jargon-buster (standalone demo).
 
 Run from the repo root:
-    python3 demos/example_usage.py
+    python3 demos/jargon-buster/example_usage.py
 
 Note: this demo uses the standalone jargon_buster.py in the repo root.
 It does NOT import any `hermes_tools` package — no such import is
@@ -13,7 +13,7 @@ skills/research/academic-jargon-buster/SKILL.md.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from jargon_buster import find_terms, to_annotated_markdown, to_csv
 

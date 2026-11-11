@@ -32,5 +32,5 @@ Lihat daftar lengkap lewat CLI / See the full list via CLI:
 
 ```bash
 python3 citation_weaver.py --list-jurusan
-python3 citation_weaver.py --text "..." --refs demos/references.json --jurusan Kedokteran
+python3 citation_weaver.py --text "..." --refs demos/citation-weaver/references.json --jurusan Kedokteran
 ```

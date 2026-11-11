@@ -65,8 +65,8 @@ Out: ...menggunakan metode System Usability Scale (SUS) [1].
 ## Use each tool on its own
 
 ```bash
-python3 academic_tools.py jargon demos/test_paper.txt
-python3 academic_tools.py jargon demos/test_paper.txt --format csv
+python3 academic_tools.py jargon demos/jargon-buster/test_paper.txt
+python3 academic_tools.py jargon demos/jargon-buster/test_paper.txt --format csv
 python3 academic_tools.py jargon --list-terms --field general
 python3 academic_tools.py jargon --update-dictionary --from new_terms.json
 python3 academic_tools.py cite demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json --lang id
@@ -85,8 +85,9 @@ python3 academic_tools.py cite --lookup "Deep learning" --add-to my-refs.json
 academic_tools.py            # everything (v1.6.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 skills/research/             # the same three tools as agent skills
-demos/                       # examples + 7 real sample references
-docs/                        # majors & styles, verification, update schedule
+demos/jargon-buster/         # jargon example + sample paper
+demos/citation-weaver/       # citation examples + 7 real references
+docs/                        # per-tool notes, shared standards, update schedule
 tests/                       # 104 tests, stdlib unittest only
 ```
 

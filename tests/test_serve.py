@@ -113,6 +113,78 @@ class TestServe(unittest.TestCase):
         self.assertIn('id="analyze-save"', body)
         self.assertIn("Simpan ke pustaka", body)
 
+    def test_home_page_has_library_tab(self):
+        status, body = _request(self.base, "GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn('data-tab="library"', body)
+        self.assertIn('id="panel-library"', body)
+        self.assertIn('id="library-search"', body)
+        self.assertIn("/api/library/history", body)
+
+    def test_library_history_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
+                status, body = _request(
+                    self.base, "GET", "/api/library/history")
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body), {"analyses": []})
+
+    def test_library_history_analysis_and_refs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
+                status, body = _request(self.base, "POST", "/api/analyze", {
+                    "text": TEXT, "refs": "sample", "verify": False,
+                    "save": True})
+                self.assertEqual(status, 200)
+                self.assertEqual(json.loads(body)["library_id"], 1)
+                status, body = _request(
+                    self.base, "GET", "/api/library/history")
+                self.assertEqual(status, 200)
+                rows = json.loads(body)["analyses"]
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["quality_score"], 100)
+                status, body = _request(
+                    self.base, "GET", "/api/library/analysis?id=1")
+                self.assertEqual(status, 200)
+                analysis = json.loads(body)["analysis"]
+                self.assertEqual(analysis["text"], TEXT)
+                self.assertEqual(analysis["references"], ["devlin2019"])
+                status, body = _request(
+                    self.base, "GET", "/api/library/refs")
+                self.assertEqual(status, 200)
+                refs = json.loads(body)["references"]
+                self.assertEqual([r["key"] for r in refs], ["devlin2019"])
+                status, body = _request(
+                    self.base, "GET", "/api/library/refs?search=BERT")
+                self.assertEqual(status, 200)
+                self.assertEqual(len(json.loads(body)["references"]), 1)
+                status, body = _request(
+                    self.base, "GET", "/api/library/refs?search=tidakada")
+                self.assertEqual(status, 200)
+                self.assertEqual(json.loads(body), {"references": []})
+
+    def test_library_analysis_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
+                status, body = _request(
+                    self.base, "GET", "/api/library/analysis?id=99")
+                self.assertEqual(status, 404)
+                self.assertIn("tidak ada analisis #99", body)
+                status, body = _request(
+                    self.base, "GET", "/api/library/analysis")
+                self.assertEqual(status, 400)
+                status, body = _request(
+                    self.base, "GET", "/api/library/analysis?id=abc")
+                self.assertEqual(status, 400)
+                status, body = _request(
+                    self.base, "GET", "/api/library/history?limit=abc")
+                self.assertEqual(status, 400)
+                status, body = _request(self.base, "GET", "/api/nope")
+                self.assertEqual(status, 404)
+
     def test_humanize_with_apply(self):
         status, body = _request(self.base, "POST", "/api/humanize", {
             "text": "Penelitian ini melakukan pengukuran terhadap "

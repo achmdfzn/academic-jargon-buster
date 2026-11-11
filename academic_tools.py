@@ -93,15 +93,15 @@ import sqlite3
 import sys
 import urllib.error
 import urllib.request
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.16.1"
+__version__ = "1.17.0"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.1.0"
+QUALITY_VERSION = "1.2.0"
 CLI_VERSION = "1.10.0"
 
 # ======================================================================
@@ -4396,12 +4396,13 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 <header>
   <div class="wrap">
     <h1>Academic Tools <span class="ver">v__ACADEMIC_TOOLS_VERSION__</span></h1>
-    <p>Satu file Python untuk tulisan mahasiswa: terjemahkan jargon, sisipkan sitasi, cek kualitas naskah, dan isi template prompt skripsi.</p>
+    <p>Satu file Python untuk tulisan mahasiswa: terjemahkan jargon, sisipkan sitasi, cek kualitas naskah, isi template prompt skripsi, dan lihat riwayat di pustaka.</p>
     <nav class="tabs" role="tablist" aria-label="Alat">
       <button role="tab" data-tab="analyze" aria-selected="true">Analisis Kualitas</button>
       <button role="tab" data-tab="jargon" aria-selected="false">Jargon Buster</button>
       <button role="tab" data-tab="cite" aria-selected="false">Citation Weaver</button>
       <button role="tab" data-tab="prompts" aria-selected="false">Prompt Skripsi</button>
+      <button role="tab" data-tab="library" aria-selected="false">Pustaka</button>
     </nav>
   </div>
 </header>
@@ -4520,6 +4521,23 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <div class="result" id="prompt-result"></div>
     </section>
 
+    <section class="panel" id="panel-library" role="tabpanel" aria-label="Pustaka">
+      <p>Riwayat analisis yang disimpan dari tab Analisis Kualitas, dan bibliografi pribadi yang tumbuh dari referensi yang dikutip.</p>
+      <div class="actions">
+        <button class="primary" id="library-refresh">Muat ulang</button>
+        <span class="status" id="library-status"></span>
+      </div>
+      <div class="error" id="library-error"></div>
+      <div class="result" id="library-history"></div>
+      <div class="result" id="library-detail"></div>
+      <label for="library-search">Cari referensi <span class="hint">— judul, penulis, kunci, atau DOI</span></label>
+      <input type="text" id="library-search" placeholder="misalnya: deep learning">
+      <div class="actions">
+        <button class="primary" id="library-search-btn">Cari</button>
+      </div>
+      <div class="result" id="library-refs"></div>
+    </section>
+
   </div>
 </main>
 <footer>
@@ -4552,6 +4570,12 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
     return data;
   }
+  async function get(path) {
+    var r = await fetch(path);
+    var data = await r.json();
+    if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+    return data;
+  }
   function refsPayload(modeEl, jsonEl) {
     var custom = jsonEl.value.trim();
     if (custom) return {refs_json: custom};
@@ -4566,7 +4590,98 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       document.querySelectorAll(".panel").forEach(function (p) {
         p.classList.toggle("active", p.id === "panel-" + btn.dataset.tab);
       });
+      if (btn.dataset.tab === "library") loadLibrary();
     });
+  });
+
+  function renderHistory(rows) {
+    var h = "";
+    if (!rows.length) {
+      h += '<div class="card"><p>Belum ada riwayat analisis — centang "Simpan ke pustaka" di tab Analisis Kualitas.</p></div>';
+    } else {
+      h += '<div class="card"><h2>Riwayat analisis</h2><ul>';
+      rows.forEach(function (a) {
+        h += '<li><a href="#" data-analysis="' + a.id + '">#' + a.id + " " + esc(a.title) + "</a> — "
+          + esc(a.created_at.slice(0, 10)) + ", skor " + a.quality_score + "/100, gaya "
+          + a.style_score + "/25</li>";
+      });
+      h += "</ul></div>";
+    }
+    $("library-history").innerHTML = h;
+  }
+  function renderDetail(a) {
+    var h = '<div class="card"><h2>Analisis #' + a.id + " — " + esc(a.title) + "</h2>"
+      + "<p>" + esc(a.created_at.slice(0, 10)) + " · Skor " + a.quality_score + "/100 · Gaya "
+      + a.style_score + "/25 · Jargon " + a.jargon_count + " · Sitasi hilang "
+      + a.citations_missing + " · DOI " + a.doi_ok + "/" + a.doi_total + "</p>";
+    if (a.references && a.references.length) {
+      h += "<p>Referensi dikutip: " + esc(a.references.join(", ")) + "</p>";
+    }
+    h += "<pre>" + esc(a.text) + "</pre></div>";
+    $("library-detail").innerHTML = h;
+  }
+  function renderRefs(rows, query) {
+    var h = "";
+    if (!rows.length) {
+      h += '<div class="card"><p>' + (query
+        ? "Tidak ada referensi yang cocok dengan “" + esc(query) + "”."
+        : "Tidak ada referensi di pustaka.") + "</p></div>";
+    } else {
+      h += '<div class="card"><h2>Referensi <span class="meta">' + rows.length + "</span></h2><ul>";
+      rows.forEach(function (r) {
+        h += "<li><strong>" + esc(r.key) + "</strong>" + (r.year ? " (" + r.year + ")" : "")
+          + ": " + esc(r.title || "-")
+          + (r.authors ? ' <span class="src">' + esc(r.authors) + "</span>" : "")
+          + (r.doi ? ' <span class="src">doi:' + esc(r.doi) + "</span>" : "") + "</li>";
+      });
+      h += "</ul></div>";
+    }
+    $("library-refs").innerHTML = h;
+  }
+  async function loadLibrary() {
+    clearError("library-error");
+    $("library-status").textContent = "Memuat…";
+    try {
+      var hist = await get("/api/library/history?limit=20");
+      renderHistory(hist.analyses);
+      var refs = await get("/api/library/refs?limit=20");
+      renderRefs(refs.references, "");
+    } catch (e) {
+      showError("library-error", e.message);
+    } finally {
+      $("library-status").textContent = "";
+    }
+  }
+  $("library-refresh").addEventListener("click", loadLibrary);
+  $("library-search-btn").addEventListener("click", async function () {
+    var q = $("library-search").value.trim();
+    clearError("library-error");
+    try {
+      var res = await get("/api/library/refs?limit=20"
+        + (q ? "&search=" + encodeURIComponent(q) : ""));
+      renderRefs(res.references, q);
+    } catch (e) {
+      showError("library-error", e.message);
+    }
+  });
+  $("library-search").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      $("library-search-btn").click();
+    }
+  });
+  $("library-history").addEventListener("click", async function (ev) {
+    var link = ev.target.closest("a[data-analysis]");
+    if (!link) return;
+    ev.preventDefault();
+    clearError("library-error");
+    try {
+      var res = await get("/api/library/analysis?id="
+        + encodeURIComponent(link.dataset.analysis));
+      renderDetail(res.analysis);
+    } catch (e) {
+      showError("library-error", e.message);
+    }
   });
 
   function renderAnalyze(res, lang) {
@@ -4917,17 +5032,65 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        if self.path in ("/", "/index.html"):
-            self._send_page()
-        elif self.path == "/api/prompts":
-            self._send_json(200, {"prompts": [
-                {"id": p["id"], "name": p["name"], "name_en": p["name_en"],
-                 "category": p["category"], "tool": p["tool"],
-                 "fields": p["fields"]}
-                for p in PROMPTS
-            ]})
+        parts = urlsplit(self.path)
+        path, query = parts.path, parse_qs(parts.query)
+        try:
+            if path in ("/", "/index.html"):
+                self._send_page()
+            elif path == "/api/prompts":
+                self._send_json(200, {"prompts": [
+                    {"id": p["id"], "name": p["name"], "name_en": p["name_en"],
+                     "category": p["category"], "tool": p["tool"],
+                     "fields": p["fields"]}
+                    for p in PROMPTS
+                ]})
+            elif path == "/api/library/history":
+                self._send_json(200, self._library_history(query))
+            elif path == "/api/library/analysis":
+                self._send_json(200, self._library_analysis(query))
+            elif path == "/api/library/refs":
+                self._send_json(200, self._library_refs(query))
+            else:
+                self._send_json(404, {"error": "tidak ditemukan"})
+        except ValueError as e:
+            self._send_json(400, {"error": str(e)})
+        except KeyError as e:
+            self._send_json(404, {"error": str(e)})
+        except Exception:
+            self._send_json(500, {"error": "kesalahan server, coba lagi"})
+
+    @staticmethod
+    def _query_int(query: dict, name: str, default: int) -> int:
+        raw = (query.get(name) or [None])[0]
+        if raw is None:
+            return default
+        try:
+            value = int(raw)
+        except ValueError:
+            raise ValueError(f"{name} harus angka")
+        return max(1, min(100, value))
+
+    def _library_history(self, query: dict) -> dict:
+        return {"analyses": list_analyses(
+            limit=self._query_int(query, "limit", 20))}
+
+    def _library_analysis(self, query: dict) -> dict:
+        raw = (query.get("id") or [None])[0]
+        if raw is None or not raw.isdigit():
+            raise ValueError("id analisis harus angka")
+        analysis = get_analysis(int(raw))
+        if analysis is None:
+            raise KeyError(f"tidak ada analisis #{raw}")
+        return {"analysis": analysis}
+
+    def _library_refs(self, query: dict) -> dict:
+        limit = self._query_int(query, "limit", 20)
+        search = (query.get("search") or [""])[0].strip()
+        if search:
+            rows = search_references(search, limit=limit)
         else:
-            self._send_json(404, {"error": "tidak ditemukan"})
+            rows = list_references(limit=limit)
+        return {"references": rows}
 
     def do_POST(self):
         try:

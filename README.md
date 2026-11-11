@@ -23,7 +23,7 @@ Out: Penelitian ini mengukur suhu ruangan. Penelitian ini menganalisis
 
 ## The file
 
-`academic_tools.py` (v1.16.1) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, applied only with `--apply`), a local library of past analyses and references (one SQLite file, no account), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.17.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, applied only with `--apply`), a local library of past analyses and references (one SQLite file, no account), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -36,7 +36,7 @@ python3 academic_tools.py serve           # web UI at http://127.0.0.1:8000/
 
 ```
   +==============================================================+
-  | Academic Tools                                       v1.16.1 |
+  | Academic Tools                                       v1.17.0 |
   +--------------------------------------------------------------+
   | Jargon Buster  |  Citation Weaver  |  Prompt Skripsi         |
   | id  |  ketik angka, Enter untuk memilih                      |
@@ -65,7 +65,7 @@ Pick a number, follow the prompts: type text or read a file, pick a field, a cit
 | **Humanize** | Style rewrite suggestions, shown before/after per pattern: light verbs become direct verbs ("melakukan pengukuran terhadap" → "mengukur"), connectors are dropped, "yang mana" splits the sentence. Passive voice, "dimana", flat rhythm, and unknown light verbs get guidance instead of a made-up rewrite. Nothing is changed unless you pass `--apply`: then the mechanical suggestions are written to `<file>.humanized.txt` (or `--out`, or `--in-place` with a `.bak` backup), guidance-only ones are left for the author, and overlapping spans are skipped. Exits 1 when it has suggestions. |
 | **Library** | Analysis history and a personal bibliography in one local SQLite file (`~/.academic-tools/library.db`, no account, no cloud). `analyze --save` records a run — score, style, missing citations, DOI counts, suggestions, the text and its hash — and every cited reference is added to the bibliography. `library --history` lists past runs, `--show <id>` prints one in full, `--refs` / `--search` browse the bibliography, `--import` / `--export` move a `refs.json` in and out. |
 | **Menu CLI** | One command, all six tools, bilingual prompts. |
-| **Web UI** | The same four tools in a browser page: `python3 academic_tools.py serve`, then open http://127.0.0.1:8000/. The Analisis Kualitas tab has "Saran rewrite gaya" and "Simpan ke pustaka" checkboxes, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. Localhost only, zero external resources — no CDN, no webfonts, no analytics. |
+| **Web UI** | The tools plus the library in a browser page: `python3 academic_tools.py serve`, then open http://127.0.0.1:8000/. The Analisis Kualitas tab has "Saran rewrite gaya" and "Simpan ke pustaka" checkboxes, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. The Pustaka tab lists saved runs (click one for the full detail) and searches the personal bibliography. Localhost only, zero external resources — no CDN, no webfonts, no analytics. |
 
 **The rule:** never invent a reference. A `[cite:key]` with no bibliography entry prints as `[PERLU RUJUKAN: key]` — a gap to fill, not a paper to fake.
 
@@ -126,7 +126,7 @@ Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key sin
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.16.1)
+academic_tools.py            # everything (v1.17.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -134,7 +134,7 @@ skills/research/             # four skills: the three tools + a quality-check sk
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 230 tests, stdlib unittest only
+tests/                       # 234 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -153,7 +153,7 @@ The `skills/research/` folders hold the same tools as agent skills: the three to
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 230 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 234 tests, no dependencies
 ```
 
 ## License

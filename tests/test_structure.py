@@ -177,7 +177,9 @@ class TestSkillDocsCoverTheTools(unittest.TestCase):
     def test_quality_check_skill_documents_the_library(self):
         text = read_text("skills/research/academic-quality-check/SKILL.md")
         for keyword in ("Library", "library --history", "--save",
-                        "library.db", "--import", "--export"):
+                        "library.db", "--import", "--export",
+                        "Pustaka", "/api/library/history",
+                        "/api/library/analysis", "/api/library/refs"):
             self.assertIn(keyword, text, keyword)
 
 

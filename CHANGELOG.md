@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.17.0 — 2026-11-12
+
+- The web UI gains a Pustaka tab: saved runs listed newest first (click one for the full detail, including the text), the personal bibliography below, and a search box (title, author, key, or DOI; Enter works too). Three new GET endpoints — `/api/library/history`, `/api/library/analysis?id=<n>`, `/api/library/refs?search=<q>` — each with `?limit=` clamped to 1–100; a missing analysis id is an honest 404, a bad id or limit a 400. The tab loads its data when opened, plus a "Muat ulang" button. Still one file, zero external resources. `QUALITY_VERSION` 1.1.0 → 1.2.0.
+- 4 new tests (tab in the page, empty history, save → history → detail → refs search, error cases). Full suite 234/234.
+
 ## 1.16.1 — 2026-11-12
 
 - Dictionary grows 32 → 52 terms: 10 statistics concepts (English + Indonesian alias each) — statistical significance, p-value, correlation, regression, standard deviation, null hypothesis, confidence interval, normality, multicollinearity, autocorrelation — in a new `statistics` field, filterable with `jargon --list-terms --field statistics`. Sources verified live the same day: Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed., SAGE) for the inference terms; Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed., Badan Penerbit Undip) for the classical-assumption tests (normality, multicollinearity, autocorrelation). "variance" was left out on purpose: the matcher is substring-based, so it would also match inside "covariance". `JARGON_VERSION` 1.0.4 → 1.0.5.

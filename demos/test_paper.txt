@@ -1,0 +1,12 @@
+The renormalization group is a mathematical framework for studying
+systems at different scales.
+
+In machine learning, gradient descent is used to train models, but
+overfitting remains a common problem when the model memorises the
+training data. Stochastic gradient descent speeds this up by using
+small random samples at each step.
+
+In economics, causal inference asks whether one thing actually causes
+another, rather than merely happening at the same time. A related
+complication is heteroscedasticity, where the spread of errors is
+not constant across the range of values.

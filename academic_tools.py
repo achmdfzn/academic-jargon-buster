@@ -49,7 +49,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 JARGON_VERSION = "1.0.2"
 CITATION_VERSION = "1.0.0"
 CLI_VERSION = "1.0.0"
@@ -137,8 +137,8 @@ DICTIONARY = {
         "general",
         "Wikipedia / field textbooks",
     ),
-    # Added 2026-11-11 from a real user abstract (a student abstract
-    # a student abstract MIS, SUS evaluation). Indonesian aliases included
+    # Added 2026-11-11 from a real student abstract (management
+    # information system, SUS evaluation). Indonesian aliases included
     # where the source text uses the Indonesian form.
     "system usability scale": (
         "a 10-question survey that measures how easy a system is to use; "

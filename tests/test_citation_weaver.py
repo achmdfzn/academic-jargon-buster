@@ -28,9 +28,10 @@ class TestCitationWeaver(unittest.TestCase):
         self.assertEqual(REFS["vaswani2017"]["arxiv"], "1706.03762")
         self.assertEqual(REFS["vaswani2017"]["year"], 2017)
 
-    def test_new_references_from_user_abstract_are_real(self):
-        # Added 2026-11-11 from a real user abstract (a student abstract MIS,
-        # SUS evaluation). All three are real, verifiable publications.
+    def test_new_references_from_student_abstract_are_real(self):
+        # Added 2026-11-11 from a real student abstract (management
+        # information system, SUS evaluation). All three are real,
+        # verifiable publications.
         self.assertEqual(REFS["brooke1996"]["year"], 1996)
         self.assertIn("Usability Evaluation in Industry", REFS["brooke1996"]["venue"])
         self.assertEqual(REFS["likert1932"]["year"], 1932)
@@ -38,12 +39,11 @@ class TestCitationWeaver(unittest.TestCase):
         self.assertEqual(REFS["ferraiolo1992"]["year"], 1992)
         self.assertIn("National Computer Security Conference", REFS["ferraiolo1992"]["venue"])
 
-    def test_student_abstract_abstract_weaves_three_citations_ieee(self):
-        text = open(
-            Path(__file__).resolve().parent.parent
-            / "demos" / "citation-weaver" / "contoh_id.txt",
-            encoding="utf-8",
-        ).read()
+    def test_three_new_references_weave_ieee(self):
+        text = ("We measured usability with the System Usability Scale (SUS) "
+                "[cite:brooke1996]. Access used role-based access control "
+                "[cite:ferraiolo1992], and the survey used a Likert scale "
+                "[cite:likert1932].")
         out, _ = weave(text, REFS, style="ieee", lang="id")
         self.assertIn("[1]", out)
         self.assertIn("[2]", out)

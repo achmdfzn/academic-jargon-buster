@@ -30,6 +30,25 @@ class TestAcademicCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Academic Tools", out)
 
+    def test_banner_is_a_box_with_version(self):
+        import academic_tools as tools
+        code, out = run_cli(["0"])
+        self.assertEqual(code, 0)
+        self.assertIn("Academic Tools", out)
+        self.assertIn(f"v{tools.__version__}", out)
+        self.assertIn(
+            "Jargon Buster  |  Citation Weaver  |  Prompt Skripsi", out
+        )
+        self.assertTrue(
+            any(line.startswith("  +===") for line in out.splitlines())
+        )
+
+    def test_english_banner_names_thesis_prompts(self):
+        code, out = run_cli(["4", "0"])
+        self.assertEqual(code, 0)
+        self.assertIn("Thesis Prompts", out)
+        self.assertIn("type a number", out)
+
     def test_invalid_choice_reprompts_then_exits(self):
         code, out = run_cli(["99", "abc", "0"])
         self.assertEqual(code, 0)

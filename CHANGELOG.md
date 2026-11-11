@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.0 — 2026-11-12
+
+- New menu banner: a bordered panel with the version, the three tools, and a language hint, replacing the single `====` line. ASCII only, so the menu still renders when stdout is piped or the console is not UTF-8. `CLI_VERSION` 1.2.0 → 1.3.0.
+- Two tests pin the banner (Indonesian and English) and the version shown in it. Full suite 116/116.
+
 ## 1.7.0 — 2026-11-12
 
 - Structure release, no new tool features. `academic_tools.py` is still the whole tool in one dependency-free file, and the four root `.py` files are still the same thin shims. What moved:

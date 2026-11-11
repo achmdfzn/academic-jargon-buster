@@ -69,11 +69,11 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 JARGON_VERSION = "1.0.4"
 CITATION_VERSION = "1.3.0"
 PROMPTS_VERSION = "1.1.0"
-CLI_VERSION = "1.2.0"
+CLI_VERSION = "1.3.0"
 
 # ======================================================================
 # Jargon Buster
@@ -1920,7 +1920,9 @@ DEFAULT_REFS = os.path.join(
 
 STRINGS = {
     "id": {
-        "banner": "Academic Tools — Jargon Buster + Citation Weaver + Prompt Skripsi",
+        "banner": "Academic Tools",
+        "tagline": "Jargon Buster  |  Citation Weaver  |  Prompt Skripsi",
+        "banner_hint": "id  |  ketik angka, Enter untuk memilih",
         "menu_title": "Pilih alat:",
         "jargon": "Jargon Buster — terjemahkan istilah akademik",
         "cite": "Citation Weaver — sisipkan sitasi ke naskah",
@@ -1967,7 +1969,9 @@ STRINGS = {
         "result": "Hasil:",
     },
     "en": {
-        "banner": "Academic Tools — Jargon Buster + Citation Weaver + Thesis Prompts",
+        "banner": "Academic Tools",
+        "tagline": "Jargon Buster  |  Citation Weaver  |  Thesis Prompts",
+        "banner_hint": "en  |  type a number, Enter to choose",
         "menu_title": "Choose a tool:",
         "jargon": "Jargon Buster — translate academic jargon",
         "cite": "Citation Weaver — weave citations into text",
@@ -2014,6 +2018,35 @@ STRINGS = {
         "result": "Result:",
     },
 }
+
+
+BANNER_MIN_WIDTH = 60
+
+
+def format_banner(lang: str) -> str:
+    """Boxed banner for the interactive menu; width follows the text.
+
+    ASCII only: the menu still renders when stdout is piped and the
+    console encoding is not UTF-8 (cp1252, cp437).
+    """
+    t = STRINGS[lang]
+    title = t["banner"]
+    version = f"v{__version__}"
+    tagline = t["tagline"]
+    hint = t["banner_hint"]
+    width = max(BANNER_MIN_WIDTH, len(title) + len(version) + 2,
+                len(tagline) + 2, len(hint) + 2)
+    heading = title + " " * (width - len(title) - len(version)) + version
+    heavy = "=" * (width + 2)
+    light = "-" * (width + 2)
+    return "\n".join([
+        f"  +{heavy}+",
+        f"  | {heading} |",
+        f"  +{light}+",
+        f"  | {tagline.ljust(width)} |",
+        f"  | {hint.ljust(width)} |",
+        f"  +{heavy}+",
+    ])
 
 
 class CLI:
@@ -2093,7 +2126,8 @@ class CLI:
 
     def run(self) -> int:
         while True:
-            print(f"\n{'=' * 20} {self.t['banner']} {'=' * 20}")
+            print()
+            print(format_banner(self.lang))
             print(self.t["menu_title"])
             print(f"1. {self.t['jargon']}")
             print(f"2. {self.t['cite']}")

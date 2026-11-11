@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.9.0 — 2026-11-12
+
+- New `cite --refs refs.json --verify` and menu option 7: check every reference DOI against Crossref and OpenAlex. A DOI found in either source counts as real (arXiv and datasets register with DataCite, not Crossref); "not found" needs both sources to answer 404; a network error or a single checked source stays "unverified". Without `OPENALEX_API_KEY` the OpenAlex column reads `no key`, so a Crossref miss is never reported as fake. Exits 1 only when a DOI is missing from both sources. Output has an Indonesian and an English table with a summary line. Menu option 7 runs the same check; `CLI_VERSION` 1.3.0 → 1.4.0. Citation Weaver skill v1.4.0.
+- 12 tests cover one-source success, both-404, skipped key, no DOI, network error, the table, and `cite_main` exit codes. Full suite 130/130.
+
 ## 1.8.1 — 2026-11-12
 
 - OpenAlex lookup corrected for the February 2026 API change: a key is now required for production use (free, about $1 of usage per key per day; a single DOI/ID lookup is free, a search is about $0.001). HTTP 401/403 now fails with "create a free key at openalex.org/settings/api and set OPENALEX_API_KEY" instead of a bare HTTP code, and the 429 message no longer claims one budget per IP address. Crossref is unchanged and still needs no key, so DOI lookups work without one. Citation Weaver skill v1.3.1.

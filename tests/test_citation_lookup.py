@@ -206,5 +206,122 @@ class TestCiteMainLookup(unittest.TestCase):
         self.assertEqual(cm.exception.code, 2)
 
 
+class TestVerifyDois(unittest.TestCase):
+    """Cross-source DOI verification: Crossref + OpenAlex.
+
+    A DOI counts as real when at least one source has it, because arXiv
+    and datasets register with DataCite, not Crossref. 'missing' needs
+    both sources to answer 404.
+    """
+
+    def _fake_lookup(self, crossref_ok: bool, openalex_ok: bool):
+        def fake(url):
+            if "crossref" in url:
+                if crossref_ok:
+                    return CROSSREF_FIXTURE
+                raise tools.LookupError("not found (HTTP 404)")
+            if openalex_ok:
+                return OPENALEX_FIXTURE
+            raise tools.LookupError("not found (HTTP 404)")
+        return fake
+
+    def _refs(self, doi: str = "10.1038/nature14539") -> dict:
+        return {"lecun2015": {"title": "Deep learning", "year": 2015,
+                              "authors": ["LeCun, Yann"], "doi": doi}}
+
+    def test_ok_when_only_crossref_has_it(self):
+        with patch.dict(os.environ, {"OPENALEX_API_KEY": "test"}):
+            with patch.object(tools, "_lookup_get",
+                              side_effect=self._fake_lookup(True, False)):
+                result = tools.verify_reference_dois(self._refs())
+        self.assertEqual(result["lecun2015"]["crossref"], "ok")
+        self.assertEqual(result["lecun2015"]["openalex"], "not-found")
+        self.assertEqual(result["lecun2015"]["verdict"], "ok")
+
+    def test_ok_when_only_openalex_has_it(self):
+        with patch.dict(os.environ, {"OPENALEX_API_KEY": "test"}):
+            with patch.object(tools, "_lookup_get",
+                              side_effect=self._fake_lookup(False, True)):
+                result = tools.verify_reference_dois(self._refs())
+        self.assertEqual(result["lecun2015"]["verdict"], "ok")
+
+    def test_missing_when_both_sources_404(self):
+        with patch.dict(os.environ, {"OPENALEX_API_KEY": "test"}):
+            with patch.object(tools, "_lookup_get",
+                              side_effect=self._fake_lookup(False, False)):
+                result = tools.verify_reference_dois(self._refs())
+        self.assertEqual(result["lecun2015"]["verdict"], "missing")
+
+    def test_openalex_skipped_without_key_leaves_unverified(self):
+        with patch.dict(os.environ, {"OPENALEX_API_KEY": ""}):
+            with patch.object(tools, "_lookup_get",
+                              side_effect=self._fake_lookup(False, False)) as get:
+                result = tools.verify_reference_dois(self._refs())
+        self.assertEqual(result["lecun2015"]["openalex"], "skipped")
+        self.assertEqual(result["lecun2015"]["verdict"], "unverified")
+        self.assertEqual(get.call_count, 1)  # Crossref only
+
+    def test_reference_without_doi_is_no_doi(self):
+        result = tools.verify_reference_dois(self._refs(doi=""))
+        self.assertEqual(result["lecun2015"]["verdict"], "no-doi")
+
+    def test_network_error_is_unverified_not_missing(self):
+        with patch.dict(os.environ, {"OPENALEX_API_KEY": "test"}):
+            with patch.object(tools, "_lookup_get",
+                              side_effect=tools.LookupError("offline")):
+                result = tools.verify_reference_dois(self._refs())
+        self.assertEqual(result["lecun2015"]["verdict"], "unverified")
+
+    def test_format_verification_counts_verdicts(self):
+        result = {
+            "ok1": {"doi": "10.1/a", "crossref": "ok",
+                    "openalex": "not-found", "verdict": "ok"},
+            "bad1": {"doi": "10.1/b", "crossref": "not-found",
+                     "openalex": "not-found", "verdict": "missing"},
+            "nokey": {"doi": "", "crossref": "no-doi",
+                      "openalex": "no-doi", "verdict": "no-doi"},
+        }
+        text = tools.format_verification(result, lang="en")
+        self.assertIn("DOI verification", text)
+        self.assertIn("NOT FOUND", text)
+        self.assertIn("Verified 1 of 3 DOIs", text)
+        self.assertIn("no DOI 1", text)
+
+    def test_format_verification_empty(self):
+        self.assertIn("Tidak ada referensi",
+                      tools.format_verification({}, lang="id"))
+
+    def test_cite_main_verify_exits_1_on_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "refs.json")
+            tools.save_reference(self._refs()["lecun2015"], path)
+            with patch.dict(os.environ, {"OPENALEX_API_KEY": "test"}):
+                with patch.object(tools, "_lookup_get",
+                                  side_effect=self._fake_lookup(False, False)):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = tools.cite_main(["--refs", path, "--verify"])
+        self.assertEqual(rc, 1)
+        self.assertIn("TIDAK DITEMUKAN", buf.getvalue())
+        self.assertIn("lecun2015", buf.getvalue())
+
+    def test_cite_main_verify_exits_0_when_found(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "refs.json")
+            tools.save_reference(self._refs()["lecun2015"], path)
+            with patch.dict(os.environ, {"OPENALEX_API_KEY": "test"}):
+                with patch.object(tools, "_lookup_get",
+                                  side_effect=self._fake_lookup(True, True)):
+                    buf = io.StringIO()
+                    with redirect_stdout(buf):
+                        rc = tools.cite_main(["--refs", path, "--verify"])
+        self.assertEqual(rc, 0)
+
+    def test_cite_main_verify_requires_refs(self):
+        with self.assertRaises(SystemExit) as cm:
+            tools.cite_main(["--verify"])
+        self.assertEqual(cm.exception.code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

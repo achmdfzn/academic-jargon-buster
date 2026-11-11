@@ -145,6 +145,26 @@ class TestAcademicCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Pencarian gagal", out)
 
+    def test_cite_verify_from_menu(self):
+        import tempfile
+        import os
+        import academic_tools as tools
+        fake_result = {
+            "lecun2015": {"doi": "10.1038/nature14539", "crossref": "ok",
+                          "openalex": "ok", "verdict": "ok"},
+        }
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "refs.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write('{"lecun2015": {"title": "Deep learning", "doi": '
+                        '"10.1038/nature14539"}}')
+            with patch.object(tools, "verify_reference_dois",
+                              return_value=fake_result):
+                code, out = run_cli(["2", "7", path, "", "0", "0"])
+        self.assertEqual(code, 0)
+        self.assertIn("Verifikasi DOI", out)
+        self.assertIn("lecun2015", out)
+
     def test_passthrough_jargon_list_terms(self):
         buf = io.StringIO()
         with redirect_stdout(buf):

@@ -1,7 +1,7 @@
 ---
 name: citation-weaver
 description: "Weave citations into narrative text automatically."
-version: 1.3.1
+version: 1.4.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -52,6 +52,21 @@ Rules:
 - **Never invent a reference.** A failed lookup (not found, rate-limited, offline) is an error, never a guessed paper. A `[cite:key]` with no bibliography entry stays `[PERLU RUJUKAN: key]`.
 - **OpenAlex requires a free API key** (since February 2026; about $1 of free usage per key per day — a single DOI/ID lookup is free, a search costs roughly $0.001). Create one at <https://openalex.org/settings/api> and set `OPENALEX_API_KEY`. On HTTP 401/403 the lookup says the key is missing; on HTTP 429 it says the daily allowance is exhausted. Either way it fails with a clear message instead of inventing a reference.
 
+## DOI verification (v1.4.0)
+
+Check that every DOI in a bibliography points at a real record before quoting it:
+
+```bash
+python3 academic_tools.py cite --refs my-refs.json --verify
+```
+
+- Each DOI is looked up in **Crossref and OpenAlex**; the table shows both columns and a verdict.
+- **`ok` if either source has it.** arXiv and dataset DOIs register with DataCite, not Crossref, so requiring both would flag real papers.
+- **`NOT FOUND` only when both sources answer 404.** A network error, a timeout, or a single checked source is `unverified`, not fake.
+- **Without `OPENALEX_API_KEY` the OpenAlex column reads `no key`** and a Crossref miss stays `unverified`. Set the key to check both.
+- **References without a DOI are `no DOI`.** Use `--audit --check-links` for arXiv IDs and plain URLs.
+- Exit code is 1 only when a DOI is missing from both sources, 0 otherwise — safe for a CI step. Menu option 7 runs the same check.
+
 ## BibTeX export (v1.2.0)
 
 Export a bibliography JSON file to a `.bib` file ready for LaTeX / Overleaf:
@@ -73,4 +88,4 @@ python3 academic_tools.py cite --refs my-refs.json --audit naskah.txt --check-li
 
 The report lists every `[cite:key]` / `\cite{key}` with no bibliography entry (the reader can never check it), every bibliography entry never cited, and — with `--check-links` — every cited DOI / arXiv / URL that no longer resolves (plain HEAD request). A link that cannot be reached is reported as unreachable, never faked as alive. Exit code is 1 when a citation is missing or a link is dead, 0 when clean — so it fits in a pre-submission checklist or a CI step.
 - **Keys are automatic** (first author family name + year, e.g. `lecun2015`) and get a letter suffix on collision (`lecun2015a`). Use `--key` to pick your own.
-- In the interactive menu, Citation Weaver option 4 looks a reference up and offers to save it to a bibliography file of your choice.
+- In the interactive menu, Citation Weaver option 4 looks a reference up and offers to save it to a bibliography file of your choice; option 7 verifies every DOI in a bibliography.

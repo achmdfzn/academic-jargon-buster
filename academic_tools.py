@@ -69,11 +69,11 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.8.1"
+__version__ = "1.9.0"
 JARGON_VERSION = "1.0.4"
-CITATION_VERSION = "1.3.1"
+CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-CLI_VERSION = "1.3.0"
+CLI_VERSION = "1.4.0"
 
 # ======================================================================
 # Jargon Buster
@@ -711,6 +711,137 @@ def lookup_reference(query: str) -> dict:
     return search_reference_by_title(q)
 
 
+def _doi_source_status(url: str) -> str:
+    """One DOI lookup -> 'ok', 'not-found', or 'error' (never invented)."""
+    try:
+        _lookup_get(url)
+        return "ok"
+    except LookupError as e:
+        return "not-found" if "404" in str(e) else "error"
+
+
+def _doi_verdict(entry: dict) -> str:
+    """Combine both sources into ok / missing / unverified / no-doi.
+
+    A DOI only needs to exist in one source to be real: arXiv and
+    datasets register with DataCite, not Crossref. 'missing' therefore
+    needs both sources to say 404; one source alone is 'unverified'.
+    """
+    if not entry["doi"]:
+        return "no-doi"
+    checked = [s for s in (entry["crossref"], entry["openalex"])
+               if s in ("ok", "not-found")]
+    if "ok" in checked:
+        return "ok"
+    if len(checked) == 2:
+        return "missing"
+    return "unverified"
+
+
+def verify_reference_dois(references: dict) -> dict:
+    """Check every reference DOI against Crossref and OpenAlex.
+
+    Returns {key: {doi, crossref, openalex, verdict}}. OpenAlex has
+    required a key since February 2026; without OPENALEX_API_KEY its
+    column is 'skipped' and a DOI missing from Crossref alone stays
+    'unverified' instead of being called fake.
+    """
+    openalex_available = bool(os.environ.get("OPENALEX_API_KEY", "").strip())
+    result = {}
+    for key, ref in references.items():
+        doi = str(ref.get("doi") or "").strip()
+        entry = {"doi": doi, "crossref": "no-doi", "openalex": "no-doi"}
+        if doi:
+            entry["crossref"] = _doi_source_status(
+                CROSSREF_URL.format(doi=quote(doi, safe="/")))
+            if openalex_available:
+                entry["openalex"] = _doi_source_status(
+                    _openalex_url(
+                        OPENALEX_DOI_URL.format(doi=quote(doi, safe="/"))))
+            else:
+                entry["openalex"] = "skipped"
+        entry["verdict"] = _doi_verdict(entry)
+        result[key] = entry
+    return result
+
+
+_VERIFY_STRINGS = {
+    "id": {
+        "heading": "Verifikasi DOI (Crossref + OpenAlex)",
+        "cols": ("kunci", "doi", "crossref", "openalex", "hasil"),
+        "ok": "ok",
+        "missing": "TIDAK DITEMUKAN",
+        "unverified": "belum terverifikasi",
+        "no_doi": "tanpa DOI",
+        "skipped": "tanpa key",
+        "src": {"ok": "ok", "not-found": "tidak ada",
+                "no-doi": "tanpa DOI", "skipped": "tanpa key",
+                "error": "error"},
+        "summary": (
+            "Terverifikasi {ok} dari {total} DOI; tidak ditemukan {missing}, "
+            "belum terverifikasi {unverified}, tanpa DOI {no_doi}."
+        ),
+        "note": (
+            "DOI yang baru dicek satu sumber dilaporkan 'belum terverifikasi', "
+            "bukan palsu. Set OPENALEX_API_KEY agar dua sumber diperiksa."
+        ),
+        "empty": "Tidak ada referensi di bibliografi.",
+    },
+    "en": {
+        "heading": "DOI verification (Crossref + OpenAlex)",
+        "cols": ("key", "doi", "crossref", "openalex", "result"),
+        "ok": "ok",
+        "missing": "NOT FOUND",
+        "unverified": "unverified",
+        "no_doi": "no DOI",
+        "skipped": "no key",
+        "src": {"ok": "ok", "not-found": "not found",
+                "no-doi": "no DOI", "skipped": "no key",
+                "error": "error"},
+        "summary": (
+            "Verified {ok} of {total} DOIs; not found {missing}, "
+            "unverified {unverified}, no DOI {no_doi}."
+        ),
+        "note": (
+            "A DOI checked in only one source is 'unverified', not fake. "
+            "Set OPENALEX_API_KEY so both sources are checked."
+        ),
+        "empty": "No references in the bibliography.",
+    },
+}
+
+
+def _clip(text: str, width: int) -> str:
+    return text if len(text) <= width else text[: width - 3] + "..."
+
+
+def format_verification(result: dict, lang: str = "id") -> str:
+    """Human-readable table for verify_reference_dois()."""
+    t = _VERIFY_STRINGS.get(lang, _VERIFY_STRINGS["id"])
+    if not result:
+        return t["empty"]
+    key_w = max([len(t["cols"][0])] + [len(k) for k in result])
+    doi_w = max([len(t["cols"][1])] + [min(len(r["doi"]), 40)
+                                       for r in result.values()])
+    header = (f"{t['cols'][0]:<{key_w}}  {t['cols'][1]:<{doi_w}}  "
+              f"{t['cols'][2]:<10}  {t['cols'][3]:<10}  {t['cols'][4]}")
+    lines = [t["heading"], "", header, "-" * len(header)]
+    counts = {"ok": 0, "missing": 0, "unverified": 0, "no-doi": 0}
+    for key, ref in result.items():
+        counts[ref["verdict"]] += 1
+        label = t[ref["verdict"].replace("-", "_")]
+        crossref = t["src"].get(ref["crossref"], ref["crossref"])
+        openalex = t["src"].get(ref["openalex"], ref["openalex"])
+        lines.append(
+            f"{key:<{key_w}}  {_clip(ref['doi'], doi_w):<{doi_w}}  "
+            f"{crossref:<10}  {openalex:<10}  {label}"
+        )
+    lines += ["", t["summary"].format(
+        total=len(result), ok=counts["ok"], missing=counts["missing"],
+        unverified=counts["unverified"], no_doi=counts["no-doi"]), t["note"]]
+    return "\n".join(lines) + "\n"
+
+
 def reference_key(ref: dict, existing: dict | None = None) -> str:
     """Suggested bibliography key: first author family name + year.
 
@@ -1181,6 +1312,8 @@ def cite_main(argv=None) -> int:
                    "and entries never cited, instead of weaving")
     p.add_argument("--check-links", action="store_true",
                    help="with --audit: also verify each cited reference's DOI/arXiv/URL resolves")
+    p.add_argument("--verify", action="store_true",
+                   help="verify every reference DOI against Crossref and OpenAlex")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = p.parse_args(argv)
 
@@ -1239,6 +1372,15 @@ def cite_main(argv=None) -> int:
         sys.stdout.write(format_audit(result, lang=args.lang, links=links))
         dead = any(not v[1] for v in (links or {}).values())
         return 1 if result["missing"] or dead else 0
+
+    if args.verify:
+        if not args.refs:
+            p.error("--refs <bibliography.json> is required with --verify")
+            return 2
+        references = load_references(args.refs)
+        result = verify_reference_dois(references)
+        sys.stdout.write(format_verification(result, lang=args.lang))
+        return 1 if any(r["verdict"] == "missing" for r in result.values()) else 0
 
     style = args.style
     if not style and args.jurusan:
@@ -1974,6 +2116,7 @@ STRINGS = {
         "bibtex_saved": "BibTeX tersimpan:",
         "audit": "Audit sitasi (cek rujukan hilang/tak terpakai)",
         "audit_check_links": "Cek juga DOI/link masih hidup? (y = ya, kosong = tidak)",
+        "verify": "Verifikasi DOI referensi (Crossref/OpenAlex)",
         "press_enter": "Tekan Enter untuk kembali...",
         "result": "Hasil:",
     },
@@ -2023,6 +2166,7 @@ STRINGS = {
         "bibtex_saved": "BibTeX saved:",
         "audit": "Audit citations (check missing/unused references)",
         "audit_check_links": "Also check DOI/links are still alive? (y = yes, empty = no)",
+        "verify": "Verify reference DOIs (Crossref/OpenAlex)",
         "press_enter": "Press Enter to go back...",
         "result": "Result:",
     },
@@ -2213,8 +2357,9 @@ class CLI:
             print(f"4. {self.t['lookup']}")
             print(f"5. {self.t['bibtex']}")
             print(f"6. {self.t['audit']}")
+            print(f"7. {self.t['verify']}")
             print(f"0. {self.t['back']}")
-            choice = self.ask_choice(self.t["choice"], 6)
+            choice = self.ask_choice(self.t["choice"], 7)
             if choice == -1:
                 continue
             if choice == 1:
@@ -2233,6 +2378,8 @@ class CLI:
                 self.cite_export_bibtex()
             elif choice == 6:
                 self.cite_audit()
+            elif choice == 7:
+                self.cite_verify()
             elif choice == 0 or choice is None:
                 return
 
@@ -2251,6 +2398,15 @@ class CLI:
         if check.strip().lower() in ("y", "ya", "yes", "1"):
             links = check_reference_links(refs, keys=result["cited"])
         print(f"\n{format_audit(result, lang=self.lang, links=links)}")
+        self.pause()
+
+    def cite_verify(self):
+        refs_path = self.ask(self.t["refs"], DEFAULT_REFS)
+        if not os.path.isfile(refs_path):
+            print(f"{self.t['refs_missing']} {refs_path}")
+            return
+        result = verify_reference_dois(load_references(refs_path))
+        print(f"\n{format_verification(result, lang=self.lang)}")
         self.pause()
 
     def cite_export_bibtex(self):

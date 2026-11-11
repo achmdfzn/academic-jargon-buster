@@ -6,7 +6,7 @@ Student writing, minus the guesswork: this repo translates academic jargon into 
 
 ## The file
 
-`academic_tools.py` (v1.8.1) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, and an interactive menu CLI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.9.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, and an interactive menu CLI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -18,7 +18,7 @@ python3 academic_tools.py
 
 ```
   +==============================================================+
-  | Academic Tools                                        v1.8.0 |
+  | Academic Tools                                        v1.9.0 |
   +--------------------------------------------------------------+
   | Jargon Buster  |  Citation Weaver  |  Prompt Skripsi         |
   | id  |  ketik angka, Enter untuk memilih                      |
@@ -38,7 +38,7 @@ Pick a number, follow the prompts: type text or read a file, pick a field, a cit
 | Tool | In short |
 | --- | --- |
 | **Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source. 32 terms — physics, machine learning, usability, software engineering, research methods — including Indonesian aliases. |
-| **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography. 6 styles (APA, MLA, Chicago, IEEE, Harvard, Vancouver), 21 majors with a recommended style each. Look up real references by DOI or title from Crossref/OpenAlex instead of typing bibliography JSON by hand. Export the bibliography to BibTeX (`.bib`) for LaTeX/Overleaf. New: audit a manuscript's citations — find markers with no bibliography entry, entries never cited, and (optionally) dead DOI/arXiv links. |
+| **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography. 6 styles (APA, MLA, Chicago, IEEE, Harvard, Vancouver), 21 majors with a recommended style each. Look up real references by DOI or title from Crossref/OpenAlex instead of typing bibliography JSON by hand. Export the bibliography to BibTeX (`.bib`) for LaTeX/Overleaf. Audit a manuscript's citations — find markers with no bibliography entry, entries never cited, and (optionally) dead DOI/arXiv links. Verify reference DOIs across Crossref and OpenAlex: a DOI found in either source is real; "not found" requires both to answer 404. |
 | **Prompt Skripsi** | 18 ready-made prompt templates for thesis writing — roadmap, abstract, preface, problem statement, Bab 1–5, defense prep, publication. Every template has an Indonesian and an English version (`--lang en`). Pick one, fill in your title, theory, and method, paste the result into ChatGPT, Grok, Claude, Gemini, or Perplexity. |
 | **Menu CLI** | One command, all three tools, bilingual prompts. |
 
@@ -82,14 +82,15 @@ python3 academic_tools.py prompts latar-belakang
 python3 academic_tools.py prompts roadmap --set judul="..." --set teori="..." --set metode="..." --set bulan=6 --set tanggal="11 November 2026"
 python3 academic_tools.py cite --lookup 10.1038/nature14539
 python3 academic_tools.py cite --lookup "Deep learning" --add-to my-refs.json
+python3 academic_tools.py cite --refs demos/citation-weaver/references.json --verify
 ```
 
-Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key since February 2026 (about $0.001 per search under a ~$1/day free allowance). DOI lookups try Crossref first, so they keep working without a key.
+Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key since February 2026 (about $0.001 per search under a ~$1/day free allowance). DOI lookups try Crossref first, so they keep working without a key. `--verify` checks every DOI against Crossref and OpenAlex; a DOI found in either source is real, "not found" needs both to answer 404, and without the key the OpenAlex column reads `no key` and such a DOI stays "unverified" rather than being called fake. It exits 1 only when a DOI is missing from both sources; references without a DOI are reported as `no DOI` (use `--audit --check-links` for arXiv IDs and URLs).
 
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.8.1)
+academic_tools.py            # everything (v1.9.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -97,7 +98,7 @@ skills/research/             # the same three tools as agent skills
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 118 tests, stdlib unittest only
+tests/                       # 130 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -113,7 +114,7 @@ The `skills/research/` folders hold the same three tools as agent skills. They f
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 118 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 130 tests, no dependencies
 ```
 
 ## License

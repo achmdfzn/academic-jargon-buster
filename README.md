@@ -84,6 +84,8 @@ python3 academic_tools.py cite --lookup "Deep learning" --add-to my-refs.json
 ```
 academic_tools.py            # everything (v1.6.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
+pyproject.toml               # optional: pipx install . / pip install .
+.github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
 skills/research/             # the same three tools as agent skills
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references

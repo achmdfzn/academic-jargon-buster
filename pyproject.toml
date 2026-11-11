@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "academic-tools"
+description = "Jargon Buster, Citation Weaver, and thesis prompts in one dependency-free Python file."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Achmad Fauzan", email = "achmddfzn@proton.me" }]
+keywords = ["academic", "jargon", "citations", "thesis", "indonesian"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Education",
+    "Topic :: Text Processing :: Linguistic",
+]
+dynamic = ["version"]
+
+[project.scripts]
+academic-tools = "academic_tools:main"
+
+[tool.setuptools]
+py-modules = [
+    "academic_tools",
+    "academic_cli",
+    "citation_weaver",
+    "jargon_buster",
+    "skripsi_prompts",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "academic_tools.__version__" }

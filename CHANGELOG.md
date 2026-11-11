@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.0 — 2026-11-11
+
+- Citation Weaver can now audit a manuscript before submission: `cite --refs refs.json --audit naskah.txt [--check-links]` (or menu Citation Weaver option 6) reports every `[cite:key]` / `\cite{key}` with no bibliography entry, every bibliography entry never cited, and — with `--check-links` — every cited DOI/arXiv/URL that no longer resolves (plain HEAD request; unreachable is reported, never faked). Exit 1 when a citation is missing or a link is dead, 0 when clean. 7 new tests; full suite 98/98. Citation Weaver skill v1.3.0.
+
 ## 1.4.0 — 2026-11-11
 
 - Citation Weaver can now export a bibliography to BibTeX: `cite --refs refs.json --export-bibtex [--out refs.bib]`, or menu Citation Weaver option 5. Entry types follow the stored type (article, book, conference → @inproceedings, chapter → @incollection, other → @misc); arXiv IDs become `eprint` + `archivePrefix`, chapter page ranges split out of the venue into `pages = {189--194}`, LaTeX special characters are escaped, and only fields actually present are exported — nothing is invented. Sample output in `demos/citation-weaver/references.bib`. 9 new tests; full suite 91/91. Citation Weaver skill v1.2.0.

@@ -69,9 +69,9 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 JARGON_VERSION = "1.0.3"
-CITATION_VERSION = "1.2.0"
+CITATION_VERSION = "1.3.0"
 PROMPTS_VERSION = "1.0.0"
 CLI_VERSION = "1.2.0"
 
@@ -537,7 +537,7 @@ def load_references(path: str):
 # message instead of a made-up reference, and setting OPENALEX_API_KEY
 # (free at https://openalex.org/) raises the limit. No data is ever
 # invented: a failed lookup is an error, never a guess.
-LOOKUP_USER_AGENT = "academic-jargon-buster/1.4.0 (mailto:achmddfzn@proton.me)"
+LOOKUP_USER_AGENT = "academic-jargon-buster/1.5.0 (mailto:achmddfzn@proton.me)"
 CROSSREF_URL = "https://api.crossref.org/works/{doi}"
 OPENALEX_DOI_URL = "https://api.openalex.org/works/https://doi.org/{doi}"
 OPENALEX_SEARCH_URL = "https://api.openalex.org/works?search={q}&per-page=1"
@@ -1001,6 +1001,138 @@ def export_bibtex(references: dict) -> str:
     return "\n\n".join(_bibtex_entry(k, references[k]) for k in sorted(references)) + "\n"
 
 
+# ======================================================================
+# Citation audit
+# ======================================================================
+# Check a manuscript's citations against its bibliography before it is
+# submitted: which [cite:key] / \cite{key} markers have no bibliography
+# entry (missing — the reader can never check them), and which
+# bibliography entries are never cited (unused). Optionally verify that
+# each cited reference's DOI / arXiv / URL actually resolves, with a
+# plain HEAD request. A failed check is reported, never faked: a link
+# that cannot be reached is "unreachable", not "alive".
+_CITE_PATTERN = re.compile(r"(?:\[cite:([^\]]+)\]|\\cite\{([^}]+)\})")
+
+
+def audit_citations(text: str, references: dict) -> dict:
+    """Audit citations in `text` against `references`.
+
+    Returns {"cited": [...], "counts": {...}, "missing": [...],
+    "unused": [...]}. `cited` keeps first-appearance order; `missing`
+    and `unused` are sorted.
+    """
+    cited = []
+    counts = {}
+    for match in _CITE_PATTERN.finditer(text):
+        key = (match.group(1) or match.group(2)).strip()
+        counts[key] = counts.get(key, 0) + 1
+        if key not in cited:
+            cited.append(key)
+    missing = sorted(k for k in cited if k not in references)
+    unused = sorted(k for k in references if k not in counts)
+    return {"cited": cited, "counts": counts, "missing": missing, "unused": unused}
+
+
+def _reference_link(ref: dict) -> str:
+    """The checkable link for a reference: DOI, arXiv, or plain URL."""
+    if ref.get("doi"):
+        return f"https://doi.org/{ref['doi']}"
+    if ref.get("arxiv"):
+        return f"https://arxiv.org/abs/{ref['arxiv']}"
+    return ref.get("url", "")
+
+
+def _url_alive(url: str, timeout: int = 10) -> tuple[bool, str]:
+    """HEAD the URL. Returns (alive, status): status is the HTTP code
+    or the error text when the request failed."""
+    req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": LOOKUP_USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return True, str(resp.status)
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}"
+    except Exception as e:  # offline, DNS failure, timeout, ...
+        return False, str(e)
+
+
+def check_reference_links(references: dict, keys=None) -> dict:
+    """Check each reference's link. Returns {key: (url, alive, status)}.
+    Keys without any link are skipped."""
+    out = {}
+    for key in (keys if keys is not None else sorted(references)):
+        ref = references.get(key)
+        if not ref:
+            continue
+        url = _reference_link(ref)
+        if not url:
+            continue
+        alive, status = _url_alive(url)
+        out[key] = (url, alive, status)
+    return out
+
+
+_AUDIT_STRINGS = {
+    "id": {
+        "heading": "Hasil audit sitasi",
+        "cited": "Dikutip di naskah",
+        "missing": "HILANG dari bibliografi (tidak bisa dicek pembaca)",
+        "unused": "Ada di bibliografi tapi tidak pernah dikutip",
+        "dead": "Link mati / tidak bisa dijangkau",
+        "ok": "Semua sitasi ada di bibliografi.",
+        "none_missing": "Tidak ada sitasi yang hilang.",
+        "none_unused": "Tidak ada entri yang tidak terpakai.",
+        "none_dead": "Semua link yang dicek masih hidup.",
+    },
+    "en": {
+        "heading": "Citation audit result",
+        "cited": "Cited in the text",
+        "missing": "MISSING from the bibliography (the reader can never check them)",
+        "unused": "In the bibliography but never cited",
+        "dead": "Dead / unreachable links",
+        "ok": "Every citation is in the bibliography.",
+        "none_missing": "No missing citations.",
+        "none_unused": "No unused entries.",
+        "none_dead": "Every checked link is alive.",
+    },
+}
+
+
+def format_audit(result: dict, lang: str = "id", links: dict | None = None) -> str:
+    """Render an audit result as a readable report."""
+    s = _AUDIT_STRINGS["en" if lang == "en" else "id"]
+    lines = [f"# {s['heading']}", ""]
+    lines.append(f"{s['cited']}: {len(result['cited'])}")
+    for key in result["cited"]:
+        lines.append(f"- {key} (x{result['counts'][key]})")
+    lines.append("")
+    if result["missing"]:
+        lines.append(f"## {s['missing']}")
+        for key in result["missing"]:
+            lines.append(f"- {key}")
+    else:
+        lines.append(s["none_missing"])
+    lines.append("")
+    if result["unused"]:
+        lines.append(f"## {s['unused']}")
+        for key in result["unused"]:
+            lines.append(f"- {key}")
+    else:
+        lines.append(s["none_unused"])
+    if links is not None:
+        lines.append("")
+        dead = {k: v for k, v in links.items() if not v[1]}
+        if dead:
+            lines.append(f"## {s['dead']}")
+            for key, (url, _alive, status) in sorted(dead.items()):
+                lines.append(f"- {key}: {url} ({status})")
+        else:
+            lines.append(s["none_dead"])
+    if not result["missing"] and not result["unused"]:
+        lines.append("")
+        lines.append(s["ok"])
+    return "\n".join(lines) + "\n"
+
+
 def cite_main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Weave citations into narrative text.")
     p.add_argument("input", nargs="?", help="plain-text file with [cite:key] markers")
@@ -1020,6 +1152,11 @@ def cite_main(argv=None) -> int:
                    help="export the bibliography to BibTeX (.bib) instead of weaving")
     p.add_argument("--out", metavar="FILE",
                    help="with --export-bibtex: write the .bib file here (default: stdout)")
+    p.add_argument("--audit", action="store_true",
+                   help="audit citations: report markers with no bibliography entry, "
+                   "and entries never cited, instead of weaving")
+    p.add_argument("--check-links", action="store_true",
+                   help="with --audit: also verify each cited reference's DOI/arXiv/URL resolves")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = p.parse_args(argv)
 
@@ -1057,6 +1194,27 @@ def cite_main(argv=None) -> int:
         else:
             sys.stdout.write(bib)
         return 0
+
+    if args.audit:
+        if not args.refs:
+            p.error("--refs <bibliography.json> is required with --audit")
+            return 2
+        if args.text:
+            text = args.text
+        elif args.input:
+            with open(args.input, encoding="utf-8") as f:
+                text = f.read()
+        else:
+            p.error("give a file or --text")
+            return 2
+        references = load_references(args.refs)
+        result = audit_citations(text, references)
+        links = None
+        if args.check_links:
+            links = check_reference_links(references, keys=result["cited"])
+        sys.stdout.write(format_audit(result, lang=args.lang, links=links))
+        dead = any(not v[1] for v in (links or {}).values())
+        return 1 if result["missing"] or dead else 0
 
     style = args.style
     if not style and args.jurusan:
@@ -1547,6 +1705,8 @@ STRINGS = {
         "bibtex": "Export bibliografi ke BibTeX (.bib)",
         "bibtex_out": "Simpan ke file .bib (kosong = tampilkan saja)",
         "bibtex_saved": "BibTeX tersimpan:",
+        "audit": "Audit sitasi (cek rujukan hilang/tak terpakai)",
+        "audit_check_links": "Cek juga DOI/link masih hidup? (y = ya, kosong = tidak)",
         "press_enter": "Tekan Enter untuk kembali...",
         "result": "Hasil:",
     },
@@ -1592,6 +1752,8 @@ STRINGS = {
         "bibtex": "Export bibliography to BibTeX (.bib)",
         "bibtex_out": "Save to .bib file (empty = print only)",
         "bibtex_saved": "BibTeX saved:",
+        "audit": "Audit citations (check missing/unused references)",
+        "audit_check_links": "Also check DOI/links are still alive? (y = yes, empty = no)",
         "press_enter": "Press Enter to go back...",
         "result": "Result:",
     },
@@ -1751,8 +1913,9 @@ class CLI:
             print(f"3. {self.t['list_majors']}")
             print(f"4. {self.t['lookup']}")
             print(f"5. {self.t['bibtex']}")
+            print(f"6. {self.t['audit']}")
             print(f"0. {self.t['back']}")
-            choice = self.ask_choice(self.t["choice"], 5)
+            choice = self.ask_choice(self.t["choice"], 6)
             if choice == -1:
                 continue
             if choice == 1:
@@ -1769,8 +1932,27 @@ class CLI:
                 self.cite_lookup()
             elif choice == 5:
                 self.cite_export_bibtex()
+            elif choice == 6:
+                self.cite_audit()
             elif choice == 0 or choice is None:
                 return
+
+    def cite_audit(self):
+        text = self.read_text()
+        if not text:
+            return
+        refs_path = self.ask(self.t["refs"], DEFAULT_REFS)
+        if not os.path.isfile(refs_path):
+            print(f"{self.t['refs_missing']} {refs_path}")
+            return
+        refs = load_references(refs_path)
+        result = audit_citations(text, refs)
+        check = self.ask(self.t["audit_check_links"])
+        links = None
+        if check.strip().lower() in ("y", "ya", "yes", "1"):
+            links = check_reference_links(refs, keys=result["cited"])
+        print(f"\n{format_audit(result, lang=self.lang, links=links)}")
+        self.pause()
 
     def cite_export_bibtex(self):
         refs_path = self.ask(self.t["refs"], DEFAULT_REFS)

@@ -59,6 +59,16 @@ class TestJargonDetection(unittest.TestCase):
         self.assertIn("renormalization group", out)
         self.assertIn("different scales", out)
 
+    def test_repeated_term_annotated_once_per_occurrence(self):
+        text = "Gradient descent is used. Later, gradient descent appears again."
+        out = to_annotated_markdown(text)
+        # Regression: the second pass used to match inside the annotation
+        # it had just inserted, producing a doubled explanation while the
+        # second occurrence stayed bare.
+        self.assertNotIn("downhill) (a step-by-step", out)
+        self.assertEqual(out.lower().count("gradient descent ("), 2)
+        self.assertIn("Later, gradient descent (", out)
+
     def test_csv_output(self):
         out = to_csv("We train with gradient descent.")
         rows = list(csv.DictReader(io.StringIO(out)))

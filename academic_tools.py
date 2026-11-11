@@ -342,53 +342,66 @@ def update_dictionary(from_file: str, field: str | None = None):
     return sorted(added)
 
 
-def find_terms(text: str, field: str | None = None):
-    """Return list of dicts for each dictionary term found in text.
+def _iter_matches(text: str, field: str | None = None):
+    """One dictionary match per occurrence, longest term first.
 
-    Longest terms first, so 'stochastic gradient descent' wins over
-    'gradient descent' when both match. Case-insensitive.
+    Terms are tried longest-first, so 'stochastic gradient descent'
+    claims its span before 'gradient descent' can. Case-insensitive;
+    spans that overlap an already-claimed span are skipped.
     """
-    found = []
-    seen_spans = []
     dictionary = load_dictionary()
-    terms = sorted(dictionary, key=len, reverse=True)
-    for term in terms:
+    seen_spans = []
+    for term in sorted(dictionary, key=len, reverse=True):
         explanation, term_field, source = dictionary[term]
         if field and term_field != field:
             continue
         for m in re.finditer(re.escape(term), text, flags=re.IGNORECASE):
             span = (m.start(), m.end())
-            if any(s <= span[0] < e or s < span[1] <= e for s, e in seen_spans):
+            if any(s < span[1] and span[0] < e for s, e in seen_spans):
                 continue
             seen_spans.append(span)
-            found.append(
-                {
-                    "original": m.group(0),
-                    "term": term,
-                    "translation": explanation,
-                    "field": term_field,
-                    "source": source,
-                    "confidence": 1.0,  # exact dictionary match
-                }
-            )
-    found.sort(key=lambda d: text.lower().find(d["term"]))
-    return found
+            yield {
+                "original": m.group(0),
+                "term": term,
+                "translation": explanation,
+                "field": term_field,
+                "source": source,
+                "confidence": 1.0,  # exact dictionary match
+                "start": span[0],
+                "end": span[1],
+            }
+
+
+def find_terms(text: str, field: str | None = None):
+    """Return list of dicts for each dictionary term found in text.
+
+    Longest terms first, so 'stochastic gradient descent' wins over
+    'gradient descent' when both match. Case-insensitive. Results are
+    ordered by position in the text.
+    """
+    matches = sorted(_iter_matches(text, field=field), key=lambda d: d["start"])
+    return [
+        {k: v for k, v in item.items() if k not in ("start", "end")}
+        for item in matches
+    ]
 
 
 def to_annotated_markdown(text: str, field: str | None = None) -> str:
     """Original text with jargon followed by its plain explanation."""
-    terms = find_terms(text, field=field)
-    if not terms:
+    matches = sorted(_iter_matches(text, field=field), key=lambda d: d["start"])
+    if not matches:
         return text + "\n\n_No known jargon terms found in the dictionary._\n"
-    out = text
-    # Replace longest first, from the end, so offsets stay valid.
-    for item in sorted(terms, key=lambda d: len(d["term"]), reverse=True):
-        pattern = re.compile(re.escape(item["term"]), re.IGNORECASE)
-        out = pattern.sub(
-            lambda m: f"{m.group(0)} ({item['translation']})", out, count=1
-        )
-    lines = ["# Annotated output\n", out, "\n## Terms found\n"]
-    for item in terms:
+    # Splice by span, so each occurrence is annotated exactly once and
+    # an inserted explanation can never be matched again.
+    parts = []
+    cursor = 0
+    for item in matches:
+        parts.append(text[cursor:item["end"]])
+        parts.append(f" ({item['translation']})")
+        cursor = item["end"]
+    parts.append(text[cursor:])
+    lines = ["# Annotated output\n", "".join(parts), "\n## Terms found\n"]
+    for item in matches:
         lines.append(
             f"- **{item['original']}** ({item['field']}) — "
             f"{item['translation']} — _source: {item['source']}_"

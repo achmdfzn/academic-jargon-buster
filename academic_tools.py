@@ -1288,6 +1288,147 @@ def format_audit(result: dict, lang: str = "id", links: dict | None = None) -> s
     return "\n".join(lines) + "\n"
 
 
+# ======================================================================
+# NEW ENGINE: Academic Text Quality Analyzer
+# ======================================================================
+# Integrated engine that combines jargon detection, citation analysis,
+# DOI verification, and bibliography completeness checking into a
+# single comprehensive report for academic texts.
+# ======================================================================
+
+
+def analyze_text_quality(
+    text: str,
+    references: dict | None = None,
+    *,
+    lang: str = "id",
+    verify_dois: bool = True,
+) -> dict:
+    """Analyze an academic text for quality: jargon, citations, DOI status,
+    and bibliography completeness.
+
+    Returns a dict with keys:
+    - jargon: list of detected jargon terms with explanations
+    - citations: citation audit result (cited, missing, unused)
+    - doi_verification: per-reference DOI check results
+    - quality_score: composite score 0-100
+    - recommendations: list of improvement suggestions
+
+    If `references` is provided, citation audit and DOI verification are
+    performed against it. Otherwise, citation and DOI checks are skipped.
+    """
+    result = {
+        "jargon": [],
+        "citations": None,
+        "doi_verification": {},
+        "quality_score": 0,
+        "recommendations": [],
+    }
+
+    # --- Jargon detection ---
+    jargon_matches = find_terms(text)
+    jargon_explanations = [
+        {
+            "term": m["term"],
+            "original": m["original"],
+            "translation": m["translation"],
+            "field": m["field"],
+            "source": m["source"],
+        }
+        for m in jargon_matches
+    ]
+    result["jargon"] = jargon_explanations
+
+    # --- Citation audit ---
+    if references is not None:
+        citation_result = audit_citations(text, references)
+        result["citations"] = {
+            "cited": citation_result["cited"],
+            "counts": citation_result["counts"],
+            "missing": citation_result["missing"],
+            "unused": citation_result["unused"],
+        }
+
+        # --- DOI verification ---
+        if verify_dois:
+            doi_result = verify_reference_dois(references)
+            result["doi_verification"] = doi_result
+
+    # --- Quality score calculation ---
+    score_parts = []
+
+    # Jargon coverage: percentage of text's jargon that is explained
+    if jargon_matches:
+        # Score max 25 points for jargon analysis presence
+        score_parts.append(25)
+    else:
+        score_parts.append(25)
+
+    # Citations completeness
+    if references is not None:
+        cit = result["citations"]
+        total_cited = len(cit["cited"]) if cit else 0
+        total_missing = len(cit["missing"]) if cit else 0
+        if total_missing == 0:
+            score_parts.append(25)  # all citations have bibliography entries
+        else:
+            score_parts.append(25 * (1 - min(total_missing / max(1, total_missing + total_cited), 1.0)))
+    else:
+        score_parts.append(25)  # no refs to audit = neutral
+
+    # DOI verification quality
+    doi_result = result.get("doi_verification", {})
+    if doi_result:
+        verdicts = list(doi_result.values())
+        ok_count = sum(1 for v in verdicts if v.get("verdict") == "ok")
+        total_count = len(verdicts)
+        if total_count > 0:
+            doi_score = 25 * (ok_count / total_count)
+        else:
+            doi_score = 25  # no DOIs to verify = neutral
+        score_parts.append(doi_score)
+    else:
+        score_parts.append(25)  # no references = neutral
+
+    total_score = sum(score_parts)
+    result["quality_score"] = min(total_score, 100)
+
+    # --- Recommendations ---
+    recs = []
+    if result["citations"]:
+        cit = result["citations"]
+        if cit["missing"]:
+            recs.append(
+                f"{len(cit['missing'])} sitasi di naskah tidak ada di bibliografi: "
+                + ", ".join(cit["missing"])
+            )
+        if cit["unused"]:
+            recs.append(
+                f"{len(cit['unused'])} entri di bibliografi tidak pernah dikutip: "
+                + ", ".join(cit["unused"][:5])
+            )
+    if result["doi_verification"]:
+        dv = result["doi_verification"]
+        unverified_or_missing = [k for k, v in dv.items() if v["verdict"] in ("unverified", "missing", "no-doi")]
+        if unverified_or_missing:
+            recs.append(
+                f"{len(unverified_or_missing)} DOI {'belum terverifikasi' if lang == 'id' else 'unverified'}: "
+                + ", ".join(unverified_or_missing)
+            )
+    if not jargon_matches:
+        recs.append(
+            "Tidak ditemukan jargon akademik yang dikenali — pertimbangkan "
+            + ("menambahkan istilah ke dictionary.json" if lang == "id"
+               else "adding terms to the dictionary")
+        )
+    if not references:
+        recs.append(
+            "Tambahkan bibliografi JSON untuk audit sitasi dan verifikasi DOI."
+        )
+    result["recommendations"] = recs
+
+    return result
+
 def cite_main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Weave citations into narrative text.")
     p.add_argument("input", nargs="?", help="plain-text file with [cite:key] markers")

@@ -49,6 +49,16 @@ paste the result into the recommended AI tool.
     python3 academic_tools.py prompts latar-belakang
     python3 academic_tools.py prompts roadmap --set judul="..." --set teori="..." --set metode="..." --set bulan=6 --set tanggal="11 November 2026"
 
+Quality check: one pass over a manuscript — jargon, citation audit,
+DOI verification, and a rule-based style check for stiff Indonesian
+academic prose (light verbs, stacked connectors, passive pile-ups,
+calqued relatives, flat sentence rhythm). One score 0-100, plus
+recommendations. A style report, not a rewrite and not a detector
+dodge: flagged patterns are suggestions for the author's own edit.
+
+    python3 academic_tools.py analyze demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json
+    python3 academic_tools.py analyze --text "... [cite:devlin2019]." --refs demos/citation-weaver/references.json --json
+
 The old entry points (jargon_buster.py, citation_weaver.py,
 academic_cli.py) still exist as thin wrappers around this file, so
 existing commands, demos, and imports keep working.
@@ -69,11 +79,11 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.10.0"
+__version__ = "1.11.0"
 JARGON_VERSION = "1.0.4"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-CLI_VERSION = "1.5.0"
+CLI_VERSION = "1.6.0"
 
 # ======================================================================
 # Jargon Buster
@@ -1297,6 +1307,159 @@ def format_audit(result: dict, lang: str = "id", links: dict | None = None) -> s
 # ======================================================================
 
 
+# ======================================================================
+# Style check (cek gaya) — fourth component of analyze
+# ======================================================================
+# Rule-based signals for stiff Indonesian academic prose, written from
+# Indonesian grammar (EYD/KBBI), not from any other project's tables:
+# light verbs paired with nominalized nouns, stacked connectors,
+# passive pile-ups, calqued relatives, and flat sentence rhythm.
+# This is a style report, not a rewrite and not a detector dodge:
+# flagged patterns are suggestions for the author's own edit.
+# Thresholds were calibrated on this repo's own sample texts
+# (demos/citation-weaver/contoh_id.txt, demos/jargon-buster/test_paper.txt):
+# clean academic prose passes all five signals.
+
+# Light verbs that turn a verb into a noun phrase: "melakukan
+# pengukuran" says in three words what "mengukur" says in one.
+_LIGHT_VERBS = (
+    "melakukan", "memberikan", "mengalami", "melaksanakan",
+    "mengadakan", "menjalani",
+)
+# Nominalized endings: a noun built from a verb.
+_NOMINAL_ENDINGS = ("an", "isasi", "asi", "itas", "isme", "usi")
+# Deverbal nouns that do not end in a nominal ending.
+_NOMINAL_WORDS = ("analisis", "pengaruh", "kontribusi")
+_LIGHT_VERB_RE = re.compile(
+    r"\b(" + "|".join(_LIGHT_VERBS) + r")\b"
+    r"(?:\s+(?:terhadap|atas|antara|sebesar|kepada|dalam|dari|untuk|dengan|yang))?"
+    r"\s+([A-Za-z]+(?:an|isasi|asi|itas|isme|usi)\b|analisis|pengaruh|kontribusi)",
+    re.IGNORECASE,
+)
+
+# Discourse connectors that, stacked, make the text read like a list
+# of transitions instead of an argument.
+_CONNECTORS = (
+    "selain itu", "namun demikian", "di sisi lain", "oleh karena itu",
+    "dengan demikian", "lebih lanjut", "sementara itu", "akan tetapi",
+    "di samping itu", "sebagai tambahan", "pada akhirnya",
+    "secara keseluruhan", "dalam hal ini", "berdasarkan hal tersebut",
+)
+
+# Common passive verbs in academic Indonesian. Passive itself is
+# legitimate; the signal is a pile-up of them.
+_PASSIVE_VERBS = (
+    "dilakukan", "dilaksanakan", "diperoleh", "ditunjukkan", "digunakan",
+    "dibuat", "diberikan", "ditemukan", "dijelaskan", "dinyatakan",
+    "ditetapkan", "diperlihatkan", "dilaporkan", "dianalisis", "diukur",
+    "dihitung", "dibandingkan", "disimpulkan", "diharapkan", "diketahui",
+)
+
+# "yang mana" and joined "dimana" as relative pronouns are calques
+# from English "which"/"where". (Separate "di mana" for a real place
+# is correct and is not flagged.)
+_YANG_MANA_RE = re.compile(r"\byang mana\b|\bdimana\b", re.IGNORECASE)
+
+
+def _sentence_word_counts(text: str) -> list[int]:
+    """Word counts per sentence; splits on . ! ? followed by space/end."""
+    parts = re.split(r"[.!?]+(?:\s+|$)", text.strip())
+    return [len(p.split()) for p in parts if p.strip()]
+
+
+def _stdev(values: list[int]) -> float:
+    """Population standard deviation, no statistics import needed."""
+    if len(values) < 2:
+        return 0.0
+    mean = sum(values) / len(values)
+    var = sum((v - mean) ** 2 for v in values) / len(values)
+    return round(var ** 0.5, 1)
+
+
+def check_style(text: str) -> dict:
+    """Check Indonesian academic prose for stiff-style signals.
+
+    Returns a dict with keys:
+    - signals: per-signal {count, flagged, examples} (rhythm also
+      carries sentence count and stdev)
+    - style_score: 0-25, five points per clean signal
+    - flagged: names of the flagged signals
+
+    Density signals need at least two occurrences to flag, so one
+    stray connector in a short note does not fail the check. Rhythm
+    is only judged on five or more sentences: flagged when 60% or
+    more of them sit within two words of the mean sentence length.
+    """
+    words = text.split()
+    n_words = len(words)
+    per_100 = (lambda c: round(c / max(1, n_words) * 100, 1))
+
+    matches = _LIGHT_VERB_RE.findall(text)
+    nominal = {
+        "count": len(matches),
+        "density_per_100": per_100(len(matches)),
+        "flagged": len(matches) >= 2 and per_100(len(matches)) > 1.0,
+        "examples": [" ".join(m).strip() for m in matches[:3]],
+    }
+
+    conn_hits = []
+    for conn in _CONNECTORS:
+        conn_hits += [conn] * len(
+            re.findall(r"\b" + re.escape(conn) + r"\b", text, re.IGNORECASE))
+    connectors = {
+        "count": len(conn_hits),
+        "density_per_100": per_100(len(conn_hits)),
+        "flagged": len(conn_hits) >= 2 and per_100(len(conn_hits)) > 2.0,
+        "examples": conn_hits[:3],
+    }
+
+    passive_hits = []
+    for verb in _PASSIVE_VERBS:
+        passive_hits += [verb] * len(
+            re.findall(r"\b" + verb + r"\b", text, re.IGNORECASE))
+    passive = {
+        "count": len(passive_hits),
+        "density_per_100": per_100(len(passive_hits)),
+        "flagged": len(passive_hits) >= 3 and per_100(len(passive_hits)) > 5.0,
+        "examples": passive_hits[:3],
+    }
+
+    ym = _YANG_MANA_RE.findall(text)
+    yang_mana = {
+        "count": len(ym),
+        "flagged": len(ym) >= 1,
+        "examples": [m.lower() for m in ym[:3]],
+    }
+
+    counts = _sentence_word_counts(text)
+    if len(counts) >= 5:
+        mean = sum(counts) / len(counts)
+        near = sum(1 for x in counts if abs(x - mean) <= 2)
+        share = round(near / len(counts), 2)
+    else:
+        share = None
+    rhythm = {
+        "sentences": len(counts),
+        "stdev": _stdev(counts) if len(counts) >= 2 else None,
+        "same_length_share": share,
+        "flagged": share is not None and share >= 0.6,
+    }
+
+    signals = {
+        "nominalization": nominal,
+        "connectors": connectors,
+        "passive": passive,
+        "yang_mana": yang_mana,
+        "rhythm": rhythm,
+    }
+    flagged = [name for name, s in signals.items() if s["flagged"]]
+    return {
+        "signals": signals,
+        "style_score": 5 * (5 - len(flagged)),
+        "flagged": flagged,
+    }
+
+
 def analyze_text_quality(
     text: str,
     references: dict | None = None,
@@ -1305,22 +1468,26 @@ def analyze_text_quality(
     verify_dois: bool = True,
 ) -> dict:
     """Analyze an academic text for quality: jargon, citations, DOI status,
-    and bibliography completeness.
+    style, and bibliography completeness.
 
     Returns a dict with keys:
     - jargon: list of detected jargon terms with explanations
     - citations: citation audit result (cited, missing, unused)
     - doi_verification: per-reference DOI check results
+    - style: style check result (signals, style_score, flagged)
     - quality_score: composite score 0-100
     - recommendations: list of improvement suggestions
 
     If `references` is provided, citation audit and DOI verification are
     performed against it. Otherwise, citation and DOI checks are skipped.
+    The style check always runs; its lexical signals are calibrated
+    for Indonesian academic prose.
     """
     result = {
         "jargon": [],
         "citations": None,
         "doi_verification": {},
+        "style": check_style(text),
         "quality_score": 0,
         "recommendations": [],
     }
@@ -1355,7 +1522,7 @@ def analyze_text_quality(
             result["doi_verification"] = doi_result
 
     # --- Quality score calculation ---
-    # Three parts of 25 (max 75), scaled to 0-100.
+    # Four parts of 25 (max 100): jargon, citations, DOI, style.
     score_parts = []
 
     # Jargon: every term found is explained by construction, so a run
@@ -1387,8 +1554,11 @@ def analyze_text_quality(
     else:
         score_parts.append(25)  # no references = neutral
 
+    # Style: 0-25 from check_style, five points per clean signal.
+    score_parts.append(result["style"]["style_score"])
+
     total_score = sum(score_parts)
-    result["quality_score"] = round(min(total_score, 75) / 75 * 100)
+    result["quality_score"] = round(min(total_score, 100))
 
     # --- Recommendations ---
     en = lang == "en"
@@ -1430,6 +1600,67 @@ def analyze_text_quality(
                 recs.append(
                     f"{len(bad)} DOI belum terverifikasi: " + ", ".join(bad)
                 )
+    style = result["style"]
+    for name in style["flagged"]:
+        sig = style["signals"][name]
+        if name == "nominalization":
+            ex = ", ".join(f"'{e}'" for e in sig["examples"])
+            if en:
+                recs.append(
+                    f"Style: {sig['count']} light-verb constructions "
+                    f"({ex}) — use the verb directly."
+                )
+            else:
+                recs.append(
+                    f"Gaya: {sig['count']} konstruksi verba ringan "
+                    f"({ex}) — pakai kata kerja langsung."
+                )
+        elif name == "connectors":
+            if en:
+                recs.append(
+                    f"Style: {sig['count']} connectors "
+                    f"({sig['density_per_100']}/100 words) — let the "
+                    "sentences connect the argument instead."
+                )
+            else:
+                recs.append(
+                    f"Gaya: {sig['count']} konektor "
+                    f"({sig['density_per_100']}/100 kata) — kurangi "
+                    "penghubung, biarkan alur kalimat yang menyambung."
+                )
+        elif name == "passive":
+            if en:
+                recs.append(
+                    f"Style: {sig['count']} passive verbs piled up — "
+                    "use the active form when the actor is clear."
+                )
+            else:
+                recs.append(
+                    f"Gaya: {sig['count']} verba pasif menumpuk — "
+                    "pakai bentuk aktif bila pelakunya jelas."
+                )
+        elif name == "yang_mana":
+            if en:
+                recs.append(
+                    "Style: 'yang mana' / 'dimana' used as a relative "
+                    "pronoun — rewrite without the calque."
+                )
+            else:
+                recs.append(
+                    "Gaya: 'yang mana' / 'dimana' sebagai kata ganti "
+                    "relatif — tulis ulang tanpa kalke."
+                )
+        elif name == "rhythm":
+            if en:
+                recs.append(
+                    "Style: sentence lengths are too uniform — vary "
+                    "short and long sentences."
+                )
+            else:
+                recs.append(
+                    "Gaya: panjang kalimat terlalu seragam — variasikan "
+                    "kalimat pendek dan panjang."
+                )
     if not jargon_matches:
         if en:
             recs.append(
@@ -1467,6 +1698,16 @@ _ANALYZE_STRINGS = {
         "unused": "tak terpakai",
         "doi": "Verifikasi DOI",
         "doi_none": "Tidak ada DOI untuk diverifikasi.",
+        "style": "Gaya",
+        "style_clean": "tidak ada pola kaku yang terdeteksi",
+        "signals": {
+            "nominalization": "verba ringan",
+            "connectors": "konektor",
+            "passive": "verba pasif",
+            "yang_mana": "'yang mana'/'dimana'",
+            "rhythm": "ritme kalimat",
+        },
+        "rhythm_same": "{pct}% kalimat hampir sama panjang",
         "recs": "Rekomendasi",
         "recs_none": "Tidak ada rekomendasi — naskah sudah rapi.",
         "no_refs": "Tanpa bibliografi: audit sitasi dan verifikasi DOI dilewati.",
@@ -1482,6 +1723,16 @@ _ANALYZE_STRINGS = {
         "unused": "unused",
         "doi": "DOI verification",
         "doi_none": "No DOIs to verify.",
+        "style": "Style",
+        "style_clean": "no stiff patterns detected",
+        "signals": {
+            "nominalization": "light verbs",
+            "connectors": "connectors",
+            "passive": "passive verbs",
+            "yang_mana": "'yang mana'/'dimana'",
+            "rhythm": "sentence rhythm",
+        },
+        "rhythm_same": "{pct}% of sentences nearly the same length",
         "recs": "Recommendations",
         "recs_none": "No recommendations — the text is in good shape.",
         "no_refs": "No bibliography: citation audit and DOI verification skipped.",
@@ -1522,6 +1773,23 @@ def format_analyze(result: dict, lang: str = "id") -> str:
             lines.append("  " + ", ".join(bad))
     else:
         lines.append(s["doi_none"])
+    style = result["style"]
+    if style["flagged"]:
+        lines.append(f"{s['style']}: {style['style_score']}/25")
+        for name in style["flagged"]:
+            sig = style["signals"][name]
+            label = s["signals"][name]
+            if name == "rhythm":
+                pct = int(sig["same_length_share"] * 100)
+                lines.append(f"  - {label}: "
+                             + s["rhythm_same"].format(pct=pct))
+            else:
+                ex = ", ".join(f"'{e}'" for e in sig["examples"])
+                lines.append(f"  - {label}: {sig['count']}"
+                             + (f" ({ex})" if ex else ""))
+    else:
+        lines.append(f"{s['style']}: {style['style_score']}/25 — "
+                     f"{s['style_clean']}")
     recs = result["recommendations"]
     lines.append(f"{s['recs']}:")
     if recs:
@@ -1534,8 +1802,8 @@ def format_analyze(result: dict, lang: str = "id") -> str:
 
 def analyze_main(argv=None) -> int:
     p = argparse.ArgumentParser(
-        description="Check an academic text: jargon, citations, and DOI "
-                    "verification in one pass.")
+        description="Check an academic text: jargon, citations, DOI "
+                    "verification, and style in one pass.")
     p.add_argument("input", nargs="?", help="plain-text file to analyze")
     p.add_argument("--text", help="analyze this text instead of a file")
     p.add_argument("--refs", help="bibliography JSON file (optional; without "

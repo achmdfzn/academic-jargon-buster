@@ -74,7 +74,7 @@ class TestCoreStaysOneFile(unittest.TestCase):
             self.assertTrue(hasattr(citation_weaver, name), name)
             self.assertIn(name, citation_weaver.__all__)
         for name in ("analyze_text_quality", "format_analyze",
-                     "format_banner", "analyze_main"):
+                     "format_banner", "analyze_main", "check_style"):
             self.assertTrue(hasattr(academic_cli, name), name)
             self.assertIn(name, academic_cli.__all__)
         self.assertIn("jargon_main", jargon_buster.__all__)

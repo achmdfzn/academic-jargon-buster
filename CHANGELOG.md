@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.0 — 2026-11-12
+
+- `analyze` gains a fourth component: a rule-based style check for stiff Indonesian academic prose (`check_style()`), written from Indonesian grammar, not copied from any other project. Five signals, five points each: light-verb constructions ("melakukan pengukuran"), stacked connectors, passive pile-ups, "yang mana"/"dimana" as relative pronouns, and flat sentence rhythm (60%+ of sentences within two words of the mean length). The score is now four parts of 25 (jargon, citations, DOI, style) = 100, no scaling. Style findings appear in the readable output, in `--json`, and as bilingual recommendations. A style report, not a rewrite and not a detector dodge. `CLI_VERSION` 1.5.0 → 1.6.0.
+- Thresholds calibrated on this repo's own sample texts (all three pass 25/25); a deliberately stiff paragraph flags all five signals and scores 0/25 on style. `check_style()` is re-exported by the `academic_cli` shim and pinned by the structure guard.
+- 7 new tests. Full suite 148/148.
+
 ## 1.10.0 — 2026-11-12
 
 - `analyze_text_quality()` is finally wired up: new `analyze` subcommand (`python3 academic_tools.py analyze <file|--text> [--refs refs.json] [--lang id|en] [--json] [--no-verify]`) and menu option 4 (Quality Check). It checks jargon, audits citations, verifies DOIs, and prints one quality score 0–100 with recommendations; exits 1 when a citation is missing or a DOI is not found. `CLI_VERSION` 1.4.0 → 1.5.0.

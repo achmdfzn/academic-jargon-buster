@@ -29,6 +29,16 @@ TEXT = (
     "Hasilnya sejalan dengan temuan sebelumnya [cite:devlin2019]."
 )
 
+STIFF_TEXT = (
+    "Penelitian ini melakukan pengukuran terhadap suhu ruangan. Selain itu, "
+    "penelitian ini melakukan analisis terhadap data yang diperoleh. "
+    "Oleh karena itu, hasil yang diperoleh menunjukkan peningkatan. "
+    "Dengan demikian, pengujian dilakukan dengan metode yang mana hasilnya "
+    "ditunjukkan pada tabel. Selain itu, simulasi dilakukan dengan perangkat "
+    "lunak. Sementara itu, data diperoleh dari pengujian. Oleh karena itu, "
+    "grafik ditampilkan pada gambar."
+)
+
 
 class TestAnalyzeTextQuality(unittest.TestCase):
     def test_jargon_only_without_refs(self):
@@ -96,9 +106,63 @@ class TestAnalyzeTextQuality(unittest.TestCase):
         self.assertIn("Skor kualitas: 100/100", text)
         self.assertIn("purposive sampling", text)
         self.assertIn("Sitasi:", text)
+        self.assertIn("Gaya: 25/25", text)
         self.assertIn("Rekomendasi:", text)
         en = tools.format_analyze(out, lang="en")
         self.assertIn("Quality score: 100/100", en)
+
+
+class TestCheckStyle(unittest.TestCase):
+    def test_clean_sample_texts_pass(self):
+        base = Path(__file__).resolve().parent.parent
+        for name in ("demos/citation-weaver/contoh_id.txt",
+                     "demos/citation-weaver/example_en.txt",
+                     "demos/jargon-buster/test_paper.txt"):
+            out = tools.check_style((base / name).read_text(encoding="utf-8"))
+            self.assertEqual(out["style_score"], 25, name)
+            self.assertEqual(out["flagged"], [], name)
+
+    def test_stiff_text_flags_all_five_signals(self):
+        out = tools.check_style(STIFF_TEXT)
+        self.assertEqual(out["style_score"], 0)
+        self.assertEqual(out["flagged"], ["nominalization", "connectors",
+                                          "passive", "yang_mana", "rhythm"])
+        self.assertIn("melakukan pengukuran",
+                      out["signals"]["nominalization"]["examples"])
+        self.assertEqual(out["signals"]["yang_mana"]["count"], 1)
+
+    def test_short_text_rhythm_is_neutral(self):
+        out = tools.check_style("Penelitian memakai purposive sampling.")
+        self.assertIsNone(out["signals"]["rhythm"]["same_length_share"])
+        self.assertFalse(out["signals"]["rhythm"]["flagged"])
+
+    def test_single_occurrence_does_not_flag_density_signals(self):
+        out = tools.check_style(
+            "Selain itu, penelitian memakai purposive sampling.")
+        self.assertEqual(out["signals"]["connectors"]["count"], 1)
+        self.assertFalse(out["signals"]["connectors"]["flagged"])
+
+    def test_analyze_result_carries_style(self):
+        refs = tools.load_references(SAMPLE_REFS)
+        out = tools.analyze_text_quality(TEXT, references=refs,
+                                         verify_dois=False)
+        self.assertIn("style", out)
+        self.assertEqual(out["style"]["style_score"], 25)
+        self.assertEqual(out["quality_score"], 100)
+
+    def test_stiff_text_scores_lower_with_style_recommendations(self):
+        out = tools.analyze_text_quality(STIFF_TEXT, verify_dois=False)
+        self.assertLess(out["quality_score"], 100)
+        self.assertTrue(any("verba ringan" in r
+                            for r in out["recommendations"]))
+        self.assertTrue(any("yang mana" in r
+                            for r in out["recommendations"]))
+
+    def test_format_analyze_shows_style(self):
+        out = tools.analyze_text_quality(STIFF_TEXT, verify_dois=False)
+        text = tools.format_analyze(out, lang="id")
+        self.assertIn("Gaya: 0/25", text)
+        self.assertIn("verba ringan", text)
 
 
 class TestAnalyzeMain(unittest.TestCase):

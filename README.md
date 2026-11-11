@@ -23,7 +23,7 @@ Out: Penelitian ini mengukur suhu ruangan. Penelitian ini menganalisis
 
 ## The file
 
-`academic_tools.py` (v1.16.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, applied only with `--apply`), a local library of past analyses and references (one SQLite file, no account), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.16.1) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, applied only with `--apply`), a local library of past analyses and references (one SQLite file, no account), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -36,7 +36,7 @@ python3 academic_tools.py serve           # web UI at http://127.0.0.1:8000/
 
 ```
   +==============================================================+
-  | Academic Tools                                       v1.16.0 |
+  | Academic Tools                                       v1.16.1 |
   +--------------------------------------------------------------+
   | Jargon Buster  |  Citation Weaver  |  Prompt Skripsi         |
   | id  |  ketik angka, Enter untuk memilih                      |
@@ -58,7 +58,7 @@ Pick a number, follow the prompts: type text or read a file, pick a field, a cit
 
 | Tool | In short |
 | --- | --- |
-| **Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source. 32 terms — physics, machine learning, usability, software engineering, research methods — including Indonesian aliases. |
+| **Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source. 52 terms — physics, machine learning, usability, software engineering, research methods, statistics — including Indonesian aliases. |
 | **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography. 6 styles (APA, MLA, Chicago, IEEE, Harvard, Vancouver), 21 majors with a recommended style each. Look up real references by DOI or title from Crossref/OpenAlex instead of typing bibliography JSON by hand. Export the bibliography to BibTeX (`.bib`) for LaTeX/Overleaf. Audit a manuscript's citations — find markers with no bibliography entry, entries never cited, and (optionally) dead DOI/arXiv links. Verify reference DOIs across Crossref and OpenAlex: a DOI found in either source is real; "not found" requires both to answer 404. |
 | **Prompt Skripsi** | 18 ready-made prompt templates for thesis writing — roadmap, abstract, preface, problem statement, Bab 1–5, defense prep, publication. Every template has an Indonesian and an English version (`--lang en`). Pick one, fill in your title, theory, and method, paste the result into ChatGPT, Grok, Claude, Gemini, or Perplexity. |
 | **Quality Check** | One pass over a manuscript: jargon found and explained, citations audited (missing / never used), DOIs verified, and stiff Indonesian prose flagged (light verbs, stacked connectors, passive pile-ups, calqued relatives, flat sentence rhythm) — one quality score 0–100 with recommendations. A style report, not a rewrite and not a detector dodge. Exits 1 when a citation is missing or a DOI is not found. Add `--suggest` for rewrite suggestions in the same pass, `--save` to record the run in the library. |
@@ -126,7 +126,7 @@ Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key sin
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.16.0)
+academic_tools.py            # everything (v1.16.1)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -134,7 +134,7 @@ skills/research/             # four skills: the three tools + a quality-check sk
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 227 tests, stdlib unittest only
+tests/                       # 230 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -143,7 +143,7 @@ The `skills/research/` folders hold the same tools as agent skills: the three to
 
 ## Limits, honestly
 
-- 32 dictionary terms is a sample, not a glossary. New terms need a real source.
+- 52 dictionary terms is a sample, not a glossary. New terms need a real source.
 - Citation formatting here is simplified — check the official style guide before submitting.
 - Math notation is kept as-is; low-quality OCR can misfire.
 - Style signals are calibrated for Indonesian academic prose — on English text, only sentence rhythm is actually judged.
@@ -153,7 +153,7 @@ The `skills/research/` folders hold the same tools as agent skills: the three to
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 227 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 230 tests, no dependencies
 ```
 
 ## License

@@ -52,6 +52,60 @@ class TestJargonDetection(unittest.TestCase):
     def test_no_jargon_returns_empty(self):
         self.assertEqual(find_terms("The cat sat on the mat."), [])
 
+    def test_statistics_terms_detected_with_sources(self):
+        # 10 statistics concepts (English + Indonesian), v1.16.1.
+        field_terms = {
+            "statistical significance": "Field 2018",
+            "signifikansi statistik": "Field 2018",
+            "p-value": "Field 2018",
+            "nilai-p": "Field 2018",
+            "correlation": "Field 2018",
+            "korelasi": "Field 2018",
+            "regression": "Field 2018",
+            "regresi": "Field 2018",
+            "standard deviation": "Field 2018",
+            "standar deviasi": "Field 2018",
+            "null hypothesis": "Field 2018",
+            "hipotesis nol": "Field 2018",
+            "confidence interval": "Field 2018",
+            "interval kepercayaan": "Field 2018",
+            "normality": "Ghozali 2018",
+            "normalitas": "Ghozali 2018",
+            "multicollinearity": "Ghozali 2018",
+            "multikolinearitas": "Ghozali 2018",
+            "autocorrelation": "Ghozali 2018",
+            "autokorelasi": "Ghozali 2018",
+        }
+        stats = {t["term"] for t in list_terms(field="statistics")}
+        self.assertEqual(stats, set(field_terms))
+        for term, source in field_terms.items():
+            found = find_terms(f"The study reports {term}.", field="statistics")
+            self.assertEqual(len(found), 1, term)
+            self.assertEqual(found[0]["term"], term)
+            self.assertEqual(found[0]["field"], "statistics")
+            self.assertIn(source, found[0]["source"])
+
+    def test_null_hypothesis_wins_over_hypothesis(self):
+        # Longest-first matching: "null hypothesis" claims the span,
+        # the bare "hypothesis" entry must not double-flag it.
+        terms = find_terms("We test the null hypothesis first.")
+        self.assertEqual(len(terms), 1)
+        self.assertEqual(terms[0]["term"], "null hypothesis")
+
+    def test_statistics_paragraph_in_indonesian(self):
+        text = (
+            "Uji normalitas menunjukkan data berdistribusi normal. "
+            "Korelasi antara variabel X dan Y memiliki signifikansi "
+            "statistik dengan nilai-p 0,01. Analisis regresi juga "
+            "menemukan multikolinearitas yang rendah dan tidak ada "
+            "autokorelasi."
+        )
+        found = {t["term"] for t in find_terms(text)}
+        for term in ("normalitas", "korelasi", "signifikansi statistik",
+                     "nilai-p", "regresi", "multikolinearitas",
+                     "autokorelasi"):
+            self.assertIn(term, found, term)
+
     def test_annotated_markdown_contains_translation(self):
         out = to_annotated_markdown(
             "The renormalization group is a mathematical framework."

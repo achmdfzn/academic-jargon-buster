@@ -97,8 +97,8 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.16.0"
-JARGON_VERSION = "1.0.4"
+__version__ = "1.16.1"
+JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
 QUALITY_VERSION = "1.1.0"
@@ -308,6 +308,142 @@ DICTIONARY = {
         "what is known and where the gaps are",
         "research-methods",
         "Boote & Beile 2005, 'Scholars before researchers'",
+    ),
+    # Added 2026-11-12: 10 statistics terms students meet in almost
+    # every quantitative thesis. Sources verified the same day (web):
+    # Field 2018, Ghozali 2018. Indonesian aliases included where the
+    # source text uses the Indonesian form. "variance" was left out
+    # on purpose: the matcher is substring-based, so it would also
+    # match inside "covariance" and explain the wrong concept.
+    "statistical significance": (
+        "when a result is unlikely to have happened by chance alone, "
+        "so the study treats it as a real effect",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "signifikansi statistik": (
+        "when a result is unlikely to have happened by chance alone, "
+        "so the study treats it as a real effect",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "p-value": (
+        "a number from 0 to 1 that measures how surprising the data "
+        "would be if there were no real effect; below 0.05, the result "
+        "is usually called significant",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "nilai-p": (
+        "a number from 0 to 1 that measures how surprising the data "
+        "would be if there were no real effect; below 0.05, the result "
+        "is usually called significant",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "correlation": (
+        "a measure of how two things move together — when one goes up, "
+        "the other tends to go up or down — without proving that one "
+        "causes the other",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "korelasi": (
+        "a measure of how two things move together — when one goes up, "
+        "the other tends to go up or down — without proving that one "
+        "causes the other",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "regression": (
+        "a method for predicting one value from others, by fitting a "
+        "line or curve that best describes how they relate",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "regresi": (
+        "a method for predicting one value from others, by fitting a "
+        "line or curve that best describes how they relate",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "standard deviation": (
+        "a number that says how spread out values are around their "
+        "average — a small one means the values cluster close to "
+        "the average",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "standar deviasi": (
+        "a number that says how spread out values are around their "
+        "average — a small one means the values cluster close to "
+        "the average",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "null hypothesis": (
+        "the starting assumption that there is no effect or no "
+        "difference, which a study tries to disprove with evidence",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "hipotesis nol": (
+        "the starting assumption that there is no effect or no "
+        "difference, which a study tries to disprove with evidence",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "confidence interval": (
+        "a range of values that probably contains the true value — "
+        "a 95% interval means the method would capture the true value "
+        "in 95 out of 100 repeats",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "interval kepercayaan": (
+        "a range of values that probably contains the true value — "
+        "a 95% interval means the method would capture the true value "
+        "in 95 out of 100 repeats",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "normality": (
+        "whether data follows the bell-shaped normal distribution, "
+        "which many statistical tests assume before they can be trusted",
+        "statistics",
+        "Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed.)",
+    ),
+    "normalitas": (
+        "whether data follows the bell-shaped normal distribution, "
+        "which many statistical tests assume before they can be trusted",
+        "statistics",
+        "Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed.)",
+    ),
+    "multicollinearity": (
+        "when two or more predictors in a regression are so strongly "
+        "related to each other that their separate effects cannot be "
+        "told apart",
+        "statistics",
+        "Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed.)",
+    ),
+    "multikolinearitas": (
+        "when two or more predictors in a regression are so strongly "
+        "related to each other that their separate effects cannot be "
+        "told apart",
+        "statistics",
+        "Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed.)",
+    ),
+    "autocorrelation": (
+        "when the errors in a regression are related to each other "
+        "over time or order, instead of being independent",
+        "statistics",
+        "Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed.)",
+    ),
+    "autokorelasi": (
+        "when the errors in a regression are related to each other "
+        "over time or order, instead of being independent",
+        "statistics",
+        "Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed.)",
     ),
 }
 

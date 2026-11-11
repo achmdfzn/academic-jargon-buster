@@ -1,7 +1,7 @@
 ---
 name: academic-jargon-buster
 description: "Translate academic jargon to everyday language."
-version: 1.0.4
+version: 1.0.5
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -33,7 +33,7 @@ Never claim an academic-jargon-buster feature you haven't verified. When in doub
 
 # Academic Jargon Buster
 
-Translate academic jargon and technical terminology to plain language (Indonesian or English) while preserving scientific accuracy. The tool works on plain text: it finds terms from a 32-term discipline dictionary (with Indonesian aliases), explains each one in place, and names its source. It does not read PDFs or TeX files — paste the text.
+Translate academic jargon and technical terminology to plain language (Indonesian or English) while preserving scientific accuracy. The tool works on plain text: it finds terms from a 52-term discipline dictionary (with Indonesian aliases), explains each one in place, and names its source. It does not read PDFs or TeX files — paste the text.
 
 ## Input Methods
 
@@ -79,7 +79,7 @@ Without `--refs` the citation and DOI components are skipped (neutral). Exit cod
 
 ## Known Limitations
 
-- 32 dictionary terms is a sample, not a glossary. New terms need a real source.
+- 52 dictionary terms is a sample, not a glossary. New terms need a real source.
 - Specialized sub-field jargon may not be in default dictionary
 - Mathematical notation not translated (preserved as-is)
 - Low-quality OCR input may produce false term detection

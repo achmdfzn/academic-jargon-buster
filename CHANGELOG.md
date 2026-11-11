@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.16.1 — 2026-11-12
+
+- Dictionary grows 32 → 52 terms: 10 statistics concepts (English + Indonesian alias each) — statistical significance, p-value, correlation, regression, standard deviation, null hypothesis, confidence interval, normality, multicollinearity, autocorrelation — in a new `statistics` field, filterable with `jargon --list-terms --field statistics`. Sources verified live the same day: Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed., SAGE) for the inference terms; Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed., Badan Penerbit Undip) for the classical-assumption tests (normality, multicollinearity, autocorrelation). "variance" was left out on purpose: the matcher is substring-based, so it would also match inside "covariance". `JARGON_VERSION` 1.0.4 → 1.0.5.
+- 3 new tests (all 20 keys with sources, "null hypothesis" wins over "hypothesis", an Indonesian stats paragraph). Full suite 230/230.
+
 ## 1.16.0 — 2026-11-12
 
 - New `library` subcommand: analysis history and a personal bibliography in one local SQLite file (`~/.academic-tools/library.db`, stdlib `sqlite3`, no account, no cloud; override with `--db` or `ACADEMIC_LIBRARY_DB`). `analyze --save` records a run — title, date, score 0–100, style, jargon count, missing citations, DOI counts, suggestions, the text and its SHA-256 hash — and upserts every cited reference into the personal bibliography. `library --history` lists past runs newest first, `--show <id>` prints one in full, `--refs` lists the bibliography, `--search <query>` matches key/title/authors/DOI, `--import <refs.json>` upserts a bibliography file (reports added vs updated), `--export <out.json>` writes it back out. `--json` for machine-readable output. `CLI_VERSION` 1.9.0 → 1.10.0.

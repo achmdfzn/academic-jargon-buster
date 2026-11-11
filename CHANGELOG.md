@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0 — 2026-11-11
+
+- One file, every feature: new `academic_tools.py` (989 lines) merges Jargon Buster + Citation Weaver + the menu CLI into a single self-contained file — copy it anywhere, Python 3.9+ only, no dependencies. `jargon_buster.py`, `citation_weaver.py`, and `academic_cli.py` are now thin wrappers around it; every old command, demo, and import keeps working. Tests: 43/43 pass (4 new one-file tests, including wrapper identity checks).
+
 ## 1.0.2 — 2026-11-11 (continued)
 
 - Citation Weaver sample bibliography grew from 4 to 7 references: Brooke 1996 (SUS), Likert 1932, Ferraiolo & Kuhn 1992 (RBAC) — all real and verified, taken from the same user abstract as the new jargon terms. New demo `demos/citation-weaver/contoh_id.txt`: the user's real abstract with `[cite:...]` markers, weaving to IEEE [1][2][3] with a full Daftar Pustaka and zero missing references.

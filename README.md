@@ -1,8 +1,20 @@
 # Academic Jargon Buster
 
-**Your thesis speaks jargon. This repo translates it — and cites it properly.**
+**One Python file. Every feature. Zero invented references.**
 
-Two Hermes academic skills in one repo, built for students writing skripsi, tugas akhir, and journal papers in Indonesian and English. No dependencies. No invented references. One command opens a menu; the menu does the rest.
+This repo is an academic toolkit built by us, for students writing skripsi, tugas akhir, and journal papers in Indonesian and English. It translates jargon into plain language, weaves citations into narrative text, and runs it all from one interactive menu — in a single file you can copy anywhere and run with nothing to install.
+
+## One file
+
+`academic_tools.py` holds everything: the jargon dictionary and translator, the citation engine, and the menu CLI. Pure Python, no dependencies, 989 lines. Copy that one file anywhere and it works.
+
+```bash
+python3 academic_tools.py                  # interactive menu (default)
+python3 academic_tools.py jargon ...       # straight to Jargon Buster
+python3 academic_tools.py cite ...         # straight to Citation Weaver
+```
+
+The old entry points — `jargon_buster.py`, `citation_weaver.py`, `academic_cli.py` — still exist as thin wrappers around it, so every old command keeps working.
 
 ## How this repo was born
 
@@ -12,9 +24,9 @@ A real Indonesian abstract — a web-based management information system for a s
 
 | Tool | What it does | Version |
 | --- | --- | --- |
-| **Academic Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source | v1.0.2 |
+| **Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source | v1.0.2 |
 | **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography: APA, MLA, Chicago, IEEE, Harvard, Vancouver | v1.0.0 |
-| **Academic CLI** | One interactive command for both tools, menu-driven, bilingual | v1.0.0 |
+| **Menu CLI** | One interactive command for both tools, menu-driven, bilingual | v1.0.0 |
 
 - **Two languages:** Indonesian and English — the interface, the examples, and the dictionary aliases.
 - **21 majors, 6 citation styles:** each major has a recommended style (Medicine goes to Vancouver, Psychology to APA, Informatics to IEEE, Law to Chicago, Economics to Harvard). `--style` always wins over the recommendation.
@@ -30,7 +42,7 @@ A real Indonesian abstract — a web-based management information system for a s
 ```bash
 git clone https://github.com/achmdfzn/academic-jargon-buster.git
 cd academic-jargon-buster
-python3 academic_cli.py
+python3 academic_tools.py
 ```
 
 ```
@@ -42,7 +54,7 @@ Pilih alat:
 0. Keluar
 ```
 
-Inside each tool there are more choices: type text or read a file, pick a field, pick a citation style or a major (the major fills in its recommended style automatically), and pick the output language. For scripting, skip the menu with a subcommand — `python3 academic_cli.py jargon ...` and `python3 academic_cli.py cite ...` pass straight through to the standalone tools.
+Inside each tool there are more choices: type text or read a file, pick a field, pick a citation style or a major (the major fills in its recommended style automatically), and pick the output language. For scripting, skip the menu with a subcommand — `python3 academic_tools.py jargon ...` and `python3 academic_tools.py cite ...` pass straight through to the standalone tools.
 
 ## See it work
 
@@ -97,38 +109,31 @@ berbasis peran [2]... skala Likert 1–5 [3].
 
 ```bash
 # Jargon Buster: annotate a text file (default: Markdown)
-python3 jargon_buster.py demos/test_paper.txt
+python3 academic_tools.py jargon demos/test_paper.txt
 
 # Same, as CSV term list
-python3 jargon_buster.py demos/test_paper.txt --format csv
+python3 academic_tools.py jargon demos/test_paper.txt --format csv
 
 # One-liner, physics only
-python3 jargon_buster.py --text "The renormalization group is a mathematical framework." --field physics
+python3 academic_tools.py jargon --text "The renormalization group is a mathematical framework." --field physics
 
 # List the dictionary (optionally one field)
-python3 jargon_buster.py --list-terms --field general
+python3 academic_tools.py jargon --list-terms --field general
 
-# Add terms from a JSON file (see jargon_buster.py docstring for the format)
-python3 jargon_buster.py --update-dictionary --from new_terms.json
+# Add terms from a JSON file (see academic_tools.py docstring for the format)
+python3 academic_tools.py jargon --update-dictionary --from new_terms.json
 
 # Citation Weaver: Indonesian, APA style (default)
-python3 citation_weaver.py demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json --lang id
+python3 academic_tools.py cite demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json --lang id
 
 # Citation Weaver: English, IEEE style, or by major (Medicine -> Vancouver)
-python3 citation_weaver.py demos/citation-weaver/example_en.txt --refs demos/citation-weaver/references.json --lang en --style ieee
-python3 citation_weaver.py demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json --jurusan Kedokteran
+python3 academic_tools.py cite demos/citation-weaver/example_en.txt --refs demos/citation-weaver/references.json --lang en --style ieee
+python3 academic_tools.py cite demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json --jurusan Kedokteran
 ```
 
-## Install the skills in Hermes
+## Skills
 
-No install needed for the demos — Python 3.9+ only.
-
-To use the skills themselves in Hermes, copy the skill folders into your Hermes skills directory:
-
-```bash
-cp -r skills/research/academic-jargon-buster ~/.hermes/skills/research/
-cp -r skills/research/citation-weaver ~/.hermes/skills/research/
-```
+The `skills/research/` folders hold the same two tools as agent skills (spec files, same rules, same never-invent-references contract). They follow the skill format used by Hermes agents, so they also work there — copy a folder into your agent's skills directory if you use one.
 
 ## Repository layout
 
@@ -137,16 +142,17 @@ cp -r skills/research/citation-weaver ~/.hermes/skills/research/
 ├── README.md
 ├── LICENSE                         # MIT
 ├── CHANGELOG.md                    # version history
-├── academic_cli.py                 # interactive menu CLI (both tools)
-├── jargon_buster.py                # Academic Jargon Buster demo
-├── citation_weaver.py              # Citation Weaver demo
+├── academic_tools.py               # EVERYTHING: jargon + citations + menu CLI (v1.1.0)
+├── jargon_buster.py                # thin wrapper -> academic_tools.py
+├── citation_weaver.py              # thin wrapper -> academic_tools.py
+├── academic_cli.py                 # thin wrapper -> academic_tools.py
 ├── dictionary.json                 # user-added terms (created by --update-dictionary)
 ├── skills/
 │   └── research/
 │       ├── academic-jargon-buster/
-│       │   └── SKILL.md            # Hermes skill spec (source of truth)
+│       │   └── SKILL.md            # skill spec (source of truth)
 │       └── citation-weaver/
-│           └── SKILL.md            # Hermes skill spec (source of truth)
+│           └── SKILL.md            # skill spec (source of truth)
 ├── demos/
 │   ├── example_usage.py            # jargon example CLI usage
 │   ├── test_paper.txt              # jargon sample text
@@ -167,17 +173,18 @@ cp -r skills/research/citation-weaver ~/.hermes/skills/research/
 └── tests/
     ├── test_jargon_detection.py    # tests (stdlib unittest, no deps)
     ├── test_citation_weaver.py
-    └── test_academic_cli.py        # menu tests (scripted input)
+    ├── test_academic_cli.py        # menu tests (scripted input)
+    └── test_academic_tools.py      # one-file tests (wrappers included)
 ```
 
 ## Verification
 
-This skill follows a 4-level verification hierarchy (see `docs/verification-hierarchy.md`):
+This project follows a 4-level verification hierarchy (see `docs/verification-hierarchy.md`):
 
-1. `llms.txt` index — Hermes docs
-2. CLI reference — `hermes --help`
-3. Source tree — https://github.com/NousResearch/hermes-agent
-4. This skill body — what's documented in `SKILL.md`
+1. `llms.txt` index — agent docs
+2. CLI reference — `--help`
+3. Source tree — the upstream agent repo
+4. The skill body — what's documented in `SKILL.md`
 
 Never claim a capability that hasn't been verified at one of those levels. See `docs/professional-standards.md` for the operating standards.
 
@@ -189,7 +196,7 @@ Never claim a capability that hasn't been verified at one of those levels. See `
 - Cross-discipline terms need manual verification.
 - Citation formatting in the demo is simplified — check the official style guide before submitting a thesis or journal paper.
 
-To extend the dictionary, add entries to `DICTIONARY` in `jargon_buster.py` (term → explanation, field, source).
+To extend the dictionary, add entries to `DICTIONARY` in `academic_tools.py` (term → explanation, field, source).
 
 ## Tests
 
@@ -197,7 +204,7 @@ To extend the dictionary, add entries to `DICTIONARY` in `jargon_buster.py` (ter
 python3 -m unittest discover -s tests -v
 ```
 
-39 tests, standard library only, no dependencies.
+43 tests, standard library only, no dependencies.
 
 ## Contributing
 

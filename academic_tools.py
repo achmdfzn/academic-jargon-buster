@@ -69,8 +69,8 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.6.0"
-JARGON_VERSION = "1.0.3"
+__version__ = "1.7.0"
+JARGON_VERSION = "1.0.4"
 CITATION_VERSION = "1.3.0"
 PROMPTS_VERSION = "1.1.0"
 CLI_VERSION = "1.2.0"
@@ -550,7 +550,9 @@ def load_references(path: str):
 # message instead of a made-up reference, and setting OPENALEX_API_KEY
 # (free at https://openalex.org/) raises the limit. No data is ever
 # invented: a failed lookup is an error, never a guess.
-LOOKUP_USER_AGENT = "academic-jargon-buster/1.6.0 (mailto:achmddfzn@proton.me)"
+LOOKUP_USER_AGENT = (
+    f"academic-jargon-buster/{__version__} (mailto:achmddfzn@proton.me)"
+)
 CROSSREF_URL = "https://api.crossref.org/works/{doi}"
 OPENALEX_DOI_URL = "https://api.openalex.org/works/https://doi.org/{doi}"
 OPENALEX_SEARCH_URL = "https://api.openalex.org/works?search={q}&per-page=1"

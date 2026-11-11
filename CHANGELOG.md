@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.0 — 2026-11-12
+
+- Structure release, no new tool features. `academic_tools.py` is still the whole tool in one dependency-free file, and the four root `.py` files are still the same thin shims. What moved:
+  - `demos/` is now symmetric: `demos/jargon-buster/` (example + sample paper) and `demos/citation-weaver/` (examples + 7 real references).
+  - `docs/` is now `docs/standards/` (one shared professional-standards and verification-hierarchy pair instead of two copies that had already drifted), `docs/citation-weaver/jurusan.md`, and `docs/update-schedule.md`.
+- Fixed: `to_annotated_markdown` annotated a repeated jargon term twice at its first occurrence and left later occurrences bare, because the second replacement matched inside the explanation it had just inserted. Matches are now spliced by span, so every occurrence is annotated exactly once. Regression test included. Jargon Buster skill v1.0.4.
+- Added `pyproject.toml` (dynamic version from `academic_tools.__version__`; `pipx install .` provides the `academic-tools` command), a CI matrix (Ubuntu/Windows/macOS × Python 3.9/3.12/3.13), `.editorconfig`, and `.gitattributes` (LF everywhere).
+- Added `tests/test_structure.py`: fails when the README test count or version is stale, a documented demo/docs path no longer exists, `academic_tools.py` imports a third-party module, or a `SKILL.md` version disagrees with the constant it documents.
+- Docs corrected: README v1.3.0 → v1.7.0 and 15 → 18 prompts, `docs/jurusan.md` pointed at a non-existent `demos/references.json`, and the citation demo claimed four references (it has seven).
+- Full suite 114/114.
+
 ## 1.6.0 — 2026-11-11
 
 - Thesis Prompts grew from 15 to 18 templates: new abstrak (abstract), rumusan-masalah (problem statement & objectives, Bab 1), and kata-pengantar (preface). Every template now has an English version with the same placeholders — `prompts <id> --lang en` or menu option 3 with language switched to English. 6 new tests (18 prompts, bilingual placeholders, English fill, new categories); full suite 104/104. Skill skripsi-prompts v1.1.0, templates verified in sync with code (18 × 2).

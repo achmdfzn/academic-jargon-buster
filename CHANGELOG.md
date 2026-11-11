@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.13.0 — 2026-11-12
+
+- New `humanize` subcommand: style rewrite suggestions (before/after per pattern), built on the v1.11.0 style check — the missing half of Opsi B. Light verbs get a concrete verb ("melakukan pengukuran terhadap" → "mengukur", from an original noun→verb table written from Indonesian grammar); connectors are dropped (with the next word re-capitalized); "yang mana" splits the sentence. Passive voice, "dimana", flat rhythm, and light verbs with no known verb form get guidance instead of a made-up rewrite. Nothing is changed — suggestions only, the author edits by hand. Exits 1 when it has suggestions, 0 when the style is already fluent. `CLI_VERSION` 1.7.0 → 1.8.0.
+- `analyze` gains `--suggest` (same suggestions inside the quality pass, plus a "Saran rewrite gaya" checkbox in the web UI's Analisis Kualitas tab). `analyze_text_quality()` takes `suggest=True` and carries a `suggestions` key in the result (empty unless requested). The interactive menu gains Humanize as option 5; language switch moves to 6.
+- 27 new tests. Full suite 188/188. `suggest_style_fixes()`, `format_suggestions()`, and `humanize_main()` are re-exported by the `academic_cli` shim and pinned by the structure guard.
+
 ## 1.12.0 — 2026-11-12
 
 - New `serve` subcommand: a local web UI for all four tools, built from this file alone (`python3 academic_tools.py serve`, then open http://127.0.0.1:8000/). Stdlib `http.server` plus an embedded page and a small JSON API (`/api/analyze`, `/api/jargon`, `/api/cite`, `/api/prompts`, `/api/prompts/fill`). Localhost only, 1 MB request cap, honest 400/404/500 errors. `CLI_VERSION` 1.6.0 → 1.7.0.

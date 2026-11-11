@@ -13,7 +13,10 @@ from academic_tools import (
     check_style,
     format_analyze,
     format_banner,
+    format_suggestions,
+    humanize_main,
     main,
+    suggest_style_fixes,
 )
 
 __all__ = [
@@ -23,7 +26,10 @@ __all__ = [
     "check_style",
     "format_analyze",
     "format_banner",
+    "format_suggestions",
+    "humanize_main",
     "main",
+    "suggest_style_fixes",
 ]
 
 if __name__ == "__main__":

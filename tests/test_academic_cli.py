@@ -44,7 +44,7 @@ class TestAcademicCli(unittest.TestCase):
         )
 
     def test_english_banner_names_thesis_prompts(self):
-        code, out = run_cli(["5", "0"])
+        code, out = run_cli(["6", "0"])
         self.assertEqual(code, 0)
         self.assertIn("Thesis Prompts", out)
         self.assertIn("type a number", out)
@@ -103,7 +103,7 @@ class TestAcademicCli(unittest.TestCase):
         self.assertIn("vancouver", out)
 
     def test_switch_language_to_english(self):
-        code, out = run_cli(["5", "0"])
+        code, out = run_cli(["6", "0"])
         self.assertEqual(code, 0)
         self.assertIn("Choose a tool", out)
         self.assertIn("Goodbye", out)

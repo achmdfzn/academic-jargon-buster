@@ -85,11 +85,11 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.12.0"
+__version__ = "1.13.0"
 JARGON_VERSION = "1.0.4"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-CLI_VERSION = "1.7.0"
+CLI_VERSION = "1.8.0"
 
 # ======================================================================
 # Jargon Buster
@@ -1466,12 +1466,330 @@ def check_style(text: str) -> dict:
     }
 
 
+# ======================================================================
+# Style rewrite suggestions (saran rewrite gaya)
+# ======================================================================
+# For each stiff-style pattern found by check_style(), propose a
+# concrete replacement — shown before/after, never applied silently.
+# The verb table is written from Indonesian grammar: a nominalized
+# noun maps to the verb that says the same thing in one word.
+# Patterns that need a human decision (passive voice, rhythm, a
+# "dimana" that may or may not be a place) get guidance instead of
+# a mechanical replacement.
+
+# Nominalized noun -> the verb form.
+_NOUN_TO_VERB = {
+    "pengukuran": "mengukur", "analisis": "menganalisis",
+    "pengujian": "menguji", "penelitian": "meneliti",
+    "perbandingan": "membandingkan", "perhitungan": "menghitung",
+    "pengamatan": "mengamati", "evaluasi": "mengevaluasi",
+    "observasi": "mengobservasi", "simulasi": "mensimulasikan",
+    "pemodelan": "memodelkan", "pengaruh": "memengaruhi",
+    "kontribusi": "menyumbang", "gambaran": "menggambarkan",
+    "informasi": "memberi tahu", "peningkatan": "naik",
+    "penurunan": "turun", "perubahan": "berubah",
+    "perjalanan": "bepergian", "perawatan": "dirawat",
+    "pengembangan": "mengembangkan", "penerapan": "menerapkan",
+    "penggunaan": "menggunakan", "pemeriksaan": "memeriksa",
+    "penyusunan": "menyusun", "pelaksanaan": "melaksanakan",
+    "pembangunan": "membangun", "pembahasan": "membahas",
+    "peninjauan": "meninjau", "pendekatan": "mendekati",
+    "pengumpulan": "mengumpulkan", "pengolahan": "mengolah",
+    "penentuan": "menentukan", "perhatian": "memperhatikan",
+    "dukungan": "mendukung",
+}
+
+# Trailing prepositions that belong to the light-verb frame and can
+# be dropped with it ("pengukuran terhadap suhu" -> "mengukur suhu").
+# "untuk", "dengan", "dari", "dalam" are NOT safe: they change the
+# meaning ("pengujian untuk validasi" is not "menguji validasi").
+_SAFE_TRAILING_PREPS = ("terhadap", "atas", "antara", "sebesar", "kepada")
+
+
+def _sentence_spans(text: str) -> list[tuple[int, int, str]]:
+    """(start, end, sentence) for each sentence in the text."""
+    spans = []
+    start = 0
+    for m in re.finditer(r"[.!?]+(?:\s+|$)", text):
+        end = m.end()
+        sent = text[start:end].strip()
+        if sent:
+            spans.append((start, end, sent))
+        start = end
+    tail = text[start:].strip()
+    if tail:
+        spans.append((start, len(text), tail))
+    return spans
+
+
+def _context_sentence(spans, pos: int) -> str:
+    for s, e, sent in spans:
+        if s <= pos < e:
+            return sent
+    return spans[-1][2] if spans else ""
+
+
+def _apply_suggestion(text: str, s: dict) -> str:
+    """Return `text` with one suggestion's span replaced.
+
+    Collapses double spaces and capitalizes the first letter of
+    every sentence, so a removed sentence-initial connector or a
+    split after "yang mana" still reads correctly.
+    """
+    new = text[:s["start"]] + (s["replacement"] or "") + text[s["end"]:]
+    new = re.sub(r" {2,}", " ", new).strip()
+
+    def _cap(m):
+        return m.group(1) + m.group(2).upper()
+
+    return re.sub(r"(^|[.!?]\s+)([a-z])", _cap, new)
+
+
+def _fixed_sentence(text: str, sug: dict) -> str | None:
+    """The suggestion's sentence with the replacement applied."""
+    if sug["replacement"] is None:
+        return None
+    for s, e, sent in _sentence_spans(text):
+        if s <= sug["start"] < e:
+            rel = sug["start"] - s
+            return _apply_suggestion(sent, {
+                "start": rel,
+                "end": rel + len(sug["original"]),
+                "replacement": sug["replacement"],
+            })
+    return sug["context"]
+
+
+_SUGGEST_NOTES = {
+    "id": {
+        "nominalization": "Pakai kata kerja langsung.",
+        "connectors": "Hapus konektornya — biarkan kalimat menyambung sendiri.",
+        "passive": "Pakai bentuk aktif bila pelakunya jelas.",
+        "yang_mana": "Tulis ulang tanpa kalke; pisah jadi dua kalimat bila perlu.",
+        "rhythm": "Variasikan panjang kalimat: pecah yang panjang, gabung yang pendek.",
+    },
+    "en": {
+        "nominalization": "Use the verb directly.",
+        "connectors": "Drop the connector — let the sentences connect the argument.",
+        "passive": "Use the active form when the actor is clear.",
+        "yang_mana": "Rewrite without the calque; split into two sentences if needed.",
+        "rhythm": "Vary sentence length: split long ones, join short ones.",
+    },
+}
+
+
+def suggest_style_fixes(text: str, lang: str = "id") -> dict:
+    """Propose rewrite suggestions for stiff-style patterns in `text`.
+
+    Returns {"suggestions": [...first 10...], "count": total}. Each
+    suggestion carries pattern, original, replacement (None when the
+    fix needs a human decision), context (the sentence), fixed (the
+    sentence with the replacement applied, or None), note, and the
+    span offsets. Nothing is changed: the caller shows these and the
+    author edits by hand.
+    """
+    notes = _SUGGEST_NOTES.get(lang, _SUGGEST_NOTES["id"])
+    spans = _sentence_spans(text)
+    suggestions = []
+
+    # 1. Light verbs: mechanical when the noun has a verb form.
+    for m in _LIGHT_VERB_RE.finditer(text):
+        verb, noun = m.group(1), m.group(2)
+        start, end = m.start(), m.end()
+        tail = re.match(
+            r"\s+(terhadap|atas|antara|sebesar|kepada)\b", text[end:])
+        if tail:
+            end += tail.end()
+        repl = _NOUN_TO_VERB.get(noun.lower())
+        suggestions.append({
+            "pattern": "nominalization",
+            "original": text[start:end],
+            "replacement": repl,
+            "context": _context_sentence(spans, start),
+            "fixed": None,
+            "note": notes["nominalization"],
+            "start": start,
+            "end": end,
+        })
+
+    # 2. Connectors: delete the connector (and a following comma).
+    for conn in _CONNECTORS:
+        for m in re.finditer(r"\b" + re.escape(conn) + r"\b",
+                             text, re.IGNORECASE):
+            start, end = m.start(), m.end()
+            if end < len(text) and text[end] == ",":
+                end += 1
+            suggestions.append({
+                "pattern": "connectors",
+                "original": text[start:end],
+                "replacement": "",
+                "context": _context_sentence(spans, start),
+                "fixed": None,
+                "note": notes["connectors"],
+                "start": start,
+                "end": end,
+            })
+
+    # 3. Passive: one guidance suggestion per sentence that has one.
+    for s, e, sent in spans:
+        m = re.search(r"\b(" + "|".join(_PASSIVE_VERBS) + r")\b",
+                      sent, re.IGNORECASE)
+        if m:
+            suggestions.append({
+                "pattern": "passive",
+                "original": m.group(0),
+                "replacement": None,
+                "context": sent,
+                "fixed": None,
+                "note": notes["passive"],
+                "start": s + m.start(),
+                "end": s + m.end(),
+            })
+
+    # 4. "yang mana" splits the sentence; "dimana" needs a decision.
+    for m in _YANG_MANA_RE.finditer(text):
+        word = m.group(0).lower()
+        if word == "yang mana":
+            start, end = m.start(), m.end()
+            sentence_start = (start == 0 or (start >= 2
+                              and text[start - 2] in ".!?"
+                              and text[start - 1] == " "))
+            if sentence_start:
+                # "Yang mana" opening a sentence cannot be split off
+                # mechanically; leave it as guidance.
+                suggestions.append({
+                    "pattern": "yang_mana",
+                    "original": m.group(0),
+                    "replacement": None,
+                    "context": _context_sentence(spans, start),
+                    "fixed": None,
+                    "note": notes["yang_mana"],
+                    "start": start,
+                    "end": end,
+                })
+                continue
+            if start > 0 and text[start - 1] == ",":
+                start -= 1
+            elif (start > 1 and text[start - 1] == " "
+                    and text[start - 2] == ","):
+                # ", yang mana" — swallow comma and space together.
+                start -= 2
+            elif start > 0 and text[start - 1] == " ":
+                # Swallow the space before it, or the "." lands after
+                # a gap ("metode . Hasilnya").
+                start -= 1
+            suggestions.append({
+                "pattern": "yang_mana",
+                "original": text[start:end],
+                "replacement": ".",
+                "context": _context_sentence(spans, start),
+                "fixed": None,
+                "note": notes["yang_mana"],
+                "start": start,
+                "end": end,
+            })
+        else:
+            suggestions.append({
+                "pattern": "yang_mana",
+                "original": m.group(0),
+                "replacement": None,
+                "context": _context_sentence(spans, m.start()),
+                "fixed": None,
+                "note": notes["yang_mana"],
+                "start": m.start(),
+                "end": m.end(),
+            })
+
+    # 5. Rhythm: only when flagged; the longest sentence is the example.
+    style = check_style(text)
+    if style["signals"]["rhythm"]["flagged"]:
+        longest = max(spans, key=lambda t: len(t[2].split()))
+        suggestions.append({
+            "pattern": "rhythm",
+            "original": longest[2],
+            "replacement": None,
+            "context": longest[2],
+            "fixed": None,
+            "note": notes["rhythm"],
+            "start": longest[0],
+            "end": longest[1],
+        })
+
+    suggestions.sort(key=lambda s: s["start"])
+    for sug in suggestions:
+        sug["fixed"] = _fixed_sentence(text, sug)
+    total = len(suggestions)
+    return {"suggestions": suggestions[:10], "count": total}
+
+
+_SUGGEST_STRINGS = {
+    "id": {
+        "heading": "Saran rewrite gaya",
+        "more": "Menampilkan {shown} dari {total} saran.",
+        "labels": {
+            "nominalization": "Verba ringan",
+            "connectors": "Konektor",
+            "passive": "Verba pasif",
+            "yang_mana": "'yang mana'/'dimana'",
+            "rhythm": "Ritme kalimat",
+        },
+        "before": "Sebelum",
+        "after": "Sesudah",
+        "none": "Tidak ada saran rewrite — gaya naskah sudah luwes.",
+    },
+    "en": {
+        "heading": "Style rewrite suggestions",
+        "more": "Showing {shown} of {total} suggestions.",
+        "labels": {
+            "nominalization": "Light verbs",
+            "connectors": "Connectors",
+            "passive": "Passive verbs",
+            "yang_mana": "'yang mana'/'dimana'",
+            "rhythm": "Sentence rhythm",
+        },
+        "before": "Before",
+        "after": "After",
+        "none": "No rewrite suggestions — the style is already fluent.",
+    },
+}
+
+
+def format_suggestions(result: dict, lang: str = "id") -> str:
+    """Render a suggest_style_fixes() result as readable before/after text."""
+    s = _SUGGEST_STRINGS.get(lang, _SUGGEST_STRINGS["id"])
+    suggestions = result["suggestions"]
+    if not suggestions:
+        return s["none"] + "\n"
+    lines = [f"{s['heading']} ({result['count']}):"]
+    for i, sug in enumerate(suggestions, 1):
+        label = s["labels"][sug["pattern"]]
+        # The span may swallow a leading space (see suggest_style_fixes);
+        # display trims it.
+        original = sug["original"].strip()
+        if sug["replacement"] is not None:
+            repl = "(hapus)" if sug["replacement"] == "" \
+                else f"\"{sug['replacement']}\""
+            lines.append(
+                f"{i}. {label} — \"{original}\" -> {repl}")
+            lines.append(f"   {s['before']}: {sug['context']}")
+            lines.append(f"   {s['after']}: {sug['fixed']}")
+        else:
+            lines.append(f"{i}. {label} — \"{original}\"")
+            lines.append(f"   {s['before']}: {sug['context']}")
+            lines.append(f"   {sug['note']}")
+    if result["count"] > len(suggestions):
+        lines.append(s["more"].format(shown=len(suggestions),
+                                      total=result["count"]))
+    return "\n".join(lines) + "\n"
+
+
 def analyze_text_quality(
     text: str,
     references: dict | None = None,
     *,
     lang: str = "id",
     verify_dois: bool = True,
+    suggest: bool = False,
 ) -> dict:
     """Analyze an academic text for quality: jargon, citations, DOI status,
     style, and bibliography completeness.
@@ -1483,6 +1801,8 @@ def analyze_text_quality(
     - style: style check result (signals, style_score, flagged)
     - quality_score: composite score 0-100
     - recommendations: list of improvement suggestions
+    - suggestions: rewrite suggestions from suggest_style_fixes()
+      (empty unless suggest=True)
 
     If `references` is provided, citation audit and DOI verification are
     performed against it. Otherwise, citation and DOI checks are skipped.
@@ -1496,7 +1816,10 @@ def analyze_text_quality(
         "style": check_style(text),
         "quality_score": 0,
         "recommendations": [],
+        "suggestions": {"suggestions": [], "count": 0},
     }
+    if suggest:
+        result["suggestions"] = suggest_style_fixes(text, lang=lang)
 
     # --- Jargon detection ---
     jargon_matches = find_terms(text)
@@ -1796,6 +2119,9 @@ def format_analyze(result: dict, lang: str = "id") -> str:
     else:
         lines.append(f"{s['style']}: {style['style_score']}/25 — "
                      f"{s['style_clean']}")
+    sugs = result.get("suggestions") or {"suggestions": [], "count": 0}
+    if sugs["suggestions"]:
+        lines.append(format_suggestions(sugs, lang=lang).rstrip("\n"))
     recs = result["recommendations"]
     lines.append(f"{s['recs']}:")
     if recs:
@@ -1818,6 +2144,8 @@ def analyze_main(argv=None) -> int:
                    help="output language (default: id)")
     p.add_argument("--no-verify", action="store_true",
                    help="skip DOI verification even when --refs is given")
+    p.add_argument("--suggest", action="store_true",
+                   help="also show style rewrite suggestions (before/after)")
     p.add_argument("--json", action="store_true",
                    help="print the raw result as JSON instead of readable text")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -1836,7 +2164,8 @@ def analyze_main(argv=None) -> int:
     if args.refs:
         references = load_references(args.refs)
     result = analyze_text_quality(text, references, lang=args.lang,
-                                  verify_dois=not args.no_verify)
+                                  verify_dois=not args.no_verify,
+                                  suggest=args.suggest)
     if args.json:
         sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     else:
@@ -1845,6 +2174,37 @@ def analyze_main(argv=None) -> int:
                   for v in result["doi_verification"].values())
     missing = result["citations"]["missing"] if result["citations"] else []
     return 1 if missing or bad_doi else 0
+
+
+def humanize_main(argv=None) -> int:
+    p = argparse.ArgumentParser(
+        description="Suggest style rewrites for Indonesian academic prose "
+                    "(before/after per pattern). Nothing is changed: review "
+                    "each suggestion and edit by hand. Exits 1 when it has "
+                    "suggestions, 0 when the style is already fluent.")
+    p.add_argument("input", nargs="?", help="plain-text file to check")
+    p.add_argument("--text", help="check this text instead of a file")
+    p.add_argument("--lang", choices=["id", "en"], default="id",
+                   help="output language (default: id)")
+    p.add_argument("--json", action="store_true",
+                   help="print the raw result as JSON instead of readable text")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    args = p.parse_args(argv)
+
+    if args.text:
+        text = args.text
+    elif args.input:
+        with open(args.input, encoding="utf-8") as f:
+            text = f.read()
+    else:
+        p.error("give a file or --text")
+        return 2
+    result = suggest_style_fixes(text, lang=args.lang)
+    if args.json:
+        sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    else:
+        sys.stdout.write(format_suggestions(result, lang=args.lang))
+    return 1 if result["count"] else 0
 
 
 def cite_main(argv=None) -> int:
@@ -2638,6 +2998,7 @@ STRINGS = {
         "cite": "Citation Weaver — sisipkan sitasi ke naskah",
         "prompts": "Prompt Skripsi — template prompt untuk tiap bab",
         "analyze": "Analisis Kualitas — cek jargon, sitasi, dan DOI sekaligus",
+        "humanize": "Humanize — saran rewrite gaya (sebelum/sesudah)",
         "list_prompts": "Lihat daftar prompt",
         "fill_prompt": "Isi prompt",
         "pick_prompt": "Pilih prompt:",
@@ -2689,6 +3050,7 @@ STRINGS = {
         "cite": "Citation Weaver — weave citations into text",
         "prompts": "Thesis Prompts — ready-made prompts for each chapter",
         "analyze": "Quality Check — jargon, citations, and DOIs in one pass",
+        "humanize": "Humanize — style rewrite suggestions (before/after)",
         "list_prompts": "List prompts",
         "fill_prompt": "Fill a prompt",
         "pick_prompt": "Pick a prompt:",
@@ -2847,9 +3209,10 @@ class CLI:
             print(f"2. {self.t['cite']}")
             print(f"3. {self.t['prompts']}")
             print(f"4. {self.t['analyze']}")
-            print(f"5. {self.t['lang']}")
+            print(f"5. {self.t['humanize']}")
+            print(f"6. {self.t['lang']}")
             print(f"0. {self.t['exit']}")
-            choice = self.ask_choice(self.t["choice"], 5)
+            choice = self.ask_choice(self.t["choice"], 6)
             if choice == -1:
                 continue
             if choice == 1:
@@ -2861,6 +3224,8 @@ class CLI:
             elif choice == 4:
                 self.analyze_menu()
             elif choice == 5:
+                self.humanize_menu()
+            elif choice == 6:
                 self.lang = "en" if self.lang == "id" else "id"
             elif choice == 0 or choice is None:
                 print(self.t["goodbye"])
@@ -2984,6 +3349,14 @@ class CLI:
         refs = load_references(refs_path)
         result = analyze_text_quality(text, refs, lang=self.lang)
         print(f"\n{format_analyze(result, lang=self.lang)}")
+        self.pause()
+
+    def humanize_menu(self):
+        text = self.read_text()
+        if not text:
+            return
+        result = suggest_style_fixes(text, lang=self.lang)
+        print(f"\n{format_suggestions(result, lang=self.lang)}")
         self.pause()
 
     def cite_export_bibtex(self):
@@ -3280,6 +3653,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <div>
           <label>&nbsp;</label>
           <label style="font-weight:400"><input type="checkbox" id="analyze-verify"> Verifikasi DOI <span class="hint">(butuh internet)</span></label>
+          <label style="font-weight:400"><input type="checkbox" id="analyze-suggest"> Saran rewrite gaya</label>
         </div>
       </div>
       <details>
@@ -3477,6 +3851,30 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       res.recommendations.forEach(function (r) { h += "<li>" + esc(r) + "</li>"; });
       h += "</ul></div>";
     }
+    var sg = res.suggestions;
+    if (sg && sg.suggestions && sg.suggestions.length) {
+      var labels = {nominalization: "Verba ringan", connectors: "Konektor",
+        passive: "Verba pasif", yang_mana: "'yang mana'/'dimana'",
+        rhythm: "Ritme kalimat"};
+      h += '<div class="card"><h2>Saran rewrite gaya <span class="meta">' + sg.count + "</span></h2>";
+      sg.suggestions.forEach(function (s, i) {
+        h += "<p><strong>" + (i + 1) + ". " + (labels[s.pattern] || s.pattern) + "</strong> — “" + esc(s.original.trim()) + "”";
+        if (s.replacement !== null) {
+          h += " → “" + (s.replacement === "" ? "(hapus)" : esc(s.replacement)) + "”";
+        }
+        h += "<br><span class=\"hint\">Sebelum:</span> " + esc(s.context);
+        if (s.fixed) {
+          h += "<br><span class=\"hint\">Sesudah:</span> " + esc(s.fixed);
+        } else {
+          h += "<br>" + esc(s.note);
+        }
+        h += "</p>";
+      });
+      if (sg.count > sg.suggestions.length) {
+        h += "<p>Menampilkan " + sg.suggestions.length + " dari " + sg.count + " saran.</p>";
+      }
+      h += "</div>";
+    }
     return h;
   }
 
@@ -3493,6 +3891,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       body.text = text;
       body.lang = $("analyze-lang").value;
       body.verify = $("analyze-verify").checked;
+      body.suggest = $("analyze-suggest").checked;
       var res = await post("/api/analyze", body);
       $("analyze-result").innerHTML = renderAnalyze(res, body.lang);
       $("analyze-status").textContent = "";
@@ -3747,7 +4146,8 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
             raise ValueError("lang harus 'id' atau 'en'")
         refs = _load_ui_references(body)
         return analyze_text_quality(
-            text, refs, lang=lang, verify_dois=bool(body.get("verify")))
+            text, refs, lang=lang, verify_dois=bool(body.get("verify")),
+            suggest=bool(body.get("suggest")))
 
     def _jargon(self, body: dict) -> dict:
         text = str(body.get("text") or "").strip()
@@ -3815,7 +4215,8 @@ def serve_main(argv=None) -> int:
 def main(argv=None) -> int:
     """Entry point. No args -> interactive menu; jargon/cite/prompts -> passthrough."""
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] in ("jargon", "cite", "prompts", "analyze", "serve"):
+    if argv and argv[0] in ("jargon", "cite", "prompts", "analyze",
+                           "humanize", "serve"):
         tool, rest = argv[0], argv[1:]
         if tool == "jargon":
             return jargon_main(rest)
@@ -3823,6 +4224,8 @@ def main(argv=None) -> int:
             return cite_main(rest)
         if tool == "analyze":
             return analyze_main(rest)
+        if tool == "humanize":
+            return humanize_main(rest)
         if tool == "serve":
             return serve_main(rest)
         return prompts_main(rest)

@@ -3,7 +3,7 @@
 Run from the repo root:
     python3 demos/example_usage.py
 
-Uses the sample bibliography in demos/citation-weaver/references.json — four real,
+Uses the sample bibliography in demos/citation-weaver/references.json — seven real,
 verifiable references (Vaswani et al. 2017, Devlin et al. 2019,
 Brown et al. 2020, Goodfellow et al. 2016). Never invent references:
 a [cite:key] with no bibliography entry is marked PERLU RUJUKAN /

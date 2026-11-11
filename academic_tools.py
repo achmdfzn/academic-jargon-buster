@@ -40,7 +40,7 @@ One rule, everywhere in this file: NEVER invent a reference. A
 [cite:key] with no bibliography entry is marked [PERLU RUJUKAN: key] /
 [REFERENCE NEEDED: key], never filled in with a made-up paper.
 
-Thesis Prompts: 15 ready-made prompt templates for writing a thesis,
+Thesis Prompts: 18 ready-made prompt templates for writing a thesis,
 from research roadmap to defense prep and publication. Pick one, fill
 its placeholders with your own title, theory, method, and data, then
 paste the result into the recommended AI tool.

@@ -6,7 +6,7 @@ Student writing, minus the guesswork: this repo translates academic jargon into 
 
 ## The file
 
-`academic_tools.py` (v1.3.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 15 thesis prompts, and an interactive menu CLI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.6.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, and an interactive menu CLI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -82,12 +82,12 @@ python3 academic_tools.py cite --lookup "Deep learning" --add-to my-refs.json
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.3.0)
+academic_tools.py            # everything (v1.6.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 skills/research/             # the same three tools as agent skills
 demos/                       # examples + 7 real sample references
 docs/                        # majors & styles, verification, update schedule
-tests/                       # 81 tests, stdlib unittest only
+tests/                       # 104 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -103,7 +103,7 @@ The `skills/research/` folders hold the same three tools as agent skills. They f
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 81 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 104 tests, no dependencies
 ```
 
 ## License

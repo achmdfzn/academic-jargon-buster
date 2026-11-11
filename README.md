@@ -7,6 +7,25 @@ Translate academic jargon to plain English — plus a small runnable reference i
 - **Skill 2 — Citation Weaver:** `skills/research/citation-weaver/SKILL.md` (v1.0.0, MIT)
   - Demo: `citation_weaver.py` — pure Python, no dependencies, works standalone
 
+## Academic CLI — one command, both tools
+
+Like the Claude CLI: run one command, pick from a menu.
+
+```bash
+python3 academic_cli.py
+```
+
+```
+==================== Academic Tools — Jargon Buster + Citation Weaver ====================
+Pilih alat:
+1. Jargon Buster — terjemahkan istilah akademik
+2. Citation Weaver — sisipkan sitasi ke naskah
+3. Ganti bahasa (id/en)
+0. Keluar
+```
+
+Inside each tool there are more choices: type text or read a file, pick a field / citation style / major, and pick the output language (Indonesian or English). For scripting, skip the menu with a subcommand — `python3 academic_cli.py jargon ...` and `python3 academic_cli.py cite ...` pass straight through to the standalone tools.
+
 ## What it does
 
 ### Academic Jargon Buster
@@ -75,6 +94,7 @@ mathematical framework.
 ├── README.md
 ├── LICENSE                         # MIT
 ├── CHANGELOG.md                    # version history
+├── academic_cli.py                 # interactive menu CLI (both tools)
 ├── jargon_buster.py                # Academic Jargon Buster demo
 ├── citation_weaver.py              # Citation Weaver demo
 ├── dictionary.json                 # user-added terms (created by --update-dictionary)
@@ -101,7 +121,8 @@ mathematical framework.
 │       └── professional-standards.md
 └── tests/
     ├── test_jargon_detection.py    # tests (stdlib unittest, no deps)
-    └── test_citation_weaver.py
+    ├── test_citation_weaver.py
+    └── test_academic_cli.py        # menu tests (scripted input)
 ```
 
 ## Verification

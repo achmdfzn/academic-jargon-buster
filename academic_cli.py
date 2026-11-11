@@ -308,6 +308,9 @@ class CLI:
         lang = "en" if lang_choice == 2 else "id"
         refs = cw.load_references(refs_path)
         out = cw.weave(text, refs, style=style, lang=lang)
+        # weave() returns (full output with bibliography, woven text only)
+        if isinstance(out, tuple):
+            out = out[0]
         print(f"\n{self.t['result']}\n{out}")
         self.pause()
 

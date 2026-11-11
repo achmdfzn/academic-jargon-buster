@@ -1,17 +1,35 @@
 # Academic Jargon Buster
 
-Translate academic jargon to plain English — plus a small runnable reference implementation. This repo now holds **two** Hermes academic skills (both bilingual Indonesian/English where noted).
+**Your thesis speaks jargon. This repo translates it — and cites it properly.**
 
-- **Skill 1 — Academic Jargon Buster:** `skills/research/academic-jargon-buster/SKILL.md` (v1.0.2, MIT)
-  - Demo: `jargon_buster.py` — pure Python, no dependencies, works standalone
-- **Skill 2 — Citation Weaver:** `skills/research/citation-weaver/SKILL.md` (v1.0.0, MIT)
-  - Demo: `citation_weaver.py` — pure Python, no dependencies, works standalone
+Two Hermes academic skills in one repo, built for students writing skripsi, tugas akhir, and journal papers in Indonesian and English. No dependencies. No invented references. One command opens a menu; the menu does the rest.
 
-## Academic CLI — one command, both tools
+## How this repo was born
 
-Like the Claude CLI: run one command, pick from a menu.
+A real Indonesian abstract — a web-based management information system for a student abstract, evaluated with the System Usability Scale — matched **zero** terms in the first dictionary. So the dictionary learned from it. That same abstract now matches six terms, and its three real references (Brooke 1996, Likert 1932, Ferraiolo & Kuhn 1992) live in the sample bibliography. This repo grows from real student text, not from a word list.
+
+## What is inside
+
+| Tool | What it does | Version |
+| --- | --- | --- |
+| **Academic Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source | v1.0.2 |
+| **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography: APA, MLA, Chicago, IEEE, Harvard, Vancouver | v1.0.0 |
+| **Academic CLI** | One interactive command for both tools, menu-driven, bilingual | v1.0.0 |
+
+- **Two languages:** Indonesian and English — the interface, the examples, and the dictionary aliases.
+- **21 majors, 6 citation styles:** each major has a recommended style (Medicine goes to Vancouver, Psychology to APA, Informatics to IEEE, Law to Chicago, Economics to Harvard). `--style` always wins over the recommendation.
+- **22 dictionary terms and counting:** physics, machine learning, economics, biology, usability, software engineering, research methods. Every term carries a plain explanation, a field, and a real source.
+- **7 real sample references:** Vaswani et al. 2017, Devlin et al. 2019, Brown et al. 2020, Goodfellow et al. 2016, Brooke 1996, Likert 1932, Ferraiolo & Kuhn 1992. All verifiable. None invented.
+
+## The one rule this repo never breaks
+
+**Never invent a reference.** A `[cite:key]` with no bibliography entry is printed as `[PERLU RUJUKAN: key]` — a gap to fill, not a paper to fake. A term with no source does not enter the dictionary. That rule is the whole point: a tool for student work must not fabricate the evidence a student is graded on.
+
+## Quick start
 
 ```bash
+git clone https://github.com/achmdfzn/academic-jargon-buster.git
+cd academic-jargon-buster
 python3 academic_cli.py
 ```
 
@@ -24,39 +42,61 @@ Pilih alat:
 0. Keluar
 ```
 
-Inside each tool there are more choices: type text or read a file, pick a field / citation style / major, and pick the output language (Indonesian or English). For scripting, skip the menu with a subcommand — `python3 academic_cli.py jargon ...` and `python3 academic_cli.py cite ...` pass straight through to the standalone tools.
+Inside each tool there are more choices: type text or read a file, pick a field, pick a citation style or a major (the major fills in its recommended style automatically), and pick the output language. For scripting, skip the menu with a subcommand — `python3 academic_cli.py jargon ...` and `python3 academic_cli.py cite ...` pass straight through to the standalone tools.
 
-## What it does
+## See it work
 
-### Academic Jargon Buster
+Real output, from the repo's own demos.
 
-Accept a paper excerpt as plain text, identify known jargon via a discipline-specific dictionary, and give a side-by-side plain-English explanation with provenance for each term.
+### 1. Jargon, translated
 
-Supported in the skill spec: PDF, TeX, and plain text input; annotated Markdown, term-list CSV, and Notion/Obsidian blocks as output. The demo in this repo implements the plain-text → annotated Markdown / CSV path, which is the part that runs without extra tooling.
+Input:
 
-### Citation Weaver
-
-Weave citations into narrative text: give it a text with `[cite:key]` markers (or TeX `\cite{key}`) plus a bibliography file, and it returns the text with in-text citations plus a bibliography — in Indonesian or English (`--lang id` / `--lang en`).
-
-- **Citation styles:** APA, MLA, Chicago, IEEE, Harvard, Vancouver (6 styles)
-- **Majors:** 21 jurusan, each with a recommended style (see `docs/jurusan.md` or `python3 citation_weaver.py --list-jurusan`). `--style` always overrides the recommendation.
-- **Never invent references:** a `[cite:key]` with no bibliography entry is marked `[PERLU RUJUKAN: key]` / `[REFERENCE NEEDED: key]`, never filled in with a made-up paper.
-
-## Install
-
-No install needed for the demo — Python 3.9+ only.
-
-To use the skill itself in Hermes, copy the skill folder into your Hermes skills directory, e.g.:
-
-```bash
-cp -r skills/research/academic-jargon-buster ~/.hermes/skills/research/
-cp -r skills/research/citation-weaver ~/.hermes/skills/research/
+```
+The renormalization group and gradient descent are core ideas.
 ```
 
-## Usage
+Output:
+
+```
+The renormalization group (a collection of techniques for studying
+how a system changes when you look at it at different scales) and
+gradient descent (a step-by-step method for finding the lowest point
+of a curve by repeatedly moving downhill) are core ideas.
+```
+
+### 2. Citations, woven
+
+Input (from a real Indonesian abstract, `demos/citation-weaver/contoh_id.txt`):
+
+```
+...mengevaluasi tingkat usability sistem menggunakan metode
+System Usability Scale (SUS) [cite:brooke1996]. ...pengaturan
+hak akses berbasis peran [cite:ferraiolo1992]... skala Likert
+1–5 [cite:likert1932].
+```
+
+Output (major: Teknik Informatika, so IEEE; language: Indonesian):
+
+```
+...mengevaluasi tingkat usability sistem menggunakan metode
+System Usability Scale (SUS) [1]. ...pengaturan hak akses
+berbasis peran [2]... skala Likert 1–5 [3].
+
+## Daftar Pustaka
+
+[1] J. Brooke, "SUS: A 'quick and dirty' usability scale,"
+    Usability Evaluation in Industry (Taylor & Francis), pp. 189-194, 1996.
+[2] D. Ferraiolo, R. Kuhn, "Role-based access control,"
+    Proceedings of the 15th National Computer Security Conference, 1992.
+[3] R. Likert, "A technique for the measurement of attitudes,"
+    Archives of Psychology, 22(140), 1932.
+```
+
+## Use each tool on its own
 
 ```bash
-# Annotate a text file (default: Markdown)
+# Jargon Buster: annotate a text file (default: Markdown)
 python3 jargon_buster.py demos/test_paper.txt
 
 # Same, as CSV term list
@@ -79,12 +119,15 @@ python3 citation_weaver.py demos/citation-weaver/example_en.txt --refs demos/cit
 python3 citation_weaver.py demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json --jurusan Kedokteran
 ```
 
-Example output:
+## Install the skills in Hermes
 
-```
-The renormalization group (a collection of techniques for studying
-how a system changes when you look at it at different scales) is a
-mathematical framework.
+No install needed for the demos — Python 3.9+ only.
+
+To use the skills themselves in Hermes, copy the skill folders into your Hermes skills directory:
+
+```bash
+cp -r skills/research/academic-jargon-buster ~/.hermes/skills/research/
+cp -r skills/research/citation-weaver ~/.hermes/skills/research/
 ```
 
 ## Repository layout
@@ -110,13 +153,14 @@ mathematical framework.
 │   └── citation-weaver/
 │       ├── example_usage.py
 │       ├── references.json         # 7 real sample references
-│       └── contoh_id.txt # real Indonesian abstract, cited
+│       ├── contoh_id.txt # real Indonesian abstract, cited
 │       ├── contoh_id.txt           # Indonesian example
 │       └── example_en.txt          # English example
 ├── docs/
 │   ├── verification-hierarchy.md   # 4-level verification hierarchy
 │   ├── professional-standards.md   # professional operating standards
 │   ├── jurusan.md                  # majors & recommended citation styles
+│   ├── update-schedule.md          # daily update schedule
 │   └── citation-weaver/
 │       ├── verification-hierarchy.md
 │       └── professional-standards.md
@@ -143,6 +187,7 @@ Never claim a capability that hasn't been verified at one of those levels. See `
 - Mathematical notation is preserved as-is, not translated.
 - Low-quality OCR input may produce false term detection.
 - Cross-discipline terms need manual verification.
+- Citation formatting in the demo is simplified — check the official style guide before submitting a thesis or journal paper.
 
 To extend the dictionary, add entries to `DICTIONARY` in `jargon_buster.py` (term → explanation, field, source).
 
@@ -151,6 +196,17 @@ To extend the dictionary, add entries to `DICTIONARY` in `jargon_buster.py` (ter
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+39 tests, standard library only, no dependencies.
+
+## Contributing
+
+This repo is updated daily (see `docs/update-schedule.md`): tests run, the dictionary grows only from real sources, and the version bumps only when something changes. Two rules for contributions:
+
+1. A new dictionary term needs a real source.
+2. A new reference needs a verifiable publication.
+
+Anything else — a new major, a new style, a better explanation — is welcome.
 
 ## License
 

@@ -59,6 +59,15 @@ dodge: flagged patterns are suggestions for the author's own edit.
     python3 academic_tools.py analyze demos/citation-weaver/contoh_id.txt --refs demos/citation-weaver/references.json
     python3 academic_tools.py analyze --text "... [cite:devlin2019]." --refs demos/citation-weaver/references.json --json
 
+Library: analysis history and a personal bibliography in one local
+SQLite file (stdlib sqlite3, no account, no cloud). `analyze --save`
+records a run; `library` lists past runs, shows one in detail, and
+searches, imports, and exports references.
+
+    python3 academic_tools.py analyze naskah.txt --refs my-refs.json --save
+    python3 academic_tools.py library --history
+    python3 academic_tools.py library --refs --search "deep learning"
+
 Local web UI: the same four tools in a browser page, served from
 this file alone (stdlib http.server, no external resources).
 
@@ -73,11 +82,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime
+import hashlib
 import http.server
 import io
 import json
 import os
 import re
+import sqlite3
 import sys
 import urllib.error
 import urllib.request
@@ -85,12 +97,12 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.15.0"
+__version__ = "1.16.0"
 JARGON_VERSION = "1.0.4"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.0.0"
-CLI_VERSION = "1.9.0"
+QUALITY_VERSION = "1.1.0"
+CLI_VERSION = "1.10.0"
 
 # ======================================================================
 # Jargon Buster
@@ -2218,6 +2230,12 @@ def analyze_main(argv=None) -> int:
                    help="skip DOI verification even when --refs is given")
     p.add_argument("--suggest", action="store_true",
                    help="also show style rewrite suggestions (before/after)")
+    p.add_argument("--save", action="store_true",
+                   help="record this run in the library "
+                        "(~/.academic-tools/library.db)")
+    p.add_argument("--title", help="label for the saved run "
+                   "(default: first line of the text)")
+    p.add_argument("--db", help="library database path (with --save)")
     p.add_argument("--json", action="store_true",
                    help="print the raw result as JSON instead of readable text")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -2238,10 +2256,16 @@ def analyze_main(argv=None) -> int:
     result = analyze_text_quality(text, references, lang=args.lang,
                                   verify_dois=not args.no_verify,
                                   suggest=args.suggest)
+    if args.save:
+        result["library_id"] = save_analysis(
+            text, result, references, title=args.title, db=args.db)
     if args.json:
         sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     else:
         sys.stdout.write(format_analyze(result, lang=args.lang))
+        if args.save:
+            sys.stdout.write(
+                f"Tersimpan di pustaka (id {result['library_id']})\n")
     bad_doi = any(v.get("verdict") == "missing"
                   for v in result["doi_verification"].values())
     missing = result["citations"]["missing"] if result["citations"] else []
@@ -2335,6 +2359,384 @@ def humanize_main(argv=None) -> int:
             sys.stderr.write(f"{report}\n")
             sys.stdout.write(fixed["text"])
     return 1 if result["count"] else 0
+
+
+# ======================================================================
+# Library — analysis history + personal bibliography (stdlib sqlite3)
+# ======================================================================
+# One local file, no account, no cloud. `analyze --save` records a
+# run (scores, missing citations, DOI counts, style, suggestions, the
+# text itself and its hash); the cited references are upserted into
+# the personal bibliography. `library` reads it back: history, one
+# run in detail, reference search, import/export of refs.json files.
+
+DEFAULT_LIBRARY_DB = os.path.join(
+    os.path.expanduser("~"), ".academic-tools", "library.db")
+
+_LIBRARY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL,
+    title TEXT NOT NULL,
+    quality_score INTEGER NOT NULL,
+    jargon_count INTEGER NOT NULL,
+    citations_missing INTEGER NOT NULL,
+    doi_ok INTEGER NOT NULL,
+    doi_total INTEGER NOT NULL,
+    style_score INTEGER NOT NULL,
+    suggestions_count INTEGER NOT NULL,
+    text_hash TEXT NOT NULL,
+    text TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS analysis_references (
+    analysis_id INTEGER NOT NULL REFERENCES analyses(id),
+    ref_key TEXT NOT NULL,
+    PRIMARY KEY (analysis_id, ref_key)
+);
+CREATE TABLE IF NOT EXISTS library_references (
+    key TEXT PRIMARY KEY,
+    title TEXT,
+    authors TEXT,
+    year INTEGER,
+    doi TEXT,
+    url TEXT,
+    added_at TEXT NOT NULL,
+    source TEXT,
+    data TEXT NOT NULL
+);
+"""
+
+
+def library_path(db: str | None = None) -> str:
+    """Resolve the library database path.
+
+    Explicit --db wins, then the ACADEMIC_LIBRARY_DB environment
+    variable (used by the tests), then ~/.academic-tools/library.db.
+    """
+    if db:
+        return db
+    env = os.environ.get("ACADEMIC_LIBRARY_DB")
+    if env:
+        return env
+    return DEFAULT_LIBRARY_DB
+
+
+def open_library(db: str | None = None) -> sqlite3.Connection:
+    """Open (creating if needed) the library database."""
+    path = library_path(db)
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.executescript(_LIBRARY_SCHEMA)
+    return conn
+
+
+def _ref_columns(ref: dict) -> dict:
+    authors = ref.get("authors") or ref.get("author") or ""
+    if isinstance(authors, list):
+        authors = ", ".join(str(a) for a in authors)
+    year = ref.get("year")
+    try:
+        year = int(year) if year is not None else None
+    except (TypeError, ValueError):
+        year = None
+    return {
+        "title": ref.get("title") or "",
+        "authors": str(authors),
+        "year": year,
+        "doi": ref.get("doi") or "",
+        "url": ref.get("url") or "",
+    }
+
+
+def _upsert_reference(conn: sqlite3.Connection, key: str, ref: dict,
+                      source: str) -> str:
+    """Insert a reference, or update it when the key already exists.
+
+    Returns "added" or "updated".
+    """
+    cols = _ref_columns(ref)
+    # Local time, with offset: the history shows the user's date,
+    # not the UTC date (which is a day behind in the evening, WIB).
+    now = datetime.datetime.now().astimezone().isoformat(
+        timespec="seconds")
+    cur = conn.execute(
+        "SELECT key FROM library_references WHERE key = ?", (key,))
+    exists = cur.fetchone() is not None
+    conn.execute(
+        """INSERT INTO library_references
+           (key, title, authors, year, doi, url, added_at, source, data)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET
+             title=excluded.title, authors=excluded.authors,
+             year=excluded.year, doi=excluded.doi, url=excluded.url,
+             source=excluded.source, data=excluded.data""",
+        (key, cols["title"], cols["authors"], cols["year"], cols["doi"],
+         cols["url"], now, source, json.dumps(ref, ensure_ascii=False)))
+    return "updated" if exists else "added"
+
+
+def save_analysis(text: str, result: dict,
+                  references: dict | None = None,
+                  title: str | None = None,
+                  db: str | None = None) -> int:
+    """Record an analyze_text_quality() run in the library.
+
+    The cited references are upserted into the personal bibliography
+    (source "analyze") and linked to the run. Returns the run id.
+    """
+    if title is None:
+        first_line = text.strip().splitlines()[0] if text.strip() else ""
+        title = first_line[:60] or "tanpa judul"
+    cit = result.get("citations") or {}
+    dv = result.get("doi_verification") or {}
+    with_doi = [v for v in dv.values() if v.get("doi")]
+    conn = open_library(db)
+    try:
+        cur = conn.execute(
+            """INSERT INTO analyses
+               (created_at, title, quality_score, jargon_count,
+                citations_missing, doi_ok, doi_total, style_score,
+                suggestions_count, text_hash, text)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (datetime.datetime.now().astimezone().isoformat(
+                timespec="seconds"),
+             title, result["quality_score"], len(result.get("jargon") or []),
+             len(cit.get("missing") or []),
+             sum(1 for v in with_doi if v.get("verdict") == "ok"),
+             len(with_doi), result["style"]["style_score"],
+             result.get("suggestions", {}).get("count", 0),
+             hashlib.sha256(text.encode("utf-8")).hexdigest(), text))
+        analysis_id = cur.lastrowid
+        if references:
+            for key in cit.get("cited") or []:
+                if key in references:
+                    _upsert_reference(conn, key, references[key], "analyze")
+                    conn.execute(
+                        "INSERT OR IGNORE INTO analysis_references "
+                        "(analysis_id, ref_key) VALUES (?, ?)",
+                        (analysis_id, key))
+        conn.commit()
+        return analysis_id
+    finally:
+        conn.close()
+
+
+def list_analyses(db: str | None = None, limit: int = 20) -> list[dict]:
+    """Past runs, newest first (id, date, title, scores)."""
+    conn = open_library(db)
+    try:
+        rows = conn.execute(
+            """SELECT id, created_at, title, quality_score, jargon_count,
+                      citations_missing, doi_ok, doi_total, style_score,
+                      suggestions_count
+               FROM analyses ORDER BY id DESC LIMIT ?""",
+            (limit,)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_analysis(analysis_id: int,
+                 db: str | None = None) -> dict | None:
+    """One run in full: the row, its cited reference keys, the text."""
+    conn = open_library(db)
+    try:
+        row = conn.execute(
+            "SELECT * FROM analyses WHERE id = ?",
+            (analysis_id,)).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        refs = conn.execute(
+            "SELECT ref_key FROM analysis_references "
+            "WHERE analysis_id = ? ORDER BY ref_key",
+            (analysis_id,)).fetchall()
+        result["references"] = [r["ref_key"] for r in refs]
+        return result
+    finally:
+        conn.close()
+
+
+def list_references(db: str | None = None, limit: int = 20) -> list[dict]:
+    """Personal bibliography, most recently added first."""
+    conn = open_library(db)
+    try:
+        rows = conn.execute(
+            """SELECT key, title, authors, year, doi, url, added_at, source
+               FROM library_references ORDER BY added_at DESC, key LIMIT ?""",
+            (limit,)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def search_references(query: str, db: str | None = None,
+                      limit: int = 20) -> list[dict]:
+    """Search the bibliography by key, title, authors, or DOI."""
+    like = f"%{query}%"
+    conn = open_library(db)
+    try:
+        rows = conn.execute(
+            """SELECT key, title, authors, year, doi, url, added_at, source
+               FROM library_references
+               WHERE key LIKE ? OR title LIKE ? OR authors LIKE ?
+                     OR doi LIKE ?
+               ORDER BY added_at DESC, key LIMIT ?""",
+            (like, like, like, like, limit)).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def import_references(refs: dict, db: str | None = None,
+                      source: str = "import") -> dict:
+    """Upsert a bibliography dict ({key: ref}) into the library.
+
+    Returns {"added": n, "updated": m}.
+    """
+    conn = open_library(db)
+    counts = {"added": 0, "updated": 0}
+    try:
+        for key, ref in refs.items():
+            counts[_upsert_reference(conn, key, ref, source)] += 1
+        conn.commit()
+        return counts
+    finally:
+        conn.close()
+
+
+def export_references(db: str | None = None) -> dict:
+    """The whole personal bibliography as a {key: ref} dict."""
+    conn = open_library(db)
+    try:
+        rows = conn.execute(
+            "SELECT key, data FROM library_references ORDER BY key"
+        ).fetchall()
+        return {r["key"]: json.loads(r["data"]) for r in rows}
+    finally:
+        conn.close()
+
+
+def format_history(rows: list[dict]) -> str:
+    """Render list_analyses() rows as a readable table."""
+    if not rows:
+        return "Belum ada riwayat analisis — jalankan analyze --save dulu.\n"
+    lines = ["Riwayat analisis:"]
+    for r in rows:
+        lines.append(
+            f"  #{r['id']} {r['created_at'][:10]} {r['title']} — "
+            f"skor {r['quality_score']}/100, gaya {r['style_score']}/25, "
+            f"jargon {r['jargon_count']}, sitasi hilang "
+            f"{r['citations_missing']}, DOI {r['doi_ok']}/{r['doi_total']}")
+    return "\n".join(lines) + "\n"
+
+
+def format_analysis_detail(analysis: dict) -> str:
+    """Render one get_analysis() result in full."""
+    lines = [
+        f"Analisis #{analysis['id']} — {analysis['title']}",
+        f"Tanggal: {analysis['created_at']}",
+        f"Skor kualitas: {analysis['quality_score']}/100",
+        f"Gaya: {analysis['style_score']}/25",
+        f"Jargon: {analysis['jargon_count']} istilah",
+        f"Sitasi hilang: {analysis['citations_missing']}",
+        f"DOI terverifikasi: {analysis['doi_ok']}/{analysis['doi_total']}",
+        f"Saran rewrite: {analysis['suggestions_count']}",
+    ]
+    if analysis["references"]:
+        lines.append("Referensi dikutip: " + ", ".join(analysis["references"]))
+    lines.append("")
+    lines.append(analysis["text"])
+    return "\n".join(lines) + "\n"
+
+
+def format_references(rows: list[dict]) -> str:
+    """Render list/search_reference rows as a readable list."""
+    if not rows:
+        return "Tidak ada referensi di pustaka.\n"
+    lines = ["Referensi di pustaka:"]
+    for r in rows:
+        year = f" ({r['year']})" if r.get("year") else ""
+        lines.append(f"  - {r['key']}{year}: {r.get('title') or '-'}"
+                     + (f" — {r['authors']}" if r.get("authors") else "")
+                     + (f" — doi:{r['doi']}" if r.get("doi") else ""))
+    return "\n".join(lines) + "\n"
+
+
+def library_main(argv=None) -> int:
+    p = argparse.ArgumentParser(
+        description="Analysis history and personal bibliography in one "
+                    "local SQLite file (~/.academic-tools/library.db). "
+                    "Pick one action per call.")
+    p.add_argument("--db", help="library database path "
+                   "(default: ~/.academic-tools/library.db)")
+    p.add_argument("--history", action="store_true",
+                   help="list past analyze runs, newest first")
+    p.add_argument("--show", type=int, metavar="ID",
+                   help="show one past run in full")
+    p.add_argument("--refs", action="store_true",
+                   help="list the personal bibliography")
+    p.add_argument("--search", metavar="QUERY",
+                   help="search the bibliography by key, title, authors, or DOI")
+    p.add_argument("--import", dest="import_path", metavar="REFS.JSON",
+                   help="import a bibliography JSON file into the library")
+    p.add_argument("--export", dest="export_path", metavar="OUT.JSON",
+                   help="export the personal bibliography to a JSON file")
+    p.add_argument("--limit", type=int, default=20,
+                   help="rows to show (default: 20)")
+    p.add_argument("--json", action="store_true",
+                   help="print the raw result as JSON instead of readable text")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    args = p.parse_args(argv)
+
+    if args.history:
+        rows = list_analyses(db=args.db, limit=args.limit)
+        if args.json:
+            sys.stdout.write(json.dumps(rows, ensure_ascii=False, indent=2) + "\n")
+        else:
+            sys.stdout.write(format_history(rows))
+        return 0
+    if args.show is not None:
+        analysis = get_analysis(args.show, db=args.db)
+        if analysis is None:
+            print(f"tidak ada analisis #{args.show} di pustaka",
+                  file=sys.stderr)
+            return 1
+        if args.json:
+            sys.stdout.write(json.dumps(analysis, ensure_ascii=False, indent=2) + "\n")
+        else:
+            sys.stdout.write(format_analysis_detail(analysis))
+        return 0
+    if args.search is not None:
+        rows = search_references(args.search, db=args.db, limit=args.limit)
+        if args.json:
+            sys.stdout.write(json.dumps(rows, ensure_ascii=False, indent=2) + "\n")
+        else:
+            sys.stdout.write(format_references(rows))
+        return 0
+    if args.refs:
+        rows = list_references(db=args.db, limit=args.limit)
+        if args.json:
+            sys.stdout.write(json.dumps(rows, ensure_ascii=False, indent=2) + "\n")
+        else:
+            sys.stdout.write(format_references(rows))
+        return 0
+    if args.import_path:
+        refs = load_references(args.import_path)
+        counts = import_references(refs, db=args.db)
+        print(f"Ditambahkan: {counts['added']}, diperbarui: {counts['updated']}")
+        return 0
+    if args.export_path:
+        refs = export_references(db=args.db)
+        with open(args.export_path, "w", encoding="utf-8") as f:
+            json.dump(refs, f, ensure_ascii=False, indent=2)
+        print(f"Diekspor: {len(refs)} referensi -> {args.export_path}")
+        return 0
+    p.print_help()
+    return 0
 
 
 def cite_main(argv=None) -> int:
@@ -3129,6 +3531,21 @@ STRINGS = {
         "prompts": "Prompt Skripsi — template prompt untuk tiap bab",
         "analyze": "Analisis Kualitas — cek jargon, sitasi, dan DOI sekaligus",
         "humanize": "Humanize — saran rewrite gaya (sebelum/sesudah)",
+        "library": "Pustaka — riwayat & bibliografi",
+        "save_analysis": "Simpan hasil ini ke pustaka? (y = ya, kosong = tidak)",
+        "saved_analysis": "Tersimpan di pustaka",
+        "history": "Lihat riwayat analisis",
+        "detail": "Lihat satu analisis",
+        "search_refs": "Cari referensi",
+        "import_refs": "Impor bibliografi dari JSON",
+        "export_refs": "Ekspor bibliografi ke JSON",
+        "analysis_id": "Nomor analisis (#)",
+        "analysis_missing": "Tidak ada analisis",
+        "search_query": "Kata kunci (judul/penulis/DOI)",
+        "imported": "Diimpor",
+        "added_count": "ditambahkan",
+        "updated_count": "diperbarui",
+        "exported": "Diekspor",
         "list_prompts": "Lihat daftar prompt",
         "fill_prompt": "Isi prompt",
         "pick_prompt": "Pilih prompt:",
@@ -3185,6 +3602,21 @@ STRINGS = {
         "prompts": "Thesis Prompts — ready-made prompts for each chapter",
         "analyze": "Quality Check — jargon, citations, and DOIs in one pass",
         "humanize": "Humanize — style rewrite suggestions (before/after)",
+        "library": "Library — history & bibliography",
+        "save_analysis": "Save this run to the library? (y = yes, empty = no)",
+        "saved_analysis": "Saved to the library",
+        "history": "List past analyses",
+        "detail": "Show one analysis",
+        "search_refs": "Search references",
+        "import_refs": "Import a bibliography JSON",
+        "export_refs": "Export the bibliography to JSON",
+        "analysis_id": "Analysis number (#)",
+        "analysis_missing": "No such analysis",
+        "search_query": "Keyword (title/author/DOI)",
+        "imported": "Imported",
+        "added_count": "added",
+        "updated_count": "updated",
+        "exported": "Exported",
         "list_prompts": "List prompts",
         "fill_prompt": "Fill a prompt",
         "pick_prompt": "Pick a prompt:",
@@ -3348,9 +3780,10 @@ class CLI:
             print(f"3. {self.t['prompts']}")
             print(f"4. {self.t['analyze']}")
             print(f"5. {self.t['humanize']}")
-            print(f"6. {self.t['lang']}")
+            print(f"6. {self.t['library']}")
+            print(f"7. {self.t['lang']}")
             print(f"0. {self.t['exit']}")
-            choice = self.ask_choice(self.t["choice"], 6)
+            choice = self.ask_choice(self.t["choice"], 7)
             if choice == -1:
                 continue
             if choice == 1:
@@ -3364,6 +3797,8 @@ class CLI:
             elif choice == 5:
                 self.humanize_menu()
             elif choice == 6:
+                self.library_menu()
+            elif choice == 7:
                 self.lang = "en" if self.lang == "id" else "id"
             elif choice == 0 or choice is None:
                 print(self.t["goodbye"])
@@ -3487,7 +3922,61 @@ class CLI:
         refs = load_references(refs_path)
         result = analyze_text_quality(text, refs, lang=self.lang)
         print(f"\n{format_analyze(result, lang=self.lang)}")
+        save = self.ask(self.t["save_analysis"])
+        if save.strip().lower() in ("y", "ya", "yes"):
+            analysis_id = save_analysis(text, result, refs)
+            print(f"{self.t['saved_analysis']}: #{analysis_id}")
         self.pause()
+
+    def library_menu(self):
+        while True:
+            print(f"\n--- {self.t['library']} ---")
+            print(f"1. {self.t['history']}")
+            print(f"2. {self.t['detail']}")
+            print(f"3. {self.t['search_refs']}")
+            print(f"4. {self.t['import_refs']}")
+            print(f"5. {self.t['export_refs']}")
+            print(f"0. {self.t['back']}")
+            choice = self.ask_choice(self.t["choice"], 5)
+            if choice == -1:
+                continue
+            if choice == 1:
+                print(f"\n{format_history(list_analyses())}")
+                self.pause()
+            elif choice == 2:
+                raw = self.ask(self.t["analysis_id"])
+                if raw.strip().isdigit():
+                    analysis = get_analysis(int(raw))
+                    if analysis is None:
+                        print(f"{self.t['analysis_missing']} {raw}")
+                    else:
+                        print(f"\n{format_analysis_detail(analysis)}")
+                self.pause()
+            elif choice == 3:
+                query = self.ask(self.t["search_query"])
+                if query:
+                    print(f"\n{format_references(search_references(query))}")
+                self.pause()
+            elif choice == 4:
+                path = self.ask(self.t["json_path"])
+                if path and os.path.isfile(path):
+                    counts = import_references(load_references(path))
+                    print(f"{self.t['imported']}: "
+                          f"{counts['added']} {self.t['added_count']}, "
+                          f"{counts['updated']} {self.t['updated_count']}")
+                elif path:
+                    print(f"{self.t['file_missing']} {path}")
+                self.pause()
+            elif choice == 5:
+                path = self.ask(self.t["json_path"])
+                if path:
+                    refs = export_references()
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(refs, f, ensure_ascii=False, indent=2)
+                    print(f"{self.t['exported']}: {len(refs)} -> {path}")
+                self.pause()
+            elif choice == 0 or choice is None:
+                return
 
     def humanize_menu(self):
         text = self.read_text()
@@ -3805,6 +4294,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <label>&nbsp;</label>
           <label style="font-weight:400"><input type="checkbox" id="analyze-verify"> Verifikasi DOI <span class="hint">(butuh internet)</span></label>
           <label style="font-weight:400"><input type="checkbox" id="analyze-suggest"> Saran rewrite gaya</label>
+          <label style="font-weight:400"><input type="checkbox" id="analyze-save"> Simpan ke pustaka <span class="hint">(riwayat di komputer ini)</span></label>
         </div>
       </div>
       <details>
@@ -3948,6 +4438,9 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     h += '<div class="card"><h2>Skor kualitas</h2><div class="score">'
       + '<span class="num">' + res.quality_score + '</span><span class="of">/ 100</span>'
       + '<div class="bar"><span style="width:' + res.quality_score + '%"></span></div></div></div>';
+    if (res.library_id) {
+      h += '<div class="card"><p>Tersimpan di pustaka (id ' + res.library_id + ").</p></div>";
+    }
     if (res.jargon && res.jargon.length) {
       h += '<div class="card"><h2>Istilah jargon <span class="meta">' + res.jargon.length + ' ditemukan</span></h2><ul>';
       res.jargon.forEach(function (j) {
@@ -4074,6 +4567,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       body.lang = $("analyze-lang").value;
       body.verify = $("analyze-verify").checked;
       body.suggest = $("analyze-suggest").checked;
+      body.save = $("analyze-save").checked;
       var res = await post("/api/analyze", body);
       $("analyze-result").innerHTML = renderAnalyze(res, body.lang);
       $("analyze-status").textContent = "";
@@ -4329,9 +4823,12 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         if lang not in ("id", "en"):
             raise ValueError("lang harus 'id' atau 'en'")
         refs = _load_ui_references(body)
-        return analyze_text_quality(
+        result = analyze_text_quality(
             text, refs, lang=lang, verify_dois=bool(body.get("verify")),
             suggest=bool(body.get("suggest")))
+        if body.get("save"):
+            result["library_id"] = save_analysis(text, result, refs)
+        return result
 
     def _humanize(self, body: dict) -> dict:
         text = str(body.get("text") or "").strip()
@@ -4412,7 +4909,7 @@ def main(argv=None) -> int:
     """Entry point. No args -> interactive menu; jargon/cite/prompts -> passthrough."""
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in ("jargon", "cite", "prompts", "analyze",
-                           "humanize", "serve"):
+                           "humanize", "library", "serve"):
         tool, rest = argv[0], argv[1:]
         if tool == "jargon":
             return jargon_main(rest)
@@ -4422,6 +4919,8 @@ def main(argv=None) -> int:
             return analyze_main(rest)
         if tool == "humanize":
             return humanize_main(rest)
+        if tool == "library":
+            return library_main(rest)
         if tool == "serve":
             return serve_main(rest)
         return prompts_main(rest)

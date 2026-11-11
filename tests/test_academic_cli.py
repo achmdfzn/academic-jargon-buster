@@ -44,7 +44,7 @@ class TestAcademicCli(unittest.TestCase):
         )
 
     def test_english_banner_names_thesis_prompts(self):
-        code, out = run_cli(["6", "0"])
+        code, out = run_cli(["7", "0"])
         self.assertEqual(code, 0)
         self.assertIn("Thesis Prompts", out)
         self.assertIn("type a number", out)
@@ -103,7 +103,7 @@ class TestAcademicCli(unittest.TestCase):
         self.assertIn("vancouver", out)
 
     def test_switch_language_to_english(self):
-        code, out = run_cli(["6", "0"])
+        code, out = run_cli(["7", "0"])
         self.assertEqual(code, 0)
         self.assertIn("Choose a tool", out)
         self.assertIn("Goodbye", out)
@@ -174,11 +174,11 @@ class TestAcademicCli(unittest.TestCase):
         with patch.object(tools, "verify_reference_dois",
                           return_value=fake_result):
             # 4=analyze, 1=type text, text lines, ""=end, ""=refs (sample),
-            # ""=pause, 0=exit
+            # ""=skip saving to the library, ""=pause, 0=exit
             code, out = run_cli([
                 "4", "1",
                 "Metode memakai purposive sampling [cite:devlin2019].", "",
-                "", "",
+                "", "", "",
                 "0",
             ])
         self.assertEqual(code, 0)

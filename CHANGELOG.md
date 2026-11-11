@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.16.0 — 2026-11-12
+
+- New `library` subcommand: analysis history and a personal bibliography in one local SQLite file (`~/.academic-tools/library.db`, stdlib `sqlite3`, no account, no cloud; override with `--db` or `ACADEMIC_LIBRARY_DB`). `analyze --save` records a run — title, date, score 0–100, style, jargon count, missing citations, DOI counts, suggestions, the text and its SHA-256 hash — and upserts every cited reference into the personal bibliography. `library --history` lists past runs newest first, `--show <id>` prints one in full, `--refs` lists the bibliography, `--search <query>` matches key/title/authors/DOI, `--import <refs.json>` upserts a bibliography file (reports added vs updated), `--export <out.json>` writes it back out. `--json` for machine-readable output. `CLI_VERSION` 1.9.0 → 1.10.0.
+- The interactive menu gains Pustaka as option 6 (language switch moves to 7); the analyze menu asks after each run whether to save it. The web UI's Analisis Kualitas tab gains a "Simpan ke pustaka" checkbox; a saved run shows its library id and `/api/analyze` carries `library_id`.
+- The `academic-quality-check` skill (v1.0.0 → v1.1.0, `QUALITY_VERSION`) documents the library; the structure guard pins the skill coverage, the shim re-exports, and the stdlib-import fallback list now includes `datetime`, `hashlib`, and `sqlite3`.
+- 17 new tests (library core + CLI + menu + web UI save). Full suite 227/227.
+
 ## 1.15.0 — 2026-11-12
 
 - New skill `academic-quality-check` (v1.0.0, `QUALITY_VERSION`): documents the features that landed in v1.10.0–v1.14.0 with no skill coverage — the one-pass quality check (`analyze`, four 25-point components), the style check (five signals with thresholds), Humanize (suggest + `--apply`), and the web UI (`serve`, six JSON endpoints). The three existing skills now point at it: jargon-buster documents the analyze jargon half, citation-weaver the citation/DOI half, skripsi-prompts the Humanize + analyze workflow after drafting. The jargon-buster skill also stops claiming PDF/TeX input it never had — plain text only. A structure guard now checks that the skills document these features, so the gap cannot reopen.

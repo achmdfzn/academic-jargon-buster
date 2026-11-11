@@ -45,8 +45,9 @@ class TestCoreStaysOneFile(unittest.TestCase):
                 imported.add(node.module.split(".")[0])
         stdlib = getattr(sys, "stdlib_module_names", None)
         if stdlib is None:  # Python 3.9 has no stdlib_module_names
-            stdlib = {"__future__", "argparse", "csv", "http", "io", "json",
-                      "os", "re", "sys", "urllib"}
+            stdlib = {"__future__", "argparse", "csv", "datetime", "hashlib",
+                      "http", "io", "json", "os", "re", "sqlite3", "sys",
+                      "urllib"}
         self.assertEqual(imported - set(stdlib), set())
 
     def test_shims_reexport_the_core(self):
@@ -76,7 +77,11 @@ class TestCoreStaysOneFile(unittest.TestCase):
         for name in ("analyze_text_quality", "format_analyze",
                      "format_banner", "analyze_main", "check_style",
                      "suggest_style_fixes", "format_suggestions",
-                     "humanize_main", "apply_suggestions"):
+                     "humanize_main", "apply_suggestions",
+                     "save_analysis", "list_analyses", "get_analysis",
+                     "list_references", "search_references",
+                     "import_references", "export_references",
+                     "open_library", "library_main"):
             self.assertTrue(hasattr(academic_cli, name), name)
             self.assertIn(name, academic_cli.__all__)
         self.assertIn("jargon_main", jargon_buster.__all__)
@@ -167,6 +172,12 @@ class TestSkillDocsCoverTheTools(unittest.TestCase):
         for keyword in ("analyze", "check_style", "Humanize",
                         "apply_suggestions", "serve", "/api/humanize",
                         "--apply", "--in-place"):
+            self.assertIn(keyword, text, keyword)
+
+    def test_quality_check_skill_documents_the_library(self):
+        text = read_text("skills/research/academic-quality-check/SKILL.md")
+        for keyword in ("Library", "library --history", "--save",
+                        "library.db", "--import", "--export"):
             self.assertIn(keyword, text, keyword)
 
 

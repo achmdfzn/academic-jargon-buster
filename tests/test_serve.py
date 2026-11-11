@@ -5,12 +5,15 @@ external network is used (DOI verification stays off in these tests).
 """
 
 import json
+import os
 import sys
+import tempfile
 import threading
 import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -85,6 +88,30 @@ class TestServe(unittest.TestCase):
         res = json.loads(body)
         self.assertIsNone(res["citations"])
         self.assertEqual(res["quality_score"], 100)
+
+    def test_analyze_save_to_library(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
+                status, body = _request(self.base, "POST", "/api/analyze", {
+                    "text": TEXT, "refs": "sample", "verify": False,
+                    "save": True})
+            self.assertEqual(status, 200)
+            res = json.loads(body)
+            self.assertEqual(res["library_id"], 1)
+            self.assertEqual(len(tools.list_analyses(db=db)), 1)
+
+    def test_analyze_without_save_has_no_library_id(self):
+        status, body = _request(self.base, "POST", "/api/analyze", {
+            "text": TEXT, "refs": "sample", "verify": False})
+        self.assertEqual(status, 200)
+        self.assertNotIn("library_id", json.loads(body))
+
+    def test_home_page_has_save_checkbox(self):
+        status, body = _request(self.base, "GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn('id="analyze-save"', body)
+        self.assertIn("Simpan ke pustaka", body)
 
     def test_humanize_with_apply(self):
         status, body = _request(self.base, "POST", "/api/humanize", {

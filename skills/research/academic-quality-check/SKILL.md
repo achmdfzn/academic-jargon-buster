@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
-description: "One-pass quality check, style rewrite suggestions, and a local web UI for student writing."
-version: 1.0.0
+description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
+version: 1.1.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -55,6 +55,7 @@ Four components, 25 points each, one score 0–100:
 - **Without `--refs`, citation audit and DOI checks are skipped** (neutral 25 each) and the report says so.
 - **`--no-verify`** skips DOI verification even when `--refs` is given.
 - **`--suggest`** adds the Humanize rewrite suggestions to the same pass.
+- **`--save`** records the run in the library (`--title` labels it, `--db` picks another database). The JSON result then carries `library_id`.
 - **`--json`** prints the raw result (`jargon`, `citations`, `doi_verification`, `style`, `quality_score`, `recommendations`, `suggestions`).
 - **Exit code is 1** when a citation is missing or a DOI is not found in either source, 0 otherwise. In the interactive menu, this is option 4, Analisis Kualitas.
 
@@ -94,6 +95,26 @@ Rules:
 - **Guidance-only suggestions are skipped** on apply, and so is any suggestion whose span overlaps one already applied. Edits run from the end of the text backwards so offsets stay valid; only the neighbourhood of each edit is touched.
 - **Exit code is 1** when there are suggestions, 0 when the style is already fluent. `--json` carries `fixed_text` plus `applied` / `skipped` counts when `--apply` is given. In the interactive menu, this is option 5, Humanize — it asks where to save the fixed text (empty = skip).
 
+## Library — history & bibliography (`library`)
+
+One local SQLite file, no account, no cloud: `~/.academic-tools/library.db` by default (override with `--db`, or the `ACADEMIC_LIBRARY_DB` environment variable).
+
+```bash
+python3 academic_tools.py analyze naskah.txt --refs my-refs.json --save --title "Bab 1"
+python3 academic_tools.py library --history
+python3 academic_tools.py library --show 3
+python3 academic_tools.py library --refs --search "deep learning"
+python3 academic_tools.py library --import my-refs.json
+python3 academic_tools.py library --export library-refs.json
+```
+
+- **`analyze --save`** records the run (title, date, score 0–100, style, jargon count, missing citations, DOI counts, suggestions, the text and its hash). Every cited reference is upserted into the personal bibliography, so the bibliography grows from real use.
+- **`library --history`** lists past runs, newest first. **`--show <id>`** prints one run in full, including the text.
+- **`library --refs`** lists the personal bibliography; **`--search <query>`** matches key, title, authors, or DOI.
+- **`library --import <refs.json>`** upserts a bibliography file (reports added vs updated); **`--export <out.json>`** writes the whole bibliography back out as `refs.json` for use with `cite` / `analyze --refs`.
+- **`--json`** prints raw results for `--history`, `--show`, and `--refs` / `--search`.
+- In the interactive menu, this is option 6, Pustaka (the analyze menu asks after each run whether to save it).
+
 ## Web UI (`serve`)
 
 ```bash
@@ -101,7 +122,7 @@ python3 academic_tools.py serve            # http://127.0.0.1:8000/
 python3 academic_tools.py serve --port 8000
 ```
 
-Localhost only, standard library `http.server`, no external resources (no CDN, no webfonts, no analytics). The Analisis Kualitas tab has a "Saran rewrite gaya" checkbox and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. JSON API: `/api/analyze`, `/api/jargon`, `/api/cite`, `/api/prompts`, `/api/prompts/fill`, `/api/humanize` (`apply: true` returns `fixed_text`). Request bodies are capped at 1 MB; errors are honest JSON 400 / 404 / 500.
+Localhost only, standard library `http.server`, no external resources (no CDN, no webfonts, no analytics). The Analisis Kualitas tab has "Saran rewrite gaya" and "Simpan ke pustaka" checkboxes; a saved run shows its library id, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. JSON API: `/api/analyze`, `/api/jargon`, `/api/cite`, `/api/prompts`, `/api/prompts/fill`, `/api/humanize` (`apply: true` returns `fixed_text`). Request bodies are capped at 1 MB; errors are honest JSON 400 / 404 / 500.
 
 ## Rules (non-negotiable)
 
@@ -118,4 +139,4 @@ python3 academic_tools.py humanize demos/jargon-buster/test_paper.txt
 python3 academic_tools.py serve --port 8000
 ```
 
-Or open the interactive menu (`python3 academic_tools.py`) and pick option 4 (Analisis Kualitas) or 5 (Humanize).
+Or open the interactive menu (`python3 academic_tools.py`) and pick option 4 (Analisis Kualitas), 5 (Humanize), or 6 (Pustaka).

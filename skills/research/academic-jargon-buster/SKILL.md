@@ -1,7 +1,7 @@
 ---
 name: academic-jargon-buster
 description: "Translate academic jargon to everyday language."
-version: 1.0.2
+version: 1.0.3
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -57,6 +57,7 @@ Translate academic jargon and technical terminology to plain English (or user's 
 | Economics | *causal inference* | Map to everyday decision logic |
 | Computer Science | *polymorphism* | Analogize to real-world patterns |
 | Biology | *mitosis* | Step-by-step narrative |
+| Research Methods | *validity*, *triangulation* | Define the method, give the source |
 
 ## Verification Workflow
 

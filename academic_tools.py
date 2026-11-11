@@ -11,7 +11,7 @@ interactive menu CLI (Claude-CLI style) on top of all three.
     python3 academic_tools.py prompts ...      # straight to Thesis Prompts
 
 Jargon Buster: find known jargon in plain text and explain each term
-in plain language, with provenance. 22 terms, fields from physics to
+in plain language, with provenance. 32 terms, fields from physics to
 usability to software engineering, plus Indonesian aliases.
 
     python3 academic_tools.py jargon demos/test_paper.txt
@@ -69,8 +69,8 @@ from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.3.0"
-JARGON_VERSION = "1.0.2"
+__version__ = "1.3.1"
+JARGON_VERSION = "1.0.3"
 CITATION_VERSION = "1.1.0"
 PROMPTS_VERSION = "1.0.0"
 CLI_VERSION = "1.2.0"
@@ -214,6 +214,71 @@ DICTIONARY = {
         "such as admin or member",
         "software-engineering",
         "Ferraiolo & Kuhn 1992, 'Role-based access control'",
+    ),
+    # Added 2026-11-11: 10 research-methods terms students meet in almost
+    # every thesis. Sources verified the same day (Crossref/OpenAlex/web):
+    # Creswell & Creswell 2018, Denzin 1978, Patton 2015, Braun & Clarke
+    # 2006, Boote & Beile 2005. Indonesian aliases included where the
+    # source text uses the Indonesian form.
+    "validity": (
+        "whether a test or study actually measures what it claims to measure, "
+        "rather than something else",
+        "research-methods",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+    ),
+    "validitas": (
+        "whether a test or study actually measures what it claims to measure, "
+        "rather than something else",
+        "research-methods",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+    ),
+    "reliability": (
+        "whether a test or study gives the same result when repeated "
+        "under the same conditions",
+        "research-methods",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+    ),
+    "reliabilitas": (
+        "whether a test or study gives the same result when repeated "
+        "under the same conditions",
+        "research-methods",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+    ),
+    "triangulation": (
+        "checking one finding with more than one method, data source, "
+        "or viewpoint, so the result is more trustworthy",
+        "research-methods",
+        "Denzin 1978, 'The Research Act' (2nd ed.)",
+    ),
+    "triangulasi": (
+        "checking one finding with more than one method, data source, "
+        "or viewpoint, so the result is more trustworthy",
+        "research-methods",
+        "Denzin 1978, 'The Research Act' (2nd ed.)",
+    ),
+    "purposive sampling": (
+        "choosing participants on purpose because they have the knowledge "
+        "or experience the study needs, instead of picking at random",
+        "research-methods",
+        "Patton 2015, 'Qualitative Research & Evaluation Methods' (4th ed.)",
+    ),
+    "thematic analysis": (
+        "a method for finding and describing patterns, called themes, "
+        "across interview or written data",
+        "research-methods",
+        "Braun & Clarke 2006, 'Using thematic analysis in psychology'",
+    ),
+    "operational definition": (
+        "a clear statement of exactly how a variable is measured "
+        "or observed in a study",
+        "research-methods",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+    ),
+    "literature review": (
+        "a survey of the research already done on a topic, showing "
+        "what is known and where the gaps are",
+        "research-methods",
+        "Boote & Beile 2005, 'Scholars before researchers'",
     ),
 }
 

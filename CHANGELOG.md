@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1 — 2026-11-11
+
+- Dictionary grew from 22 to 32 terms: 10 research-methods terms students meet in almost every thesis — validity / validitas, reliability / reliabilitas, triangulation / triangulasi, purposive sampling, thematic analysis, operational definition, literature review. Every source verified the same day: Creswell & Creswell 2018 ('Research Design', 5th ed.), Denzin 1978 ('The Research Act', 2nd ed.), Patton 2015 ('Qualitative Research & Evaluation Methods', 4th ed.), Braun & Clarke 2006 ('Using thematic analysis in psychology'), Boote & Beile 2005 ('Scholars before researchers'). A regression test pins all 10 terms and their sources. Jargon Buster skill v1.0.3.
+
 ## 1.3.0 — 2026-11-11
 
 - New: Citation Weaver reference lookup — fetch real reference metadata by DOI or title from Crossref and OpenAlex, instead of typing bibliography JSON by hand. `python3 academic_tools.py cite --lookup <DOI-or-title>` prints the reference as JSON; `--add-to my-refs.json` appends it (key auto-generated as first-author + year, e.g. `lecun2015`, with a letter suffix on collision; `--key` overrides). DOI lookups try Crossref first, then OpenAlex; title searches use OpenAlex. Both APIs are free, no key needed. A failed lookup (not found, rate-limited, offline) is a clear error, never an invented reference. Note: OpenAlex without a key shares one free daily budget per IP address — on HTTP 429, set `OPENALEX_API_KEY` (free at openalex.org) or retry later. Citation Weaver skill v1.1.0 documents the lookup; menu option 4 in Citation Weaver looks a reference up and offers to save it. Tests 61 → 81.

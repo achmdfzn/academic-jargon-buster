@@ -32,7 +32,7 @@ Pick a number, follow the prompts: type text or read a file, pick a field, a cit
 
 | Tool | In short |
 | --- | --- |
-| **Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source. 22 terms — physics, machine learning, usability, software engineering, research methods — including Indonesian aliases. |
+| **Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source. 32 terms — physics, machine learning, usability, software engineering, research methods — including Indonesian aliases. |
 | **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography. 6 styles (APA, MLA, Chicago, IEEE, Harvard, Vancouver), 21 majors with a recommended style each. New: look up real references by DOI or title from Crossref/OpenAlex instead of typing bibliography JSON by hand. |
 | **Prompt Skripsi** | 15 ready-made prompt templates for thesis writing — roadmap, Bab 1–5, defense prep, publication. Pick one, fill in your title, theory, and method, paste the result into ChatGPT, Grok, Claude, Gemini, or Perplexity. |
 | **Menu CLI** | One command, all three tools, bilingual prompts. |
@@ -96,7 +96,7 @@ The `skills/research/` folders hold the same three tools as agent skills. They f
 
 ## Limits, honestly
 
-- 22 dictionary terms is a sample, not a glossary. New terms need a real source.
+- 32 dictionary terms is a sample, not a glossary. New terms need a real source.
 - Citation formatting here is simplified — check the official style guide before submitting.
 - Math notation is kept as-is; low-quality OCR can misfire.
 

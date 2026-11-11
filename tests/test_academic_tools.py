@@ -25,8 +25,8 @@ REFS = tools.load_references(
 
 class TestAcademicTools(unittest.TestCase):
     def test_one_file_holds_everything(self):
-        self.assertEqual(tools.__version__, "1.3.0")
-        self.assertEqual(len(tools.DICTIONARY), 22)
+        self.assertEqual(tools.__version__, "1.3.1")
+        self.assertEqual(len(tools.DICTIONARY), 32)
         self.assertEqual(len(tools.STYLES), 6)
         self.assertEqual(len(tools.DISCIPLINES), 21)
         self.assertEqual(len(tools.PROMPTS), 15)
@@ -35,6 +35,28 @@ class TestAcademicTools(unittest.TestCase):
                      "save_reference", "CLI",
                      "jargon_main", "cite_main", "prompts_main", "main"):
             self.assertTrue(hasattr(tools, name), f"missing {name}")
+
+    def test_new_research_methods_terms_have_real_sources(self):
+        # Added 2026-11-11; every source was verified the same day
+        # (Crossref/OpenAlex/web). A term without a real source is a bug.
+        expected = {
+            "validity": "Creswell & Creswell 2018",
+            "validitas": "Creswell & Creswell 2018",
+            "reliability": "Creswell & Creswell 2018",
+            "reliabilitas": "Creswell & Creswell 2018",
+            "triangulation": "Denzin 1978",
+            "triangulasi": "Denzin 1978",
+            "purposive sampling": "Patton 2015",
+            "thematic analysis": "Braun & Clarke 2006",
+            "operational definition": "Creswell & Creswell 2018",
+            "literature review": "Boote & Beile 2005",
+        }
+        for term, source in expected.items():
+            self.assertIn(term, tools.DICTIONARY, f"missing term: {term}")
+            explanation, field, real_source = tools.DICTIONARY[term]
+            self.assertTrue(explanation, f"{term}: empty explanation")
+            self.assertEqual(field, "research-methods", f"{term}: wrong field")
+            self.assertIn(source, real_source, f"{term}: source mismatch")
 
     def test_jargon_and_citation_work_from_the_one_file(self):
         found = {t["term"] for t in tools.find_terms(

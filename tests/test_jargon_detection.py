@@ -79,6 +79,35 @@ class TestJargonDetection(unittest.TestCase):
         self.assertIn("qualitative research", found)
         self.assertIn("quantitative research", found)
 
+    def test_new_terms_sus_and_usability(self):
+        text = ("We evaluated usability with the System Usability Scale (SUS). "
+                "The usability score was 73.96.")
+        found = {t["term"] for t in find_terms(text)}
+        self.assertIn("system usability scale", found)
+        self.assertIn("usability", found)
+        # SUS source is the real Brooke 1996 paper, not invented
+        sus = [t for t in find_terms(text) if t["term"] == "system usability scale"][0]
+        self.assertIn("Brooke 1996", sus["source"])
+
+    def test_new_terms_software_and_indonesian_aliases(self):
+        text = ("Data diakses melalui Object Relational Mapping Prisma. "
+                "Autentikasi dan hak akses berbasis peran ditangani NextAuth. "
+                "Kuesioner memakai skala Likert 1-5.")
+        found = {t["term"] for t in find_terms(text)}
+        self.assertIn("object relational mapping", found)
+        self.assertIn("autentikasi", found)
+        self.assertIn("hak akses berbasis peran", found)
+        self.assertIn("skala likert", found)
+
+    def test_generic_word_framework_is_not_a_term(self):
+        # "framework" alone is ordinary academic English ("mathematical
+        # framework", "theoretical framework") — annotating every use
+        # would be noise, so it is deliberately NOT in the dictionary.
+        found = {t["term"] for t in find_terms(
+            "The renormalization group is a mathematical framework.")}
+        self.assertNotIn("framework", found)
+        self.assertIn("renormalization group", found)
+
     def test_list_terms_includes_new_terms(self):
         terms = {t["term"] for t in list_terms()}
         self.assertGreaterEqual(len(terms), 13)

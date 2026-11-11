@@ -2,7 +2,7 @@
 
 Translate academic jargon to plain English — plus a small runnable reference implementation. This repo now holds **two** Hermes academic skills (both bilingual Indonesian/English where noted).
 
-- **Skill 1 — Academic Jargon Buster:** `skills/research/academic-jargon-buster/SKILL.md` (v1.0.1, MIT)
+- **Skill 1 — Academic Jargon Buster:** `skills/research/academic-jargon-buster/SKILL.md` (v1.0.2, MIT)
   - Demo: `jargon_buster.py` — pure Python, no dependencies, works standalone
 - **Skill 2 — Citation Weaver:** `skills/research/citation-weaver/SKILL.md` (v1.0.0, MIT)
   - Demo: `citation_weaver.py` — pure Python, no dependencies, works standalone
@@ -138,7 +138,7 @@ Never claim a capability that hasn't been verified at one of those levels. See `
 
 ## Limitations
 
-- The demo dictionary is small (13 terms) — it is a sample, not a full glossary. Specialised sub-field jargon may not be covered.
+- The demo dictionary is small (22 terms) — it is a sample, not a full glossary. Specialised sub-field jargon may not be covered.
 - Mathematical notation is preserved as-is, not translated.
 - Low-quality OCR input may produce false term detection.
 - Cross-discipline terms need manual verification.

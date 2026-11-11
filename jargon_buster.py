@@ -31,7 +31,7 @@ import os
 import re
 import sys
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 # term -> (plain-English explanation, field, source)
 DICTIONARY = {
@@ -112,6 +112,63 @@ DICTIONARY = {
         "to find patterns and test relationships",
         "general",
         "Wikipedia / field textbooks",
+    ),
+    # Added 2026-11-11 from a real user abstract (a student abstract
+    # a student abstract MIS, SUS evaluation). Indonesian aliases included
+    # where the source text uses the Indonesian form.
+    "system usability scale": (
+        "a 10-question survey that measures how easy a system is to use; "
+        "answers are scored and combined into one number from 0 to 100",
+        "usability",
+        "Brooke 1996, 'SUS: A quick and dirty usability scale'",
+    ),
+    "usability": (
+        "how easy and pleasant a system is to use — whether people can "
+        "do what they need quickly and without confusion",
+        "usability",
+        "ISO 9241-11",
+    ),
+    "object relational mapping": (
+        "a technique that lets code treat database tables as ordinary "
+        "objects instead of writing raw SQL",
+        "software-engineering",
+        "Software engineering textbooks",
+    ),
+    "likert scale": (
+        "a survey answer scale with ordered steps, usually 1 to 5, "
+        "from 'strongly disagree' to 'strongly agree'",
+        "research-methods",
+        "Likert 1932, 'A technique for the measurement of attitudes'",
+    ),
+    "skala likert": (
+        "a survey answer scale with ordered steps, usually 1 to 5, "
+        "from 'strongly disagree' to 'strongly agree'",
+        "research-methods",
+        "Likert 1932, 'A technique for the measurement of attitudes'",
+    ),
+    "authentication": (
+        "checking that a user really is who they claim to be, "
+        "usually with a username and password",
+        "software-engineering",
+        "Software engineering textbooks",
+    ),
+    "autentikasi": (
+        "checking that a user really is who they claim to be, "
+        "usually with a username and password",
+        "software-engineering",
+        "Software engineering textbooks",
+    ),
+    "role-based access control": (
+        "deciding what each user may do in a system based on their role, "
+        "such as admin or member",
+        "software-engineering",
+        "Ferraiolo & Kuhn 1992, 'Role-based access control'",
+    ),
+    "hak akses berbasis peran": (
+        "deciding what each user may do in a system based on their role, "
+        "such as admin or member",
+        "software-engineering",
+        "Ferraiolo & Kuhn 1992, 'Role-based access control'",
     ),
 }
 

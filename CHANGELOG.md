@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2 — 2026-11-11
+
+- Dictionary grew from 13 to 22 terms: 9 terms from a real user abstract (a student abstract management information system, SUS evaluation): System Usability Scale, usability, Object Relational Mapping, Likert scale, authentication, role-based access control — plus Indonesian aliases used in the source text (skala Likert, autentikasi, hak akses berbasis peran). Sources are real: Brooke 1996 (SUS), Likert 1932, ISO 9241-11, Ferraiolo & Kuhn 1992 (RBAC). The abstract that previously matched 0 terms now matches 6 distinct terms. Deliberately NOT added: bare "framework" — it is ordinary academic English ("mathematical framework", "theoretical framework") and would false-positive on almost any paper; covered by a regression test.
+
 ## Unreleased — merged 2026-11-11
 
 - Citation Weaver (skill v1.0.0) merged into this repo from its own short-lived repo `achmdfzn/citation-weaver` (deleted after the merge): `skills/research/citation-weaver/SKILL.md`, `citation_weaver.py`, `demos/citation-weaver/`, `tests/test_citation_weaver.py`, `docs/jurusan.md` + `docs/citation-weaver/`. 6 citation styles, 21 jurusan, bilingual `--lang id/en`. The separate repo no longer exists; this repo is now home to both academic skills.

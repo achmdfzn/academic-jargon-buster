@@ -12,6 +12,13 @@ Usage:
     python3 jargon_buster.py demos/test_paper.txt
     python3 jargon_buster.py demos/test_paper.txt --format csv
     python3 jargon_buster.py --text "The renormalization group ..." --field physics
+    python3 jargon_buster.py --list-terms [--field physics]
+    python3 jargon_buster.py --update-dictionary --from new_terms.json [--field physics]
+
+Extra terms can be added with --update-dictionary --from <file>, where
+the file is JSON: {"term": {"explanation": "...", "field": "...",
+"source": "..."}}. Added terms are saved in dictionary.json next to
+this script and loaded on every run.
 """
 
 from __future__ import annotations
@@ -19,10 +26,12 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import json
+import os
 import re
 import sys
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 # term -> (plain-English explanation, field, source)
 DICTIONARY = {
@@ -74,7 +83,96 @@ DICTIONARY = {
         "economics",
         "Wikipedia / field textbooks",
     ),
+    "peer review": (
+        "when other experts in the same field read and check a paper "
+        "before it is published, to catch mistakes and judge its quality",
+        "general",
+        "Wikipedia",
+    ),
+    "hypothesis": (
+        "a testable guess or proposed explanation that a study sets out "
+        "to check with evidence",
+        "general",
+        "Wikipedia / field textbooks",
+    ),
+    "methodology": (
+        "the overall plan of how a study is done — what data is collected, "
+        "how it is collected, and why that way",
+        "general",
+        "Wikipedia / field textbooks",
+    ),
+    "qualitative research": (
+        "research that describes qualities, meanings, and experiences, "
+        "usually with words rather than numbers",
+        "general",
+        "Wikipedia / field textbooks",
+    ),
+    "quantitative research": (
+        "research that measures things with numbers and statistics, "
+        "to find patterns and test relationships",
+        "general",
+        "Wikipedia / field textbooks",
+    ),
 }
+
+
+def _user_dictionary_path():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "dictionary.json")
+
+
+def load_dictionary():
+    """Built-in dictionary plus user-added terms from dictionary.json."""
+    merged = dict(DICTIONARY)
+    path = _user_dictionary_path()
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            extra = json.load(f)
+        for term, value in extra.items():
+            merged[term.lower()] = (
+                value["explanation"],
+                value.get("field", "general"),
+                value.get("source", "user-added"),
+            )
+    return merged
+
+
+def list_terms(field: str | None = None):
+    """All dictionary terms, optionally filtered by field."""
+    items = sorted(load_dictionary().items())
+    if field:
+        items = [(t, v) for t, v in items if v[1] == field]
+    return [{"term": t, "translation": v[0], "field": v[1], "source": v[2]} for t, v in items]
+
+
+def update_dictionary(from_file: str, field: str | None = None):
+    """Add terms from a JSON file into dictionary.json. Returns added terms.
+
+    File format: {"term": {"explanation": "...", "field": "...",
+    "source": "..."}}. Entries without an explanation are skipped.
+    """
+    with open(from_file, encoding="utf-8") as f:
+        incoming = json.load(f)
+    path = _user_dictionary_path()
+    existing = {}
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            existing = json.load(f)
+    added = []
+    for term, value in incoming.items():
+        term = term.lower()
+        if not isinstance(value, dict) or not value.get("explanation"):
+            continue
+        if field and value.get("field", "general") != field:
+            continue
+        existing[term] = {
+            "explanation": value["explanation"],
+            "field": value.get("field", "general"),
+            "source": value.get("source", "user-added"),
+        }
+        added.append(term)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(existing, f, indent=2, ensure_ascii=False)
+    return sorted(added)
 
 
 def find_terms(text: str, field: str | None = None):
@@ -85,9 +183,10 @@ def find_terms(text: str, field: str | None = None):
     """
     found = []
     seen_spans = []
-    terms = sorted(DICTIONARY, key=len, reverse=True)
+    dictionary = load_dictionary()
+    terms = sorted(dictionary, key=len, reverse=True)
     for term in terms:
-        explanation, term_field, source = DICTIONARY[term]
+        explanation, term_field, source = dictionary[term]
         if field and term_field != field:
             continue
         for m in re.finditer(re.escape(term), text, flags=re.IGNORECASE):
@@ -149,7 +248,30 @@ def main(argv=None) -> int:
     p.add_argument("--text", help="translate this text instead of a file")
     p.add_argument("--field", help="only use terms from this field, e.g. physics")
     p.add_argument("--format", choices=["markdown", "csv"], default="markdown")
+    p.add_argument("--list-terms", action="store_true", help="list dictionary terms and exit")
+    p.add_argument("--update-dictionary", action="store_true",
+                   help="add terms from --from <json file> to dictionary.json")
+    p.add_argument("--from", dest="from_file", help="JSON file of terms for --update-dictionary")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = p.parse_args(argv)
+
+    if args.list_terms:
+        for item in list_terms(field=args.field):
+            print(f"{item['term']} ({item['field']}) — {item['translation']} — {item['source']}")
+        return 0
+
+    if args.update_dictionary:
+        if not args.from_file:
+            for item in list_terms(field=args.field):
+                print(f"{item['term']} ({item['field']}) — {item['translation']} — {item['source']}")
+            print("\nTo add terms: --update-dictionary --from new_terms.json", file=sys.stderr)
+            return 0
+        added = update_dictionary(args.from_file, field=args.field)
+        if added:
+            print(f"Added {len(added)} term(s): {', '.join(added)}")
+        else:
+            print("No terms added (check the file format and --field filter).")
+        return 0
 
     if args.text:
         text = args.text

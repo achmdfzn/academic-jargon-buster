@@ -17,7 +17,7 @@ schedule does not block that.
 ## What each daily update does
 
 1. **Run the tests** — `python3 -m unittest discover -s tests -v`. All tests must pass before any release.
-2. **Check the skill still matches the repo** — `skills/research/academic-jargon-buster/SKILL.md` (v1.0.0) against `jargon_buster.py`, README, and docs. Fix drift, don't let the spec and the code diverge.
+2. **Check the skill still matches the repo** — `skills/research/academic-jargon-buster/SKILL.md` (v1.0.1) against `jargon_buster.py`, README, and docs. Fix drift, don't let the spec and the code diverge.
 3. **Review the dictionary** — add new jargon terms that came up in real academic use or in GitHub issues, with a plain-English explanation, field, and source for each. No invented terms, no invented sources.
 4. **Version bump, only if something changed**
    - Dictionary additions / bug fixes → patch (1.0.0 → 1.0.1)

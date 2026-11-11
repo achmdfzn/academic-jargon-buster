@@ -2,7 +2,7 @@
 
 Translate academic jargon to plain English — plus a small runnable reference implementation.
 
-- **Skill:** `skills/research/academic-jargon-buster/SKILL.md` (v1.0.0, MIT)
+- **Skill:** `skills/research/academic-jargon-buster/SKILL.md` (v1.0.1, MIT)
 - **Demo:** `jargon_buster.py` — pure Python, no dependencies, works standalone
 
 ## What it does
@@ -32,6 +32,12 @@ python3 jargon_buster.py demos/test_paper.txt --format csv
 
 # One-liner, physics only
 python3 jargon_buster.py --text "The renormalization group is a mathematical framework." --field physics
+
+# List the dictionary (optionally one field)
+python3 jargon_buster.py --list-terms --field general
+
+# Add terms from a JSON file (see jargon_buster.py docstring for the format)
+python3 jargon_buster.py --update-dictionary --from new_terms.json
 ```
 
 Example output:
@@ -48,7 +54,9 @@ mathematical framework.
 .
 ├── README.md
 ├── LICENSE                         # MIT
+├── CHANGELOG.md                    # version history
 ├── jargon_buster.py                # standalone reference implementation
+├── dictionary.json                 # user-added terms (created by --update-dictionary)
 ├── skills/
 │   └── research/
 │       └── academic-jargon-buster/
@@ -76,7 +84,7 @@ Never claim a capability that hasn't been verified at one of those levels. See `
 
 ## Limitations
 
-- The demo dictionary is small (8 terms) — it is a sample, not a full glossary. Specialised sub-field jargon may not be covered.
+- The demo dictionary is small (13 terms) — it is a sample, not a full glossary. Specialised sub-field jargon may not be covered.
 - Mathematical notation is preserved as-is, not translated.
 - Low-quality OCR input may produce false term detection.
 - Cross-discipline terms need manual verification.

@@ -6,13 +6,23 @@ Run from the repo root:
 
 import csv
 import io
+import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from jargon_buster import find_terms, to_annotated_markdown, to_csv
+from jargon_buster import (
+    _user_dictionary_path,
+    find_terms,
+    list_terms,
+    to_annotated_markdown,
+    to_csv,
+    update_dictionary,
+)
 
 
 class TestJargonDetection(unittest.TestCase):
@@ -55,6 +65,58 @@ class TestJargonDetection(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["term"], "gradient descent")
         self.assertEqual(rows[0]["field"], "machine-learning")
+
+    def test_new_terms_peer_review_and_hypothesis(self):
+        terms = find_terms("The paper passed peer review. Our hypothesis was confirmed.")
+        found = {t["term"] for t in terms}
+        self.assertIn("peer review", found)
+        self.assertIn("hypothesis", found)
+
+    def test_new_terms_methodology_and_research_types(self):
+        text = "The methodology section describes qualitative research and quantitative research."
+        found = {t["term"] for t in find_terms(text)}
+        self.assertIn("methodology", found)
+        self.assertIn("qualitative research", found)
+        self.assertIn("quantitative research", found)
+
+    def test_list_terms_includes_new_terms(self):
+        terms = {t["term"] for t in list_terms()}
+        self.assertGreaterEqual(len(terms), 13)
+        self.assertIn("peer review", terms)
+
+    def test_list_terms_field_filter(self):
+        terms = {t["term"] for t in list_terms(field="general")}
+        self.assertIn("peer review", terms)
+        self.assertNotIn("gradient descent", terms)
+
+    def test_update_dictionary_from_json(self):
+        path = _user_dictionary_path()
+        backup = open(path, encoding="utf-8").read() if os.path.exists(path) else None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w", suffix=".json", delete=False, encoding="utf-8"
+            ) as f:
+                json.dump(
+                    {"placebo effect": {
+                        "explanation": "when a patient improves because they believe a treatment works, not because of the treatment itself",
+                        "field": "biology",
+                        "source": "Wikipedia",
+                    }},
+                    f,
+                )
+                tmp = f.name
+            added = update_dictionary(tmp)
+            self.assertEqual(added, ["placebo effect"])
+            found = {t["term"] for t in find_terms("The placebo effect was strong.")}
+            self.assertIn("placebo effect", found)
+        finally:
+            if backup is None:
+                if os.path.exists(path):
+                    os.remove(path)
+            else:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(backup)
+            os.remove(tmp)
 
 
 if __name__ == "__main__":

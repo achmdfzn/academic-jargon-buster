@@ -29,6 +29,13 @@ with a recommended style each.
     python3 academic_tools.py cite demos/citation-weaver/example_en.txt --refs demos/citation-weaver/references.json --lang en --style ieee
     python3 academic_tools.py cite --text "... [cite:vaswani2017]." --refs demos/citation-weaver/references.json --jurusan Kedokteran
 
+Reference lookup: fetch real metadata by DOI or title from Crossref
+and OpenAlex, instead of typing bibliography JSON by hand.
+
+    python3 academic_tools.py cite --lookup 10.1038/nature14539
+    python3 academic_tools.py cite --lookup "Deep learning" --add-to my-refs.json
+    python3 academic_tools.py cite --lookup 10.1038/nature14539 --key lecun2015 --add-to my-refs.json
+
 One rule, everywhere in this file: NEVER invent a reference. A
 [cite:key] with no bibliography entry is marked [PERLU RUJUKAN: key] /
 [REFERENCE NEEDED: key], never filled in with a made-up paper.
@@ -56,14 +63,17 @@ import json
 import os
 import re
 import sys
+import urllib.error
+import urllib.request
+from urllib.parse import quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 JARGON_VERSION = "1.0.2"
-CITATION_VERSION = "1.0.0"
+CITATION_VERSION = "1.1.0"
 PROMPTS_VERSION = "1.0.0"
-CLI_VERSION = "1.1.0"
+CLI_VERSION = "1.2.0"
 
 # ======================================================================
 # Jargon Buster
@@ -450,6 +460,198 @@ def load_references(path: str):
     return data
 
 
+# ======================================================================
+# Reference lookup (OpenAlex / Crossref)
+# ======================================================================
+# Fetch real reference metadata by DOI or title, so a bibliography can
+# be built without typing JSON by hand. Both APIs are free and need no
+# key. Crossref is tried first for DOIs; OpenAlex backs it up and also
+# powers title search. A polite mailto in the User-Agent puts requests
+# in the APIs' polite pools. OpenAlex without a key shares one daily
+# budget per IP address: on HTTP 429 the lookup fails with a clear
+# message instead of a made-up reference, and setting OPENALEX_API_KEY
+# (free at https://openalex.org/) raises the limit. No data is ever
+# invented: a failed lookup is an error, never a guess.
+LOOKUP_USER_AGENT = "academic-jargon-buster/1.3.0 (mailto:achmddfzn@proton.me)"
+CROSSREF_URL = "https://api.crossref.org/works/{doi}"
+OPENALEX_DOI_URL = "https://api.openalex.org/works/https://doi.org/{doi}"
+OPENALEX_SEARCH_URL = "https://api.openalex.org/works?search={q}&per-page=1"
+
+
+class LookupError(Exception):
+    """A reference lookup failed (not found, rate-limited, offline)."""
+
+
+def _lookup_get(url: str, timeout: int = 15):
+    """GET JSON from a lookup API. Raises LookupError on any failure."""
+    req = urllib.request.Request(url, headers={"User-Agent": LOOKUP_USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise LookupError("not found (HTTP 404)")
+        if e.code == 429:
+            raise LookupError(
+                "rate limited by the API (HTTP 429). OpenAlex shares one free "
+                "daily budget per IP address; try again later, or set "
+                "OPENALEX_API_KEY (free at https://openalex.org/) to raise the limit."
+            )
+        raise LookupError(f"lookup failed (HTTP {e.code})")
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
+        raise LookupError(f"lookup failed: {e}")
+
+
+def _crossref_type(kind: str) -> str:
+    return {
+        "journal-article": "article",
+        "proceedings-article": "conference",
+        "book-chapter": "chapter",
+        "book": "book",
+        "monograph": "book",
+    }.get(kind, "article")
+
+
+def _crossref_to_ref(msg: dict) -> dict:
+    """Crossref work message -> repo reference dict."""
+    title = (msg.get("title") or [""])[0]
+    authors = []
+    for a in msg.get("author", []):
+        family = a.get("family", "")
+        given = a.get("given", "")
+        authors.append(f"{family}, {given}" if given else family)
+    venue = (msg.get("container-title") or [""])[0]
+    year = None
+    for key in ("published", "issued", "created"):
+        parts = (msg.get(key) or {}).get("date-parts")
+        if parts and parts[0]:
+            year = parts[0][0]
+            break
+    ref = {
+        "authors": authors,
+        "title": title,
+        "type": _crossref_type(msg.get("type", "")),
+        "venue": venue,
+        "year": year,
+    }
+    if msg.get("DOI"):
+        ref["doi"] = msg["DOI"]
+    return ref
+
+
+def _openalex_type(kind: str) -> str:
+    return {
+        "article": "article",
+        "proceedings-article": "conference",
+        "book-chapter": "chapter",
+        "book": "book",
+    }.get(kind, "article")
+
+
+def _openalex_to_ref(work: dict) -> dict:
+    """OpenAlex work -> repo reference dict."""
+    title = work.get("title") or work.get("display_name") or ""
+    authors = []
+    for a in work.get("authorships", []):
+        name = (a.get("author") or {}).get("display_name", "")
+        if not name:
+            continue
+        parts = name.split()
+        if len(parts) > 1:
+            authors.append(f"{parts[-1]}, {' '.join(parts[:-1])}")
+        else:
+            authors.append(name)
+    source = (work.get("primary_location") or {}).get("source") or {}
+    ref = {
+        "authors": authors,
+        "title": title,
+        "type": _openalex_type(work.get("type", "")),
+        "venue": source.get("display_name", ""),
+        "year": work.get("publication_year"),
+    }
+    doi = (work.get("doi") or "").replace("https://doi.org/", "")
+    if doi:
+        ref["doi"] = doi
+    return ref
+
+
+def _openalex_url(url: str) -> str:
+    """Append the OpenAlex API key when OPENALEX_API_KEY is set."""
+    key = os.environ.get("OPENALEX_API_KEY", "").strip()
+    if not key:
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}api_key={key}"
+
+
+def fetch_reference_by_doi(doi: str) -> dict:
+    """Fetch one reference by DOI: Crossref first, OpenAlex as backup."""
+    doi = doi.strip().replace("https://doi.org/", "").replace("http://doi.org/", "")
+    if not doi:
+        raise LookupError("empty DOI")
+    try:
+        msg = _lookup_get(CROSSREF_URL.format(doi=quote(doi, safe="/")))
+        return _crossref_to_ref(msg["message"])
+    except LookupError:
+        pass  # fall through to OpenAlex
+    work = _lookup_get(_openalex_url(OPENALEX_DOI_URL.format(doi=quote(doi, safe="/"))))
+    return _openalex_to_ref(work)
+
+
+def search_reference_by_title(title: str) -> dict:
+    """Fetch the best OpenAlex match for a title."""
+    title = title.strip()
+    if not title:
+        raise LookupError("empty title")
+    data = _lookup_get(_openalex_url(OPENALEX_SEARCH_URL.format(q=quote(title))))
+    results = data.get("results") or []
+    if not results:
+        raise LookupError(f"no match found for title: {title}")
+    return _openalex_to_ref(results[0])
+
+
+def lookup_reference(query: str) -> dict:
+    """Fetch one reference by DOI or title.
+
+    A query that looks like a DOI (starts with 10. or is a doi.org URL)
+    goes to fetch_reference_by_doi; anything else is a title search.
+    """
+    q = query.strip()
+    if q.startswith("10.") or "doi.org/" in q:
+        return fetch_reference_by_doi(q)
+    return search_reference_by_title(q)
+
+
+def reference_key(ref: dict, existing: dict | None = None) -> str:
+    """Suggested bibliography key: first author family name + year.
+
+    Appends a, b, ... when the key is already taken.
+    """
+    authors = ref.get("authors") or []
+    family = _family(authors[0]).lower() if authors else "unknown"
+    family = re.sub(r"[^a-z0-9]+", "", family) or "unknown"
+    base = f"{family}{ref.get('year') or ''}"
+    if not existing or base not in existing:
+        return base
+    suffix = ord("a")
+    while f"{base}{chr(suffix)}" in existing:
+        suffix += 1
+    return f"{base}{chr(suffix)}"
+
+
+def save_reference(ref: dict, path: str, key: str | None = None) -> str:
+    """Append one reference to a bibliography JSON file. Returns its key."""
+    refs = {}
+    if os.path.isfile(path):
+        refs = load_references(path)
+    key = key or reference_key(ref, refs)
+    refs[key] = ref
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(refs, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    return key
+
+
 def _family(author: str) -> str:
     return author.split(",", 1)[0].strip()
 
@@ -653,6 +855,11 @@ def cite_main(argv=None) -> int:
     p.add_argument("--lang", choices=["id", "en"], default="id", help="output language (default: id)")
     p.add_argument("--list-styles", action="store_true", help="list citation styles and exit")
     p.add_argument("--list-jurusan", action="store_true", help="list majors and their recommended style, then exit")
+    p.add_argument("--lookup", metavar="DOI-OR-TITLE",
+                   help="fetch one reference by DOI or title (OpenAlex/Crossref) and print it as JSON")
+    p.add_argument("--key", help="bibliography key to use with --add-to (default: auto)")
+    p.add_argument("--add-to", metavar="REFS.JSON",
+                   help="with --lookup: append the fetched reference to this bibliography file")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = p.parse_args(argv)
 
@@ -662,6 +869,19 @@ def cite_main(argv=None) -> int:
     if args.list_jurusan:
         for d in DISCIPLINES:
             print(f"{d['id']} / {d['en']} — {d['style']}")
+        return 0
+
+    if args.lookup:
+        try:
+            ref = lookup_reference(args.lookup)
+        except LookupError as e:
+            p.error(str(e))
+            return 2
+        if args.add_to:
+            key = save_reference(ref, args.add_to, key=args.key)
+            print(f"Saved as [{key}] in {args.add_to}")
+        else:
+            print(json.dumps(ref, ensure_ascii=False, indent=2))
         return 0
 
     style = args.style
@@ -1144,6 +1364,12 @@ STRINGS = {
         "out_lang": "Bahasa output: 1 = Indonesia, 2 = English",
         "list_styles": "Lihat gaya sitasi",
         "list_majors": "Lihat jurusan",
+        "lookup": "Cari referensi online (DOI/judul)",
+        "lookup_query": "DOI atau judul",
+        "lookup_key": "Kunci bibliografi (kosong = otomatis)",
+        "lookup_save": "Simpan ke file (kosong = jangan simpan)",
+        "lookup_saved": "Tersimpan sebagai",
+        "lookup_failed": "Pencarian gagal:",
         "press_enter": "Tekan Enter untuk kembali...",
         "result": "Hasil:",
     },
@@ -1180,6 +1406,12 @@ STRINGS = {
         "out_lang": "Output language: 1 = Indonesian, 2 = English",
         "list_styles": "List citation styles",
         "list_majors": "List majors",
+        "lookup": "Look up a reference online (DOI/title)",
+        "lookup_query": "DOI or title",
+        "lookup_key": "Bibliography key (empty = automatic)",
+        "lookup_save": "Save to file (empty = don't save)",
+        "lookup_saved": "Saved as",
+        "lookup_failed": "Lookup failed:",
         "press_enter": "Press Enter to go back...",
         "result": "Result:",
     },
@@ -1337,8 +1569,9 @@ class CLI:
             print(f"1. {self.t['type_text'].split(' (')[0]} / {self.t['read_file']}")
             print(f"2. {self.t['list_styles']}")
             print(f"3. {self.t['list_majors']}")
+            print(f"4. {self.t['lookup']}")
             print(f"0. {self.t['back']}")
-            choice = self.ask_choice(self.t["choice"], 3)
+            choice = self.ask_choice(self.t["choice"], 4)
             if choice == -1:
                 continue
             if choice == 1:
@@ -1351,8 +1584,30 @@ class CLI:
                 for i, d in enumerate(DISCIPLINES, 1):
                     print(f"  {i}. {d['id']} / {d['en']} -> {d['style']}")
                 self.pause()
+            elif choice == 4:
+                self.cite_lookup()
             elif choice == 0 or choice is None:
                 return
+
+    def cite_lookup(self):
+        query = self.ask(self.t["lookup_query"])
+        if not query:
+            return
+        try:
+            ref = lookup_reference(query)
+        except LookupError as e:
+            print(f"{self.t['lookup_failed']} {e}")
+            self.pause()
+            return
+        print(f"\n{json.dumps(ref, ensure_ascii=False, indent=2)}")
+        path = self.ask(self.t["lookup_save"])
+        if not path:
+            self.pause()
+            return
+        key = self.ask(self.t["lookup_key"])
+        saved = save_reference(ref, path, key=key or None)
+        print(f"{self.t['lookup_saved']} [{saved}] ({path})")
+        self.pause()
 
     def pick_style(self) -> str | None:
         print(f"\n{self.t['pick_style']}")

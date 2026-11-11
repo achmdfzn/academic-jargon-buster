@@ -6,7 +6,7 @@ Student writing, minus the guesswork: this repo translates academic jargon into 
 
 ## The file
 
-`academic_tools.py` (v1.2.0) holds everything — the jargon dictionary and translator, the citation engine, 15 thesis prompts, and an interactive menu CLI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.3.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 15 thesis prompts, and an interactive menu CLI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -33,7 +33,7 @@ Pick a number, follow the prompts: type text or read a file, pick a field, a cit
 | Tool | In short |
 | --- | --- |
 | **Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source. 22 terms — physics, machine learning, usability, software engineering, research methods — including Indonesian aliases. |
-| **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography. 6 styles (APA, MLA, Chicago, IEEE, Harvard, Vancouver), 21 majors with a recommended style each. |
+| **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography. 6 styles (APA, MLA, Chicago, IEEE, Harvard, Vancouver), 21 majors with a recommended style each. New: look up real references by DOI or title from Crossref/OpenAlex instead of typing bibliography JSON by hand. |
 | **Prompt Skripsi** | 15 ready-made prompt templates for thesis writing — roadmap, Bab 1–5, defense prep, publication. Pick one, fill in your title, theory, and method, paste the result into ChatGPT, Grok, Claude, Gemini, or Perplexity. |
 | **Menu CLI** | One command, all three tools, bilingual prompts. |
 
@@ -75,17 +75,19 @@ python3 academic_tools.py cite --text "... [cite:vaswani2017]." --refs demos/cit
 python3 academic_tools.py prompts --list
 python3 academic_tools.py prompts latar-belakang
 python3 academic_tools.py prompts roadmap --set judul="..." --set teori="..." --set metode="..." --set bulan=6 --set tanggal="11 November 2026"
+python3 academic_tools.py cite --lookup 10.1038/nature14539
+python3 academic_tools.py cite --lookup "Deep learning" --add-to my-refs.json
 ```
 
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.2.0)
+academic_tools.py            # everything (v1.3.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 skills/research/             # the same three tools as agent skills
 demos/                       # examples + 7 real sample references
 docs/                        # majors & styles, verification, update schedule
-tests/                       # 61 tests, stdlib unittest only
+tests/                       # 81 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -101,7 +103,7 @@ The `skills/research/` folders hold the same three tools as agent skills. They f
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 61 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 81 tests, no dependencies
 ```
 
 ## License

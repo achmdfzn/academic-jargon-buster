@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 — 2026-11-11
+
+- New: Citation Weaver reference lookup — fetch real reference metadata by DOI or title from Crossref and OpenAlex, instead of typing bibliography JSON by hand. `python3 academic_tools.py cite --lookup <DOI-or-title>` prints the reference as JSON; `--add-to my-refs.json` appends it (key auto-generated as first-author + year, e.g. `lecun2015`, with a letter suffix on collision; `--key` overrides). DOI lookups try Crossref first, then OpenAlex; title searches use OpenAlex. Both APIs are free, no key needed. A failed lookup (not found, rate-limited, offline) is a clear error, never an invented reference. Note: OpenAlex without a key shares one free daily budget per IP address — on HTTP 429, set `OPENALEX_API_KEY` (free at openalex.org) or retry later. Citation Weaver skill v1.1.0 documents the lookup; menu option 4 in Citation Weaver looks a reference up and offers to save it. Tests 61 → 81.
+
 ## 1.2.0 — 2026-11-11
 
 - New: Thesis Prompts (Prompt Skripsi) — 15 ready-made prompt templates for thesis writing: research roadmap, Bab 1–5 (background, theory comparison, prior research review, methodology, variables, hypothesis, mixed-methods analysis, suggestions, limitations), defense prep (draft review, PowerPoint, cue cards), and publication (blog, journal). Pick a prompt, fill its placeholders with your own title/theory/method/data, paste into ChatGPT, Grok, Claude, Gemini, or Perplexity. Available as `python3 academic_tools.py prompts ...` and as menu option 3. New skill `skills/research/skripsi-prompts/` (v1.0.0) carries the same templates. Templates are original wording written for this repo; they guide the student's own writing and never write a whole thesis or invent references.

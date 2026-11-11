@@ -1,4 +1,4 @@
-"""Tests for academic_cli.py — the interactive menu wrapping both tools.
+"""Tests for academic_cli.py — the interactive menu wrapping all three tools.
 
 The menu is driven by input(), so tests feed scripted answers with
 unittest.mock.patch and capture stdout. No real terminal needed.
@@ -107,6 +107,24 @@ class TestAcademicCli(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Sistem Informasi", out)
         self.assertIn("ChatGPT", out)
+
+    def test_cite_lookup_from_menu(self):
+        import academic_tools as tools
+        fake_ref = {"authors": ["LeCun, Yann"], "title": "Deep learning",
+                    "type": "article", "venue": "Nature", "year": 2015,
+                    "doi": "10.1038/nature14539"}
+        with patch.object(tools, "lookup_reference", return_value=fake_ref):
+            code, out = run_cli(["2", "4", "10.1038/nature14539", "", "", "0", "0"])
+        self.assertEqual(code, 0)
+        self.assertIn("Deep learning", out)
+
+    def test_cite_lookup_failure_from_menu(self):
+        import academic_tools as tools
+        with patch.object(tools, "lookup_reference",
+                          side_effect=tools.LookupError("not found (HTTP 404)")):
+            code, out = run_cli(["2", "4", "10.9999/tidak-ada", "", "0", "0"])
+        self.assertEqual(code, 0)
+        self.assertIn("Pencarian gagal", out)
 
     def test_passthrough_jargon_list_terms(self):
         buf = io.StringIO()

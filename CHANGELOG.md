@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.25.0 — 2026-11-12
+
+- Web UI redesigned as a dashboard (design references: anti-slop as the filter, open-design as the system — own implementation, nothing copied). A sidebar lists the five tools with a one-line purpose each; the main area shows the selected tool. The Analisis Kualitas tab shows the score as a gauge (0–100) with the four 25-point components beside it (Jargon, Sitasi, DOI, Gaya) and a band label from the score; `/api/analyze` now returns the components as `score_parts`, so the browser never recomputes the score. The Pustaka Statistik card shows three tiles from real numbers (runs, average score, best run) — no deltas, no invented figures. Same palette (paper, ink, one green accent), no gradients, no glass, no glow, no emoji decoration; every nav item has a real destination; the page stays self-contained (no CDN, no webfonts, no analytics). Also fixed a stale line in the academic-quality-check skill (the web UI has had folder upload since v1.23.0). 3 new tests; full suite 307/307. Quality-check skill v1.2.7.
+
 ## 1.24.0 — 2026-11-12
 
 - Citation Weaver can now export a bibliography to RIS: `cite --refs refs.json --export-ris [--out refs.ris]`, or menu Citation Weaver option 8. Record types follow the stored type (article → JOUR, book → BOOK, conference → CONF, chapter → CHAP, other → GEN); the bibliography key is kept as the `ID` line; authors become one `AU` line each; the venue becomes `JO` / `PB` / `T2` / `N1` by type; chapter page ranges split out of the venue into `SP` / `EP`; DOIs become `DO`, URLs `UR`, arXiv IDs an arXiv URL line; only fields actually present are exported — nothing is invented. Sample output in `demos/citation-weaver/references.ris`. 9 new tests; full suite 304/304. Citation Weaver skill v1.5.0.

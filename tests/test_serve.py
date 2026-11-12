@@ -122,6 +122,39 @@ class TestServe(unittest.TestCase):
         self.assertEqual(res["style"]["style_score"], 25)
         self.assertEqual(res["citations"]["missing"], [])
 
+    def test_home_is_a_dashboard_shell(self):
+        status, body = _request(self.base, "GET", "/")
+        self.assertEqual(status, 200)
+        # Sidebar navigation with the five real tools.
+        self.assertIn('class="shell"', body)
+        self.assertIn('class="sidebar"', body)
+        for tab in ("analyze", "jargon", "cite", "prompts", "library"):
+            self.assertIn(f'data-tab="{tab}"', body)
+        # The score gauge and the stat tiles are rendered by the page.
+        self.assertIn("scoreGauge", body)
+        self.assertIn("gauge-arc", body)
+        self.assertIn("stats-grid", body)
+
+    def test_analyze_returns_score_parts(self):
+        status, body = _request(self.base, "POST", "/api/analyze", {
+            "text": TEXT, "refs": "sample", "verify": False})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        # TEXT scores 100: every component is a full 25.
+        self.assertEqual(res["score_parts"], [25.0, 25.0, 25.0, 25.0])
+        self.assertEqual(sum(res["score_parts"]), res["quality_score"])
+
+    def test_analyze_score_parts_drop_for_missing_citation(self):
+        status, body = _request(self.base, "POST", "/api/analyze", {
+            "text": "Penelitian ini memakai [cite:tidakada].",
+            "refs": "sample", "verify": False})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        # Cited 1 marker, missing 1: the citations component loses half.
+        self.assertEqual(res["score_parts"][1], 12.5)
+        self.assertEqual(round(sum(res["score_parts"])),
+                         res["quality_score"])
+
     def test_analyze_without_refs(self):
         status, body = _request(self.base, "POST", "/api/analyze", {
             "text": "Penelitian memakai purposive sampling.",

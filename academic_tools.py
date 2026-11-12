@@ -98,11 +98,11 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.24.0"
+__version__ = "1.25.0"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.5.0"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.6"
+QUALITY_VERSION = "1.2.7"
 CLI_VERSION = "1.16.0"
 
 # ======================================================================
@@ -5206,6 +5206,8 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Academic Tools — Analisis Kualitas</title>
 <style>
+  /* Token: satu sumber kebenaran. Semua komponen memakai token ini,
+     tidak ada warna atau ukuran ad-hoc di luar daftar ini. */
   :root {
     --paper: #fafaf7;
     --card: #ffffff;
@@ -5213,11 +5215,14 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     --muted: #6b6b64;
     --line: #e2e2da;
     --accent: #206040;
+    --accent-soft: #e8f0e9;
     --accent-ink: #ffffff;
     --warn: #8a5a00;
     --bad: #9b2c2c;
     --radius: 6px;
+    --radius-lg: 10px;
     --space: 16px;
+    --sidebar-w: 248px;
   }
   * { box-sizing: border-box; }
   body {
@@ -5228,34 +5233,42 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     font-size: 16px;
     line-height: 1.55;
   }
-  header {
-    border-bottom: 1px solid var(--line);
-    background: var(--card);
+  /* Shell: sidebar navigasi + area kerja. Sidebar hanya berisi lima alat
+     yang memang ada (tiap tombol punya tujuan nyata) dan satu catatan
+     lokal; tidak ada kartu statistik hiasan atau grafik tanpa pertanyaan. */
+  .shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100vh; }
+  .sidebar {
+    background: var(--card); border-right: 1px solid var(--line);
+    padding: 20px 16px; display: flex; flex-direction: column; gap: 20px;
   }
-  .wrap { max-width: 860px; margin: 0 auto; padding: 0 var(--space); }
-  header .wrap { padding-top: 20px; padding-bottom: 16px; }
-  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-  h1 .ver {
+  .brand h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  .brand .ver {
     font-size: 12px; font-weight: 600; color: var(--muted);
     border: 1px solid var(--line); border-radius: 999px;
     padding: 2px 8px; margin-left: 8px; vertical-align: middle;
   }
-  header p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
-  nav.tabs { display: flex; gap: 4px; margin-top: 16px; flex-wrap: wrap; }
+  .brand p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+  nav.tabs { display: flex; flex-direction: column; gap: 4px; }
   nav.tabs button {
     appearance: none; border: 1px solid transparent; background: none;
-    font: inherit; font-size: 14px; font-weight: 600; color: var(--muted);
-    padding: 8px 12px; border-radius: var(--radius) var(--radius) 0 0; cursor: pointer;
+    font: inherit; text-align: left; padding: 10px 12px;
+    border-radius: var(--radius); cursor: pointer; color: var(--ink);
   }
+  nav.tabs button .nav-name { display: block; font-size: 14px; font-weight: 600; }
+  nav.tabs button .nav-desc { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
   nav.tabs button[aria-selected="true"] {
-    color: var(--ink); background: var(--paper);
-    border-color: var(--line); border-bottom-color: var(--paper);
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--accent);
   }
   nav.tabs button:focus-visible, button:focus-visible, select:focus-visible,
   textarea:focus-visible, input:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
-  main .wrap { padding-top: 24px; padding-bottom: 48px; }
+  .local-note {
+    margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line);
+    font-size: 13px; color: var(--muted);
+  }
+  main .content { max-width: 880px; margin: 0 auto; padding: 24px var(--space) 48px; }
   .panel { display: none; }
   .panel.active { display: block; }
   label { display: block; font-size: 14px; font-weight: 600; margin: 0 0 6px; }
@@ -5300,11 +5313,36 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   .card ul { margin: 0; padding-left: 20px; }
   .card li { margin: 4px 0; }
   .card li .src { color: var(--muted); font-size: 13px; }
-  .score { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  .score .num { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-  .score .of { color: var(--muted); }
-  .score .bar { flex: 1 1 160px; height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; min-width: 120px; }
-  .score .bar span { display: block; height: 100%; background: var(--accent); }
+  /* Kartu skor: satu-satunya kartu dengan radius besar — ia hasil utama
+     halaman ini. Gauge menjawab "seberapa bagus naskah ini?"; empat baris
+     di sampingnya menjawab "komponen mana yang menarik skor ke bawah?". */
+  .gauge-card { border-radius: var(--radius-lg); }
+  .gauge-card .caption { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+  .gauge-body { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+  .gauge-wrap { position: relative; flex: 0 0 132px; width: 132px; height: 132px; }
+  .gauge { width: 132px; height: 132px; display: block; }
+  .gauge circle { fill: none; stroke-width: 10; }
+  .gauge-track { stroke: var(--line); }
+  .gauge-arc { stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; }
+  .gauge-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+  }
+  .gauge-num { font-size: 32px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .gauge-of { color: var(--muted); font-size: 13px; }
+  .gauge-band { font-size: 12px; font-weight: 600; margin-top: 4px; padding: 0 8px; }
+  .parts { flex: 1 1 240px; display: flex; flex-direction: column; gap: 10px; }
+  .part-row { display: flex; align-items: center; gap: 10px; }
+  .part-label { flex: 0 0 64px; font-size: 14px; font-weight: 600; }
+  .part-row .bar { flex: 1; height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; }
+  .part-row .bar span { display: block; height: 100%; background: var(--accent); }
+  .part-num { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); min-width: 44px; text-align: right; }
+  /* Statistik pustaka: tiga ubin dari angka nyata (riwayat tersimpan di
+     komputer ini). Tanpa delta, tanpa angka karangan. */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 12px 0 4px; }
+  .stat { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+  .stat-num { display: block; font-size: 28px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat-label { display: block; font-size: 13px; color: var(--muted); margin-top: 4px; }
   .trend-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
   .trend-row .trend-label { flex: 0 0 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .trend-row .bar { flex: 1; height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; }
@@ -5320,29 +5358,39 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     margin: 0; background: var(--card);
   }
   .bib { font-size: 14px; color: var(--ink); }
-  footer { border-top: 1px solid var(--line); padding: 20px 0 32px; font-size: 13px; color: var(--muted); }
+  @media (max-width: 900px) {
+    .shell { display: block; }
+    .sidebar { border-right: none; border-bottom: 1px solid var(--line); padding: 16px; gap: 12px; }
+    nav.tabs { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+    nav.tabs button { flex: 1 1 auto; }
+    nav.tabs button .nav-desc { display: none; }
+    nav.tabs button[aria-selected="true"] { box-shadow: inset 0 -3px 0 var(--accent); }
+    .local-note { margin-top: 0; }
+    .stats-grid { grid-template-columns: 1fr; }
+  }
   @media (max-width: 560px) {
-    .score .num { font-size: 32px; }
-    nav.tabs button { padding: 8px 8px; }
+    .gauge-num { font-size: 28px; }
   }
 </style>
 </head>
 <body>
-<header>
-  <div class="wrap">
-    <h1>Academic Tools <span class="ver">v__ACADEMIC_TOOLS_VERSION__</span></h1>
-    <p>Satu file Python untuk tulisan mahasiswa: terjemahkan jargon, sisipkan sitasi, cek kualitas naskah, isi template prompt skripsi, dan lihat riwayat di pustaka.</p>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>Academic Tools <span class="ver">v__ACADEMIC_TOOLS_VERSION__</span></h1>
+      <p>Satu file Python untuk tulisan mahasiswa: terjemahkan jargon, sisipkan sitasi, cek kualitas naskah, isi template prompt skripsi, dan lihat riwayat di pustaka.</p>
+    </div>
     <nav class="tabs" role="tablist" aria-label="Alat">
-      <button role="tab" data-tab="analyze" aria-selected="true">Analisis Kualitas</button>
-      <button role="tab" data-tab="jargon" aria-selected="false">Jargon Buster</button>
-      <button role="tab" data-tab="cite" aria-selected="false">Citation Weaver</button>
-      <button role="tab" data-tab="prompts" aria-selected="false">Prompt Skripsi</button>
-      <button role="tab" data-tab="library" aria-selected="false">Pustaka</button>
+      <button role="tab" data-tab="analyze" aria-selected="true"><span class="nav-name">Analisis Kualitas</span><span class="nav-desc">Skor naskah dan apa yang diperbaiki</span></button>
+      <button role="tab" data-tab="jargon" aria-selected="false"><span class="nav-name">Jargon Buster</span><span class="nav-desc">Istilah akademik, dijelaskan</span></button>
+      <button role="tab" data-tab="cite" aria-selected="false"><span class="nav-name">Citation Weaver</span><span class="nav-desc">Sisipkan sitasi ke naskah</span></button>
+      <button role="tab" data-tab="prompts" aria-selected="false"><span class="nav-name">Prompt Skripsi</span><span class="nav-desc">Template prompt skripsi</span></button>
+      <button role="tab" data-tab="library" aria-selected="false"><span class="nav-name">Pustaka</span><span class="nav-desc">Riwayat analisis dan referensi</span></button>
     </nav>
-  </div>
-</header>
+    <p class="local-note">Berjalan lokal di komputer Anda — halaman ini tidak mengirim data ke mana pun. Skor gaya hanya laporan: baca, lalu sunting sendiri. Referensi yang tidak ada di bibliografi tidak pernah dikarang.</p>
+  </aside>
 <main>
-  <div class="wrap">
+  <div class="content">
 
     <section class="panel active" id="panel-analyze" role="tabpanel" aria-label="Analisis Kualitas">
       <label for="analyze-text">Tempel naskah <span class="hint">— satu atau beberapa paragraf, bahasa Indonesia</span></label>
@@ -5502,11 +5550,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 
   </div>
 </main>
-<footer>
-  <div class="wrap">
-    Berjalan lokal di komputer Anda — halaman ini tidak mengirim data ke mana pun. Skor gaya hanya laporan: baca, lalu sunting sendiri. Referensi yang tidak ada di bibliografi tidak pernah dikarang.
-  </div>
-</footer>
+</div>
 <script>
 (function () {
   "use strict";
@@ -5627,9 +5671,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       $("library-stats").innerHTML = '<div class="card"><h2>Statistik</h2><p>Belum ada riwayat analisis — jalankan analyze --save dulu.</p></div>';
       return;
     }
-    var h = '<div class="card"><h2>Statistik</h2><p>' + st.runs + ' analisis tersimpan · Rata-rata skor ' + st.average_score + '/100';
-    if (st.best) h += ' · Terbaik: ' + esc(st.best.title) + ' (' + st.best.quality_score + '/100)';
-    h += '</p><h3>Tren skor</h3>';
+    var h = '<div class="card"><h2>Statistik</h2><div class="stats-grid">'
+      + '<div class="stat"><span class="stat-num">' + st.runs + '</span><span class="stat-label">Analisis tersimpan</span></div>'
+      + '<div class="stat"><span class="stat-num">' + st.average_score + '</span><span class="stat-label">Rata-rata skor /100</span></div>';
+    if (st.best) h += '<div class="stat"><span class="stat-num">' + st.best.quality_score + '</span><span class="stat-label">Terbaik: ' + esc(st.best.title) + '</span></div>';
+    h += '</div><h3>Tren skor</h3>';
     st.trend.forEach(function (t) {
       h += '<div class="trend-row"><span class="trend-label">' + esc(t.title) + '</span><div class="bar"><span style="width:' + t.quality_score + '%"></span></div><span class="num">' + t.quality_score + '</span></div>';
     });
@@ -5710,11 +5756,38 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     return h;
   }
 
+  /* Pita skor: label dari angka, bukan karangan — ambang tetap. */
+  function scoreBand(score, lang) {
+    if (score >= 90) return {color: "var(--accent)", label: lang === "en" ? "Excellent" : "Sangat baik"};
+    if (score >= 70) return {color: "var(--accent)", label: lang === "en" ? "Good — some fixes needed" : "Baik — ada yang diperbaiki"};
+    if (score >= 50) return {color: "var(--warn)", label: lang === "en" ? "Needs revision" : "Perlu revisi"};
+    return {color: "var(--bad)", label: lang === "en" ? "Needs major revision" : "Perlu banyak revisi"};
+  }
+  function scoreGauge(res, lang) {
+    var band = scoreBand(res.quality_score, lang);
+    var h = '<div class="card gauge-card"><h2>Skor kualitas</h2>'
+      + '<p class="caption">' + (lang === "en" ? "Score 0–100 from 4 components × 25 points." : "Skor 0–100 dari 4 komponen × 25 poin.") + '</p>'
+      + '<div class="gauge-body"><div class="gauge-wrap">'
+      + '<svg class="gauge" viewBox="0 0 120 120" role="img" aria-label="Skor kualitas ' + res.quality_score + ' dari 100">'
+      + '<circle class="gauge-track" cx="60" cy="60" r="52"></circle>'
+      + '<circle class="gauge-arc" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="100" stroke-dashoffset="' + (100 - res.quality_score) + '" style="stroke:' + band.color + '"></circle>'
+      + '</svg><div class="gauge-center"><span class="gauge-num">' + res.quality_score + '</span><span class="gauge-of">/ 100</span><span class="gauge-band">' + band.label + '</span></div></div>';
+    var parts = res.score_parts;
+    if (parts && parts.length === 4) {
+      var labels = lang === "en" ? ["Jargon", "Citations", "DOI", "Style"] : ["Jargon", "Sitasi", "DOI", "Gaya"];
+      h += '<div class="parts">';
+      parts.forEach(function (v, i) {
+        h += '<div class="part-row"><span class="part-label">' + labels[i] + '</span><div class="bar"><span style="width:' + (v / 25 * 100) + '%"></span></div><span class="part-num">' + Math.round(v) + '/25</span></div>';
+      });
+      h += '</div>';
+    }
+    h += '</div></div>';
+    return h;
+  }
+
   function renderAnalyze(res, lang) {
     var h = "";
-    h += '<div class="card"><h2>Skor kualitas</h2><div class="score">'
-      + '<span class="num">' + res.quality_score + '</span><span class="of">/ 100</span>'
-      + '<div class="bar"><span style="width:' + res.quality_score + '%"></span></div></div></div>';
+    h += scoreGauge(res, lang);
     if (res.library_id) {
       h += '<div class="card"><p>Tersimpan di pustaka (id ' + res.library_id + ").</p></div>";
     }
@@ -6391,6 +6464,9 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         result = analyze_text_quality(
             text, refs, lang=lang, verify_dois=bool(body.get("verify")),
             suggest=bool(body.get("suggest")))
+        # The dashboard gauge reads the four 25-point components from
+        # here, so the browser never recomputes the score.
+        result["score_parts"] = _score_parts(result)
         if body.get("duplicates"):
             result["duplicates"] = find_duplicates(text)
         if body.get("save"):

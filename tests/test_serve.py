@@ -1133,3 +1133,48 @@ class TestServeHardening1261(unittest.TestCase):
                 s.close()
             server.shutdown()
             server.server_close()
+
+
+class TestServeReadability1270(unittest.TestCase):
+    """v1.27.0: /api/analyze carries readability, and the Analisis tab
+    renders it (Flesch Reading Ease + band, FKGL, averages, note)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.server = tools.make_server("127.0.0.1", 0)
+        cls.thread = threading.Thread(
+            target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        host, port = cls.server.server_address[:2]
+        cls.base = f"http://{host}:{port}"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def test_api_analyze_returns_readability(self):
+        status, body = _request(self.base, "POST", "/api/analyze", {
+            "text": TEXT, "refs": "sample", "verify": False})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertIn("readability", res)
+        r = res["readability"]
+        self.assertEqual(r, tools.readability_score(TEXT))
+        self.assertIn("flesch_reading_ease", r)
+        self.assertIn("flesch_kincaid_grade", r)
+        self.assertIn("band", r)
+        self.assertIn("note", r)
+        # Readability is informative only: the score is untouched.
+        self.assertEqual(res["score_parts"], [25.0, 25.0, 25.0, 25.0])
+        self.assertEqual(res["quality_score"], 100)
+
+    def test_js_renders_readability_in_analyze_tab(self):
+        html = tools.WEB_UI_HTML
+        self.assertIn("res.readability", html)
+        self.assertIn("Flesch Reading Ease", html)
+        self.assertIn("Flesch-Kincaid Grade Level", html)
+        self.assertIn("esc(r.band)", html)
+        self.assertIn("esc(r.note)", html)
+        self.assertIn("avg_words_per_sentence", html)
+        self.assertIn("avg_syllables_per_word", html)

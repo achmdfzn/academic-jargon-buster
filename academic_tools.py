@@ -77,13 +77,22 @@ an indication, never proof, so it must never be used to accuse anyone.
     python3 academic_tools.py detect naskah.txt
     python3 academic_tools.py detect --text "..." --lang en --json
 
+Readability: the Flesch Reading Ease and Flesch-Kincaid Grade Level
+for a text, with the standard Flesch bands. A pure formula — no
+language model, no API — reported by `analyze` and by its own
+subcommand. The formulas were calibrated for English, so on
+Indonesian text the score is an indication, not a verdict.
+
+    python3 academic_tools.py readability naskah.txt
+    python3 academic_tools.py readability --text "..." --lang en --json
+
 Local web UI: the same six tools in a browser page, served from
 this file alone (stdlib http.server, no external resources).
 
     python3 academic_tools.py serve [--port 8000]   # then open http://127.0.0.1:8000/
 
 The old entry points (jargon_buster.py, citation_weaver.py,
-academic_cli.py, ai_detector.py) still exist as thin wrappers around this file, so
+academic_cli.py, ai_detector.py, readability.py) still exist as thin wrappers around this file, so
 existing commands, demos, and imports keep working.
 """
 
@@ -109,13 +118,14 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.26.1"
+__version__ = "1.27.0"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.5.3"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.11"
+QUALITY_VERSION = "1.2.12"
 DETECTOR_VERSION = "1.0.1"
-CLI_VERSION = "1.17.1"
+READABILITY_VERSION = "1.0.0"
+CLI_VERSION = "1.18.0"
 
 # ======================================================================
 # Jargon Buster
@@ -2341,6 +2351,9 @@ def analyze_text_quality(
     - doi_verification: per-reference DOI check results
     - style: style check result (signals, style_score, flagged)
     - quality_score: composite score 0-100
+    - readability: Flesch Reading Ease + Flesch-Kincaid Grade Level
+      (readability_score) — always computed, purely informative:
+      it never changes quality_score or the four score parts
     - recommendations: list of improvement suggestions
     - suggestions: rewrite suggestions from suggest_style_fixes()
       (empty unless suggest=True)
@@ -2362,6 +2375,9 @@ def analyze_text_quality(
         "doi_verification": {},
         "style": check_style(text),
         "quality_score": 0,
+        # Readability is cheap (counts only, no network) and always
+        # computed; it is informative only and never feeds the score.
+        "readability": readability_score(text, lang=lang),
         "recommendations": [],
         "suggestions": {"suggestions": [], "count": 0},
     }
@@ -2604,6 +2620,9 @@ _ANALYZE_STRINGS = {
         "recs": "Rekomendasi",
         "recs_none": "Tidak ada rekomendasi — naskah sudah rapi.",
         "no_refs": "Tanpa bibliografi: audit sitasi dan verifikasi DOI dilewati.",
+        "readability": "Keterbacaan",
+        "readability_detail": ("Rata-rata {wps} kata/kalimat, "
+                               "{spw} suku kata/kata"),
     },
     "en": {
         "heading": "Text Quality Analysis",
@@ -2635,6 +2654,9 @@ _ANALYZE_STRINGS = {
         "recs": "Recommendations",
         "recs_none": "No recommendations — the text is in good shape.",
         "no_refs": "No bibliography: citation audit and DOI verification skipped.",
+        "readability": "Readability",
+        "readability_detail": ("Average {wps} words/sentence, "
+                               "{spw} syllables/word"),
     },
 }
 
@@ -2697,6 +2719,17 @@ def format_analyze(result: dict, lang: str = "id") -> str:
     for label, value in zip(labels, _score_parts(result)):
         lines.append(f"{label:<10} {_green(_bar(value, 25))} "
                      f"{_round_half_up(value):>2}/25")
+    lines.append("")
+    read = result.get("readability")
+    if read:
+        lines.append(f"{s['readability']}: Flesch Reading Ease "
+                     f"{read['flesch_reading_ease']}/100 "
+                     f"({read['band']}) — "
+                     f"FKGL {read['flesch_kincaid_grade']}")
+        lines.append("  " + s["readability_detail"].format(
+            wps=read["avg_words_per_sentence"],
+            spw=read["avg_syllables_per_word"]))
+        lines.append("  " + read["note"])
     lines.append("")
     jargon = result["jargon"]
     if jargon:
@@ -3788,6 +3821,188 @@ def detect_main(argv=None) -> int:
         sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     else:
         sys.stdout.write(format_detect(result, lang=args.lang))
+    return 0
+
+
+# ======================================================================
+# Readability — Flesch Reading Ease + Flesch-Kincaid Grade Level
+# ======================================================================
+# Two formulas from Flesch (1948), J. Appl. Psychol. 32(3), 221-233:
+#   RE   = 206.835 - 1.015 * (words/sentence) - 84.6 * (syllables/word)
+#   FKGL = 0.39 * (words/sentence) + 11.8 * (syllables/word) - 15.59
+# Pure arithmetic on counts — no language model, no API, no minimum
+# word count (unlike the AI detector, this is a formula, not an
+# inference). The syllable counter is tuned for Indonesian (EYD
+# diphthongs ai/au/oi only); English is best-effort. The formulas
+# were calibrated for English, so on Indonesian text the score is an
+# indication, not a verdict: Indonesian words average more syllables,
+# so Indonesian academic prose usually lands lower than an English
+# text of the same difficulty — that is expected, not a bug.
+
+_READABILITY_BANDS = (
+    # (lowest RE in the band, Indonesian label, English label)
+    (90, "Sangat mudah", "Very easy"),
+    (80, "Mudah", "Easy"),
+    (70, "Cukup mudah", "Fairly easy"),
+    (60, "Standar", "Standard"),
+    (50, "Cukup sulit", "Fairly difficult"),
+    (30, "Sulit", "Difficult"),
+    (0, "Sangat sulit", "Very difficult"),
+)
+
+_READABILITY_NOTE = {
+    "id": ("Rumus Flesch dikalibrasi untuk Bahasa Inggris; untuk Bahasa "
+           "Indonesia skor ini hanya indikasi, bukan vonis. Teks akademik "
+           "Indonesia umumnya mendarat lebih rendah karena kata Bahasa "
+           "Indonesia rata-rata lebih banyak suku katanya. FKGL memakai "
+           "skala kelas Amerika Serikat."),
+    "en": ("The Flesch formulas were calibrated for English; for "
+           "Indonesian text this score is an indication, not a verdict. "
+           "Indonesian academic text usually lands lower because "
+           "Indonesian words average more syllables. FKGL uses the "
+           "United States grade scale."),
+}
+
+_VOWELS = set("aeiou")
+_DIPHTHONGS = ("ai", "au", "oi")
+
+
+def _count_syllables(word: str) -> int:
+    """Syllables in one word, by EYD rules.
+
+    Count the vowels (a, e, i, o, u); each diphthong ai/au/oi counts
+    as one syllable, so one is subtracted per diphthong. Only ai, au,
+    and oi are diphthongs in EYD — "ei" is not, so "keindahan" is 4
+    syllables and "survei" counts as 3: a documented heuristic limit,
+    not a bug to patch with an exception list. A word with no vowel
+    (a number, an abbreviation) counts as 1. Non-letters at the ends
+    of the word are stripped first; the word is lowercased.
+    """
+    w = re.sub(r"^[^a-z]+|[^a-z]+$", "", word.lower())
+    vowels = sum(1 for ch in w if ch in _VOWELS)
+    if vowels == 0:
+        return 1
+    diphthongs = sum(w.count(d) for d in _DIPHTHONGS)
+    return max(1, vowels - diphthongs)
+
+
+def readability_score(text: str, lang: str = "id") -> dict:
+    """Flesch Reading Ease + Flesch-Kincaid Grade Level for a text.
+
+    RE = 206.835 - 1.015 * (words/sentence) - 84.6 * (syllables/word),
+    clamped to [0, 100]; FKGL = 0.39 * (words/sentence)
+    + 11.8 * (syllables/word) - 15.59, clamped to a minimum of 0.
+    Both are rounded to 1 decimal. The band is the standard Flesch
+    label for the RE (90+ Very easy, 80+ Easy, 70+ Fairly easy, 60+
+    Standard, 50+ Fairly difficult, 30+ Difficult, below 30 Very
+    difficult). Words come from text.split(), sentences from
+    _split_sentences (so abbreviations do not split a sentence).
+    Raises ValueError("teks kosong") for an empty or whitespace-only
+    text, like every other tool in this file. No minimum word count:
+    the formulas are pure arithmetic, so even one sentence scores.
+    Every result carries the honesty note (see _READABILITY_NOTE).
+    """
+    if not text or not text.strip():
+        raise ValueError("teks kosong")
+    lang = lang if lang in ("id", "en") else "id"
+    words = text.split()
+    sentences = _split_sentences(text)
+    n_words = len(words)
+    n_sentences = len(sentences) if sentences else 1
+    total_syllables = sum(_count_syllables(w) for w in words)
+    avg_words = n_words / n_sentences
+    avg_syllables = total_syllables / n_words if n_words else 0.0
+    ease = 206.835 - 1.015 * avg_words - 84.6 * avg_syllables
+    ease = round(max(0.0, min(100.0, ease)), 1)
+    grade = 0.39 * avg_words + 11.8 * avg_syllables - 15.59
+    grade = round(max(0.0, grade), 1)
+    band = _READABILITY_BANDS[-1][1 if lang == "id" else 2]
+    for low, label_id, label_en in _READABILITY_BANDS:
+        if ease >= low:
+            band = label_id if lang == "id" else label_en
+            break
+    return {"flesch_reading_ease": ease,
+            "flesch_kincaid_grade": grade,
+            "band": band,
+            "words": n_words,
+            "sentences": n_sentences,
+            "avg_words_per_sentence": round(avg_words, 1),
+            "avg_syllables_per_word": round(avg_syllables, 1),
+            "total_syllables": total_syllables,
+            "note": _READABILITY_NOTE[lang]}
+
+
+_READABILITY_STRINGS = {
+    "id": {
+        "heading": "Keterbacaan",
+        "score": "Flesch Reading Ease",
+        "grade": "Flesch-Kincaid Grade Level",
+        "band": "Pita",
+        "detail": ("Rata-rata {wps} kata/kalimat, {spw} suku kata/kata "
+                   "({words} kata, {sentences} kalimat, "
+                   "{syllables} suku kata)"),
+    },
+    "en": {
+        "heading": "Readability",
+        "score": "Flesch Reading Ease",
+        "grade": "Flesch-Kincaid Grade Level",
+        "band": "Band",
+        "detail": ("Average {wps} words/sentence, {spw} syllables/word "
+                   "({words} words, {sentences} sentences, "
+                   "{syllables} syllables)"),
+    },
+}
+
+
+def format_readability(result: dict, lang: str = "id") -> str:
+    """Render a readability_score() result as readable text."""
+    s = _READABILITY_STRINGS.get(lang, _READABILITY_STRINGS["id"])
+    lines = [s["heading"], "",
+             _bold(f"{s['score']}: {result['flesch_reading_ease']}/100"),
+             _green(_bar(result["flesch_reading_ease"], 100)),
+             f"{s['band']}: {result['band']}",
+             f"{s['grade']}: {result['flesch_kincaid_grade']}",
+             s["detail"].format(
+                 wps=result["avg_words_per_sentence"],
+                 spw=result["avg_syllables_per_word"],
+                 words=result["words"],
+                 sentences=result["sentences"],
+                 syllables=result["total_syllables"]),
+             "",
+             result["note"]]
+    return "\n".join(lines) + "\n"
+
+
+def readability_main(argv=None) -> int:
+    p = argparse.ArgumentParser(
+        description="Flesch Reading Ease and Flesch-Kincaid Grade Level "
+                    "for a text — pure formulas (Flesch 1948), no "
+                    "language model, no API. Informative only: it always "
+                    "exits 0, unless the input itself is bad (missing "
+                    "file, empty text).")
+    p.add_argument("input", nargs="?", help="plain-text file to check")
+    p.add_argument("--text", help="check this text instead of a file")
+    p.add_argument("--lang", choices=["id", "en"], default="id",
+                   help="output language (default: id)")
+    p.add_argument("--json", action="store_true",
+                   help="print the raw result as JSON instead of readable text")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    args = p.parse_args(argv)
+
+    if args.text is not None:
+        text = args.text
+    elif args.input:
+        if not os.path.isfile(args.input):
+            raise ValueError(f"File tidak ditemukan: {args.input}")
+        with open(args.input, encoding="utf-8") as f:
+            text = f.read()
+    else:
+        p.error("give a file or --text")
+    result = readability_score(text, lang=args.lang)
+    if args.json:
+        sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    else:
+        sys.stdout.write(format_readability(result, lang=args.lang))
     return 0
 
 
@@ -6705,6 +6920,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   function renderAnalyze(res, lang) {
     var h = "";
     h += scoreGauge(res, lang);
+    /* Keterbacaan: Flesch Reading Ease + FKGL, dari /api/analyze —
+       informatif saja, tidak memengaruhi skor 0-100. */
+    if (res.readability) {
+      var r = res.readability;
+      h += '<div class="card"><h2>' + (lang === "en" ? "Readability" : "Keterbacaan") + '</h2><p>'
+        + 'Flesch Reading Ease ' + num(r.flesch_reading_ease, 100) + '/100 — ' + esc(r.band)
+        + '<br>Flesch-Kincaid Grade Level ' + num(r.flesch_kincaid_grade, 100)
+        + '<br>' + (lang === "en" ? "Average " : "Rata-rata ") + num(r.avg_words_per_sentence, 1000) + (lang === "en" ? " words/sentence, " : " kata/kalimat, ") + num(r.avg_syllables_per_word, 100) + (lang === "en" ? " syllables/word" : " suku kata/kata")
+        + '</p><p>' + esc(r.note) + '</p></div>';
+    }
     if (res.library_id) {
       h += '<div class="card"><p>Tersimpan di pustaka (id ' + num(res.library_id) + ").</p></div>";
     }
@@ -7672,7 +7897,7 @@ def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in ("jargon", "cite", "prompts", "analyze",
                            "humanize", "library", "serve", "duplicates",
-                           "detect"):
+                           "detect", "readability"):
         tool, rest = argv[0], argv[1:]
         try:
             if tool == "jargon":
@@ -7689,6 +7914,8 @@ def main(argv=None) -> int:
                 return duplicates_main(rest)
             if tool == "detect":
                 return detect_main(rest)
+            if tool == "readability":
+                return readability_main(rest)
             if tool == "serve":
                 return serve_main(rest)
             return prompts_main(rest)
@@ -7707,7 +7934,8 @@ def main(argv=None) -> int:
               f"citation_weaver {CITATION_VERSION}; "
               f"skripsi_prompts {PROMPTS_VERSION}; "
               f"academic_quality_check {QUALITY_VERSION}; "
-              f"ai_detector {DETECTOR_VERSION})")
+              f"ai_detector {DETECTOR_VERSION}; "
+              f"readability {READABILITY_VERSION})")
         return 0
     try:
         return CLI().run()

@@ -55,6 +55,7 @@ class TestCoreStaysOneFile(unittest.TestCase):
         import ai_detector
         import citation_weaver
         import jargon_buster
+        import readability
         import skripsi_prompts
 
         self.assertIs(academic_cli.main, academic_tools.main)
@@ -62,8 +63,12 @@ class TestCoreStaysOneFile(unittest.TestCase):
         self.assertIs(citation_weaver.main, academic_tools.cite_main)
         self.assertIs(skripsi_prompts.main, academic_tools.prompts_main)
         self.assertIs(ai_detector.detect_main, academic_tools.detect_main)
+        self.assertIs(readability.readability_main,
+                      academic_tools.readability_main)
         self.assertEqual(ai_detector.__version__,
                          academic_tools.DETECTOR_VERSION)
+        self.assertEqual(readability.__version__,
+                         academic_tools.READABILITY_VERSION)
         self.assertEqual(jargon_buster.__version__, academic_tools.JARGON_VERSION)
         self.assertEqual(
             citation_weaver.__version__, academic_tools.CITATION_VERSION

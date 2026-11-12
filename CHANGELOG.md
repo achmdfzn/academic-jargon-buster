@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.23.0 — 2026-11-12
+
+- Folder upload in the web UI: the Analisis Kualitas tab gains an "Analisis se-folder" section — pick a whole folder (webkitdirectory) or several files at once, and the same recap table as `analyze <folder>` comes back. Same rules as the CLI: only top-level .txt/.md files are analyzed, in name order; files in subfolders and other extensions are listed under "Dilewati" instead of failing the run; a file that cannot be decoded as UTF-8 is recorded with its error and the rest still run. New endpoint `POST /api/analyze-folder` (multipart/form-data, 10 MB body cap, honest 400/413), with a hand-written stdlib parser — `cgi` is gone in Python 3.13. Bibliography and language come from the tab's own selectors; verify / duplicates / save checkboxes work the same as the single-text form, so `--save --duplicates` flags sentences repeated across chapters. `analyze_folder` was refactored to share its per-file pass (`_analyze_one_file`) with the upload path; the CLI is unchanged. `QUALITY_VERSION` 1.2.5 → 1.2.6 (the quality-check skill documents the upload).
+- 9 new tests (multipart parser, endpoint, skips, bad UTF-8, no files, wrong content type, oversize 413, page). Full suite 294/294.
+
 ## 1.22.0 — 2026-11-12
 
 - Library statistics: `library --stats` prints the story of the saved runs — how many, the average score, the best run, a score trend (every run oldest first, with a bar per run), and the most-cited references (top 5 by how many saved runs cite them). Also in the interactive menu (Pustaka, option 7) and as a Statistik card at the top of the web UI's Pustaka tab, loaded together with the history and bibliography (`GET /api/library/stats`). Empty library prints an honest "run analyze --save first" instead of zeros. `CLI_VERSION` 1.14.0 → 1.15.0; `QUALITY_VERSION` 1.2.4 → 1.2.5 (the quality-check skill documents the statistics).

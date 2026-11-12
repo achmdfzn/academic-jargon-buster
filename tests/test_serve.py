@@ -42,6 +42,40 @@ def _request(base, method, path, payload=None):
         return e.code, e.read().decode("utf-8")
 
 
+_BOUNDARY = "----testboundary42"
+
+
+def _multipart(parts):
+    """Build a multipart/form-data body.
+
+    parts: list of (name, filename_or_None, data_bytes).
+    """
+    out = bytearray()
+    for name, filename, data in parts:
+        out += b"--" + _BOUNDARY.encode() + b"\r\n"
+        disp = f'Content-Disposition: form-data; name="{name}"'
+        if filename is not None:
+            disp += f'; filename="{filename}"'
+        out += disp.encode() + b"\r\n"
+        if filename is not None:
+            out += b"Content-Type: text/plain\r\n"
+        out += b"\r\n" + data + b"\r\n"
+    out += b"--" + _BOUNDARY.encode() + b"--\r\n"
+    return bytes(out)
+
+
+def _request_multipart(base, path, parts):
+    body = _multipart(parts)
+    req = urllib.request.Request(base + path, data=body, method="POST")
+    req.add_header("Content-Type",
+                   f"multipart/form-data; boundary={_BOUNDARY}")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status, resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8")
+
+
 class TestServe(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -165,6 +199,135 @@ class TestServe(unittest.TestCase):
                                         "/api/library/stats")
                 self.assertEqual(status, 200)
                 self.assertEqual(json.loads(body)["stats"]["runs"], 0)
+
+    def test_parse_multipart_fields_and_files(self):
+        body = _multipart([
+            ("refs", None, b"sample"),
+            ("files", "skripsi/bab1.txt", "Bab satu.".encode()),
+            ("files", "bab2.md", "Bab dua.".encode()),
+        ])
+        parts = tools._parse_multipart(body, _BOUNDARY.encode())
+        self.assertEqual(
+            [(p["name"], p["filename"]) for p in parts],
+            [("refs", None), ("files", "skripsi/bab1.txt"),
+             ("files", "bab2.md")])
+        self.assertEqual(parts[0]["data"], b"sample")
+        self.assertEqual(parts[1]["data"], b"Bab satu.")
+
+    def test_parse_multipart_malformed_raises(self):
+        body = (b"--" + _BOUNDARY.encode() + b"\r\n"
+                b'Content-Disposition: form-data; name="x"\r\n'
+                b"--" + _BOUNDARY.encode() + b"--\r\n")
+        with self.assertRaises(ValueError):
+            tools._parse_multipart(body, _BOUNDARY.encode())
+
+    def test_folder_upload_two_files_with_duplicates_and_save(self):
+        bab1 = ("Penelitian ini melakukan pengukuran terhadap kepuasan "
+                "pengguna [cite:devlin2019].")
+        bab2 = ("Metode penelitian ini memakai purposive sampling dan "
+                "thematic analysis. Hasilnya sejalan dengan temuan "
+                "sebelumnya [cite:brooke1996]. Penelitian ini melakukan "
+                "pengukuran terhadap kepuasan pengguna.")
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
+                status, body = _request_multipart(self.base,
+                    "/api/analyze-folder", [
+                        ("refs", None, b"sample"),
+                        ("duplicates", None, b"1"),
+                        ("save", None, b"1"),
+                        ("files", "bab1.txt", bab1.encode()),
+                        ("files", "bab2.md", bab2.encode()),
+                    ])
+                self.assertEqual(status, 200)
+                res = json.loads(body)
+                folder = res["folder"]
+                self.assertEqual(folder["count"], 2)
+                self.assertEqual(folder["folder"], "unggahan")
+                self.assertEqual(res["skipped"], [])
+                # bab2 repeats bab1's sentence; bab1 was saved first.
+                self.assertEqual(folder["files"][1]["duplicates"], 1)
+                self.assertIsNotNone(folder["files"][0]["library_id"])
+                self.assertIsNotNone(folder["files"][1]["library_id"])
+                self.assertEqual(folder["average"], round(
+                    (folder["files"][0]["quality_score"]
+                     + folder["files"][1]["quality_score"]) / 2, 1))
+
+    def test_folder_upload_skips_subfolders_and_other_extensions(self):
+        status, body = _request_multipart(self.base,
+            "/api/analyze-folder", [
+                ("refs", None, b"sample"),
+                ("files", "bab1.txt",
+                 b"Penelitian ini memakai skala likert."),
+                ("files", "skripsi/bab2.txt",
+                 b"Penelitian ini memakai skala likert."),
+                ("files", "catatan.pdf", b"%PDF-1.4"),
+            ])
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertEqual(res["folder"]["count"], 1)
+        self.assertEqual(res["folder"]["folder"], "skripsi")
+        self.assertEqual(
+            [(s["file"], s["reason"]) for s in res["skipped"]],
+            [("catatan.pdf", "bukan .txt atau .md"),
+             ("skripsi/bab2.txt", "bukan file tingkat atas")])
+
+    def test_folder_upload_bad_utf8_file_is_recorded_not_fatal(self):
+        status, body = _request_multipart(self.base,
+            "/api/analyze-folder", [
+                ("refs", None, b"sample"),
+                ("files", "bab1.txt", b"\xff\xfe rusak"),
+                ("files", "bab2.txt",
+                 b"Penelitian ini memakai skala likert."),
+            ])
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertEqual(res["folder"]["count"], 2)
+        self.assertIsNotNone(res["folder"]["files"][0]["error"])
+        self.assertEqual(res["folder"]["files"][1]["quality_score"], 100)
+        self.assertEqual(res["folder"]["average"], 100)
+
+    def test_folder_upload_no_files_is_400(self):
+        status, body = _request_multipart(self.base,
+            "/api/analyze-folder", [("refs", None, b"sample")])
+        self.assertEqual(status, 400)
+        self.assertIn("tidak ada file", json.loads(body)["error"])
+
+    def test_folder_upload_wrong_content_type_is_400(self):
+        status, body = _request(self.base, "POST", "/api/analyze-folder",
+                                {"text": "x"})
+        self.assertEqual(status, 400)
+        self.assertIn("multipart", json.loads(body)["error"])
+
+    def test_folder_upload_oversize_is_413(self):
+        host, port = self.server.server_address[:2]
+        err = io.StringIO()
+        conn = http.client.HTTPConnection(host, port, timeout=30)
+        big = b"x" * (tools._MAX_UPLOAD_BODY + 1)
+        body = _multipart([("files", "besar.txt", big)])
+        with redirect_stderr(err):
+            conn.request("POST", "/api/analyze-folder", body=body,
+                         headers={"Content-Type":
+                                  "multipart/form-data; boundary="
+                                  + _BOUNDARY,
+                                  "Connection": "keep-alive"})
+            resp = conn.getresponse()
+            resp_body = resp.read().decode("utf-8")
+            time.sleep(0.5)
+        conn.close()
+        self.assertEqual(resp.status, 413)
+        self.assertIn("terlalu besar", json.loads(resp_body)["error"])
+        self.assertNotIn("Traceback", err.getvalue())
+        status, _ = _request(self.base, "GET", "/api/prompts")
+        self.assertEqual(status, 200)
+
+    def test_home_page_has_folder_upload(self):
+        status, body = _request(self.base, "GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn('id="folder-dir"', body)
+        self.assertIn("webkitdirectory", body)
+        self.assertIn("/api/analyze-folder", body)
+        self.assertIn("renderFolderResult", body)
 
     def test_home_page_has_save_checkbox(self):
         status, body = _request(self.base, "GET", "/")

@@ -98,11 +98,11 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.22.0"
+__version__ = "1.23.0"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.5"
+QUALITY_VERSION = "1.2.6"
 CLI_VERSION = "1.15.0"
 
 # ======================================================================
@@ -2574,6 +2574,55 @@ def analyze_main(argv=None) -> int:
 _FOLDER_EXTENSIONS = (".txt", ".md")
 
 
+def _blank_folder_entry(name: str) -> dict:
+    """The blank entry analyze_folder (and the web folder upload) fill
+    in for one file."""
+    return {"file": name, "text": None, "result": None,
+            "quality_score": None, "jargon_count": 0,
+            "citations_cited": 0, "citations_missing": [],
+            "doi_ok": 0, "doi_total": 0, "doi_missing": 0,
+            "style_score": None, "duplicates": None,
+            "library_id": None, "error": None}
+
+
+def _analyze_one_file(entry: dict, text: str, references=None, *,
+                      lang: str = "id", verify_dois: bool = True,
+                      duplicates: bool = False, save: bool = False,
+                      db=None) -> dict:
+    """Fill one folder-result entry from an already-read text: the
+    analyze pass, the optional duplicates check, and the optional
+    library save (recorded under the file name). Returns the entry."""
+    entry["text"] = text
+    result = analyze_text_quality(text, references, lang=lang,
+                                  verify_dois=verify_dois)
+    entry["result"] = result
+    entry["quality_score"] = result["quality_score"]
+    entry["jargon_count"] = len(result["jargon"])
+    if result["citations"]:
+        entry["citations_cited"] = len(result["citations"]["cited"])
+        entry["citations_missing"] = result["citations"]["missing"]
+    doi = result["doi_verification"]
+    entry["doi_total"] = sum(1 for v in doi.values() if v.get("doi"))
+    entry["doi_ok"] = sum(1 for v in doi.values()
+                          if v.get("verdict") == "ok")
+    entry["doi_missing"] = sum(1 for v in doi.values()
+                               if v.get("verdict") == "missing")
+    entry["style_score"] = result["style"]["style_score"]
+    if duplicates:
+        try:
+            entry["duplicates"] = find_duplicates(text, db=db)["count"]
+        except ValueError as e:
+            entry["error"] = str(e)
+            return entry
+    if save:
+        try:
+            entry["library_id"] = save_analysis(
+                text, result, references, title=entry["file"], db=db)
+        except ValueError as e:
+            entry["error"] = str(e)
+    return entry
+
+
 def analyze_folder(folder: str, references=None, *, lang: str = "id",
                    verify_dois: bool = True, duplicates: bool = False,
                    save: bool = False, db=None) -> dict:
@@ -2601,12 +2650,7 @@ def analyze_folder(folder: str, references=None, *, lang: str = "id",
     entries = []
     for name in names:
         path = os.path.join(folder, name)
-        entry = {"file": name, "text": None, "result": None,
-                 "quality_score": None, "jargon_count": 0,
-                 "citations_cited": 0, "citations_missing": [],
-                 "doi_ok": 0, "doi_total": 0, "doi_missing": 0,
-                 "style_score": None, "duplicates": None,
-                 "library_id": None, "error": None}
+        entry = _blank_folder_entry(name)
         try:
             with open(path, encoding="utf-8") as f:
                 text = f.read()
@@ -2614,36 +2658,11 @@ def analyze_folder(folder: str, references=None, *, lang: str = "id",
             entry["error"] = str(e)
             entries.append(entry)
             continue
-        entry["text"] = text
-        result = analyze_text_quality(text, references, lang=lang,
-                                      verify_dois=verify_dois)
-        entry["result"] = result
-        entry["quality_score"] = result["quality_score"]
-        entry["jargon_count"] = len(result["jargon"])
-        if result["citations"]:
-            entry["citations_cited"] = len(result["citations"]["cited"])
-            entry["citations_missing"] = result["citations"]["missing"]
-        doi = result["doi_verification"]
-        entry["doi_total"] = sum(1 for v in doi.values() if v.get("doi"))
-        entry["doi_ok"] = sum(1 for v in doi.values()
-                              if v.get("verdict") == "ok")
-        entry["doi_missing"] = sum(1 for v in doi.values()
-                                   if v.get("verdict") == "missing")
-        entry["style_score"] = result["style"]["style_score"]
-        if duplicates:
-            try:
-                entry["duplicates"] = find_duplicates(text, db=db)["count"]
-            except ValueError as e:
-                entry["error"] = str(e)
-                entries.append(entry)
-                continue
-        if save:
-            try:
-                entry["library_id"] = save_analysis(
-                    text, result, references, title=name, db=db)
-            except ValueError as e:
-                entry["error"] = str(e)
-        entries.append(entry)
+        entries.append(_analyze_one_file(entry, text, references,
+                                         lang=lang,
+                                         verify_dois=verify_dois,
+                                         duplicates=duplicates, save=save,
+                                         db=db))
     scores = [e["quality_score"] for e in entries
               if e["quality_score"] is not None]
     average = round(sum(scores) / len(scores), 1) if scores else None
@@ -5172,6 +5191,10 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   .trend-row .bar { flex: 1; height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; }
   .trend-row .bar span { display: block; height: 100%; background: var(--accent); }
   .trend-row .num { font-variant-numeric: tabular-nums; min-width: 28px; text-align: right; }
+  .panel h2 { font-size: 15px; margin: 20px 0 8px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); font-size: 14px; vertical-align: top; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 20px 0; }
   .flag { color: var(--warn); font-weight: 600; }
   pre {
     white-space: pre-wrap; word-wrap: break-word; font: inherit;
@@ -5238,6 +5261,31 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       </div>
       <div class="error" id="analyze-error"></div>
       <div class="result" id="analyze-result"></div>
+      <hr>
+      <h2>Analisis se-folder</h2>
+      <p>Pilih folder skripsi — hanya file <code>.txt</code>/<code>.md</code> tingkat atas yang dianalisis, urut nama file. File di subfolder dan file lain dilewati, bukan digagalkan. Bibliografi dan bahasa diambil dari pilihan di atas.</p>
+      <div class="row">
+        <div>
+          <label for="folder-dir">Pilih folder</label>
+          <input type="file" id="folder-dir" name="files" webkitdirectory>
+        </div>
+        <div>
+          <label for="folder-files">Atau pilih beberapa file</label>
+          <input type="file" id="folder-files" name="files" multiple accept=".txt,.md">
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <label style="font-weight:400"><input type="checkbox" id="folder-verify"> Verifikasi DOI <span class="hint">(butuh internet)</span></label>
+          <label style="font-weight:400"><input type="checkbox" id="folder-duplicates"> Cek duplikasi dengan pustaka</label>
+          <label style="font-weight:400"><input type="checkbox" id="folder-save"> Simpan ke pustaka</label>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="folder-btn">Analisis folder</button>
+        <span class="status" id="folder-status"></span>
+      </div>
+      <div class="error" id="folder-error"></div>
+      <div class="result" id="folder-result"></div>
     </section>
 
     <section class="panel" id="panel-jargon" role="tabpanel" aria-label="Jargon Buster">
@@ -5361,6 +5409,12 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(body)
     });
+    var data = await r.json();
+    if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+    return data;
+  }
+  async function postForm(path, form) {
+    var r = await fetch(path, {method: "POST", body: form});
     var data = await r.json();
     if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
     return data;
@@ -5501,6 +5555,41 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       showError("library-error", e.message);
     }
   });
+
+  function renderFolderResult(res, lang) {
+    var f = res.folder;
+    var h = '<div class="card"><h2>' + esc(f.folder) + ' <span class="meta">' + f.count + ' file</span></h2>';
+    if (f.average === null || f.average === undefined) {
+      h += '<p>Tidak ada file .txt atau .md yang bisa dianalisis.</p>';
+    } else {
+      h += '<p>Rata-rata skor: <strong>' + f.average + '/100</strong></p>';
+    }
+    if (f.files.length) {
+      h += '<table><thead><tr><th>File</th><th>Skor</th><th>Jargon</th><th>Sitasi</th><th>DOI</th><th>Gaya</th><th>Duplikat</th></tr></thead><tbody>';
+      f.files.forEach(function (e) {
+        h += '<tr><td>' + esc(e.file) + '</td>';
+        if (e.error) {
+          h += '<td colspan="6">Gagal: ' + esc(e.error) + '</td>';
+        } else {
+          h += '<td>' + e.quality_score + '/100</td><td>' + e.jargon_count + '</td>';
+          h += '<td>' + e.citations_cited + ' dikutip' + (e.citations_missing.length ? ', ' + e.citations_missing.length + ' hilang' : '') + '</td>';
+          h += '<td>' + e.doi_ok + '/' + e.doi_total + '</td><td>' + e.style_score + '/25</td>';
+          h += '<td>' + ((e.duplicates === null || e.duplicates === undefined) ? '-' : e.duplicates) + '</td>';
+        }
+        h += '</tr>';
+      });
+      h += '</tbody></table>';
+    }
+    if (res.skipped && res.skipped.length) {
+      h += '<p>Dilewati:</p><ul>';
+      res.skipped.forEach(function (s) {
+        h += '<li>' + esc(s.file) + ' — ' + esc(s.reason) + '</li>';
+      });
+      h += '</ul>';
+    }
+    h += '</div>';
+    return h;
+  }
 
   function renderAnalyze(res, lang) {
     var h = "";
@@ -5661,6 +5750,44 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     } finally { btn.disabled = false; }
   });
 
+  $("folder-btn").addEventListener("click", async function () {
+    var btn = $("folder-btn");
+    clearError("folder-error");
+    $("folder-result").innerHTML = "";
+    var dirFiles = $("folder-dir").files;
+    var pickFiles = $("folder-files").files;
+    if (!dirFiles.length && !pickFiles.length) {
+      showError("folder-error", "Pilih folder atau beberapa file dulu.");
+      return;
+    }
+    btn.disabled = true;
+    $("folder-status").textContent = "Menganalisis folder…";
+    try {
+      var form = new FormData();
+      var payload = refsPayload($("analyze-refs"), $("analyze-refs-json"));
+      if (payload.refs) form.append("refs", payload.refs);
+      if (payload.refs_json) form.append("refs_json", payload.refs_json);
+      form.append("lang", $("analyze-lang").value);
+      if ($("folder-verify").checked) form.append("verify", "1");
+      if ($("folder-duplicates").checked) form.append("duplicates", "1");
+      if ($("folder-save").checked) form.append("save", "1");
+      var i;
+      for (i = 0; i < dirFiles.length; i++) {
+        form.append("files", dirFiles[i],
+                    dirFiles[i].webkitRelativePath || dirFiles[i].name);
+      }
+      for (i = 0; i < pickFiles.length; i++) {
+        form.append("files", pickFiles[i]);
+      }
+      var res = await postForm("/api/analyze-folder", form);
+      $("folder-result").innerHTML = renderFolderResult(res, $("analyze-lang").value);
+      $("folder-status").textContent = "";
+    } catch (e) {
+      showError("folder-error", "Gagal: " + e.message);
+      $("folder-status").textContent = "";
+    } finally { btn.disabled = false; }
+  });
+
   $("jargon-btn").addEventListener("click", async function () {
     var btn = $("jargon-btn");
     clearError("jargon-error");
@@ -5808,6 +5935,8 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 
 _MAX_BODY = 1_000_000  # 1 MB cap on API request bodies
 _DRAIN_CAP = 2_000_000  # most the server will read to discard an oversize body
+_MAX_UPLOAD_BODY = 10_000_000  # 10 MB cap on a folder upload body
+_DRAIN_UPLOAD_CAP = 12_000_000  # drain cap for an oversize upload
 
 
 class RequestTooLargeError(ValueError):
@@ -5841,12 +5970,16 @@ def _load_ui_references(payload: dict) -> dict | None:
         raise ValueError("contoh bibliografi tidak ditemukan di folder ini")
 
 
-def _read_json_body(handler) -> dict:
+def _read_body(handler, max_body: int, drain_cap: int,
+               label: str) -> bytes:
+    """Read a request body, enforcing `max_body`. An oversize body is
+    drained up to `drain_cap` so the client still reads the 413 and
+    keep-alive stays usable; beyond the drain cap the connection is
+    closed instead (see the v1.17.1 fix — unread bytes would otherwise
+    be parsed as a new request line)."""
     length = int(handler.headers.get("Content-Length") or 0)
-    if length > _MAX_BODY:
-        if length <= _DRAIN_CAP:
-            # Read and discard the body so the client can still read
-            # the 413 and the connection stays usable on keep-alive.
+    if length > max_body:
+        if length <= drain_cap:
             remaining = length
             while remaining > 0:
                 chunk = handler.rfile.read(min(65536, remaining))
@@ -5854,12 +5987,14 @@ def _read_json_body(handler) -> dict:
                     break
                 remaining -= len(chunk)
         else:
-            # Absurd size: do not waste time draining it. Closing the
-            # connection keeps the unread bytes from being parsed as
-            # a new request line (which used to log a 414 traceback).
             handler.close_connection = True
-        raise RequestTooLargeError("badan permintaan terlalu besar (maks 1 MB)")
-    raw = handler.rfile.read(length) if length else b"{}"
+        raise RequestTooLargeError(
+            f"badan permintaan terlalu besar (maks {label})")
+    return handler.rfile.read(length) if length else b""
+
+
+def _read_json_body(handler) -> dict:
+    raw = _read_body(handler, _MAX_BODY, _DRAIN_CAP, "1 MB") or b"{}"
     try:
         body = json.loads(raw.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -5867,6 +6002,65 @@ def _read_json_body(handler) -> dict:
     if not isinstance(body, dict):
         raise ValueError("badan permintaan harus berupa objek JSON")
     return body
+
+
+def _multipart_param(disposition: str, param: str):
+    """One quoted parameter out of a Content-Disposition header."""
+    for piece in disposition.split(";"):
+        piece = piece.strip()
+        if piece.startswith(param + "="):
+            value = piece[len(param) + 1:].strip()
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+            return value
+    return None
+
+
+def _parse_multipart(body: bytes, boundary: bytes) -> list[dict]:
+    """Parse a multipart/form-data body (stdlib only — `cgi` is gone
+    in Python 3.13).
+
+    Returns a list of parts: {"name", "filename" (or None for a plain
+    field), "content_type" (or None), "data" (bytes)}. Raises
+    ValueError on a malformed body.
+    """
+    if not boundary:
+        raise ValueError("boundary multipart tidak ditemukan")
+    delimiter = b"--" + boundary
+    parts = []
+    for chunk in body.split(delimiter)[1:]:
+        if chunk.startswith(b"\r\n"):
+            chunk = chunk[2:]
+        elif chunk.startswith(b"\n"):
+            chunk = chunk[1:]
+        if chunk.endswith(b"\r\n"):
+            chunk = chunk[:-2]
+        elif chunk.endswith(b"\n"):
+            chunk = chunk[:-1]
+        if chunk in (b"--", b""):
+            continue  # closing delimiter or trailing empty chunk
+        head, sep, data = chunk.partition(b"\r\n\r\n")
+        if not sep:
+            head, sep, data = chunk.partition(b"\n\n")
+        if not sep:
+            raise ValueError("bagian multipart tidak valid")
+        headers = {}
+        for line in head.split(b"\r\n"):
+            if b":" in line:
+                key, value = line.split(b":", 1)
+                headers[key.strip().lower().decode("latin-1")] = (
+                    value.strip().decode("latin-1"))
+        name = _multipart_param(
+            headers.get("content-disposition", ""), "name")
+        if name is None:
+            continue
+        parts.append({"name": name,
+                      "filename": _multipart_param(
+                          headers.get("content-disposition", ""),
+                          "filename"),
+                      "content_type": headers.get("content-type"),
+                      "data": data})
+    return parts
 
 
 class _UIHandler(http.server.BaseHTTPRequestHandler):
@@ -5962,6 +6156,9 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
+            if self.path == "/api/analyze-folder":
+                self._send_json(200, self._analyze_folder_upload())
+                return
             body = _read_json_body(self)
             if self.path == "/api/analyze":
                 self._send_json(200, self._analyze(body))
@@ -5983,6 +6180,86 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(400, {"error": _error_message(e)})
         except Exception:
             self._send_json(500, {"error": "kesalahan server, coba lagi"})
+
+    def _analyze_folder_upload(self) -> dict:
+        """POST /api/analyze-folder: a multipart/form-data upload of a
+        whole folder (the browser's webkitdirectory input) or several
+        files at once. Same rules as `analyze <folder>` on the CLI:
+        only top-level .txt/.md files are analyzed, in name order;
+        files in subfolders and other extensions are reported under
+        "skipped" instead of failing the run. Form fields mirror the
+        Analisis Kualitas tab: refs / refs_json, lang, and the
+        verify / duplicates / save checkboxes (present = checked).
+        Body cap 10 MB. Returns {"folder": <analyze_folder result>,
+        "skipped": [{"file", "reason"}]}.
+        """
+        ctype = self.headers.get("Content-Type", "")
+        if "multipart/form-data" not in ctype:
+            raise ValueError("unggahan folder harus multipart/form-data")
+        boundary = None
+        for piece in ctype.split(";"):
+            piece = piece.strip()
+            if piece.startswith("boundary="):
+                boundary = piece[len("boundary="):].strip().strip('"')
+        if not boundary:
+            raise ValueError("boundary multipart tidak ditemukan")
+        raw = _read_body(self, _MAX_UPLOAD_BODY, _DRAIN_UPLOAD_CAP,
+                         "10 MB")
+        parts = _parse_multipart(raw, boundary.encode("latin-1"))
+        fields = {}
+        files = []
+        for part in parts:
+            if part["filename"] is not None:
+                files.append(part)
+            else:
+                fields[part["name"]] = part["data"].decode("utf-8",
+                                                           "replace")
+        if not files:
+            raise ValueError(
+                "tidak ada file yang diunggah — pilih folder dulu")
+        lang = fields.get("lang", "id")
+        if lang not in ("id", "en"):
+            raise ValueError("lang harus 'id' atau 'en'")
+        payload = {"refs": fields.get("refs", "sample")}
+        if fields.get("refs_json", "").strip():
+            payload["refs_json"] = fields["refs_json"]
+        refs = _load_ui_references(payload)
+        files.sort(key=lambda p: (p["filename"] or "").replace("\\", "/"))
+        entries = []
+        skipped = []
+        rels = []
+        for part in files:
+            rel = (part["filename"] or "").replace("\\", "/")
+            rels.append(rel)
+            name = rel.rsplit("/", 1)[-1]
+            if "/" in rel:
+                skipped.append({"file": rel,
+                                "reason": "bukan file tingkat atas"})
+                continue
+            if not name.lower().endswith(_FOLDER_EXTENSIONS):
+                skipped.append({"file": rel,
+                                "reason": "bukan .txt atau .md"})
+                continue
+            entry = _blank_folder_entry(name)
+            try:
+                text = part["data"].decode("utf-8")
+            except UnicodeDecodeError as e:
+                entry["error"] = str(e)
+                entries.append(entry)
+                continue
+            entries.append(_analyze_one_file(
+                entry, text, refs, lang=lang,
+                verify_dois="verify" in fields,
+                duplicates="duplicates" in fields,
+                save="save" in fields))
+        firsts = {r.split("/", 1)[0] for r in rels if "/" in r}
+        folder_name = firsts.pop() if len(firsts) == 1 else "unggahan"
+        scores = [e["quality_score"] for e in entries
+                  if e["quality_score"] is not None]
+        average = round(sum(scores) / len(scores), 1) if scores else None
+        return {"folder": {"folder": folder_name, "files": entries,
+                           "count": len(entries), "average": average},
+                "skipped": skipped}
 
     def _analyze(self, body: dict) -> dict:
         text = str(body.get("text") or "").strip()

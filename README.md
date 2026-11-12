@@ -23,7 +23,7 @@ Out: Penelitian ini mengukur suhu ruangan. Penelitian ini menganalisis
 
 ## The file
 
-`academic_tools.py` (v1.22.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100, or a whole folder of chapters at once), style rewrite suggestions (before/after, applied only with `--apply`, including mechanical Indonesian spelling fixes), a local library of past analyses and references (one SQLite file, no account), an internal duplication check against your own saved drafts, an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.23.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100, or a whole folder of chapters at once), style rewrite suggestions (before/after, applied only with `--apply`, including mechanical Indonesian spelling fixes), a local library of past analyses and references (one SQLite file, no account), an internal duplication check against your own saved drafts, an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -36,7 +36,7 @@ python3 academic_tools.py serve           # web UI at http://127.0.0.1:8000/
 
 ```
   ╭──────────────────────────────────────────────────────────────╮
-  │ Academic Tools                                       v1.22.0 │
+  │ Academic Tools                                       v1.23.0 │
   │ ──────────────────────────────────────────────────────────── │
   │ Satu file. Semua alat. Tanpa referensi palsu.                │
   │ Jargon Buster  ·  Citation Weaver  ·  Prompt Skripsi         │
@@ -67,7 +67,7 @@ Pick a number, follow the prompts: type text or read a file, pick a field, a cit
 | **Library** | Analysis history and a personal bibliography in one local SQLite file (`~/.academic-tools/library.db`, no account, no cloud). `analyze --save` records a run — score, style, missing citations, DOI counts, suggestions, the text and its hash — and every cited reference is added to the bibliography. `library --history` lists past runs, `--show <id>` prints one in full, `--stats` shows the library statistics (runs, average score, best run, score trend, most-cited references), `--refs` / `--search` browse the bibliography, `--import` / `--export` move a `refs.json` in and out. |
 | **Duplication Check** | `duplicates naskah.txt` compares every sentence of at least 6 words against every sentence of your own saved runs in the library, plus against the other sentences of the text itself. A match is a normalized similarity of 0.8 or more (`--threshold` changes it); only the best match per sentence is reported, with the source run (id, title, date) or "naskah ini" for a repeat inside the text. The text itself is never matched against its own saved copy, so re-analyzing a saved run does not flag every sentence. Duplicates never change the score and never change the exit code of `analyze` — they are a warning to read, not a failure. `duplicates` itself exits 1 when it finds any. Also in the Pustaka menu (option 6) and as a checkbox on the Analisis Kualitas tab of the web UI. |
 | **Menu CLI** | One command, all six tools, bilingual prompts. |
-| **Web UI** | The tools plus the library in a browser page: `python3 academic_tools.py serve`, then open http://127.0.0.1:8000/. The Analisis Kualitas tab has "Saran rewrite gaya", "Cek duplikasi dengan pustaka", and "Simpan ke pustaka" checkboxes, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. The Pustaka tab opens with a Statistik card — runs, average score, best run, a score trend with a bar per run, and the most-cited references — then lists saved runs (click one for the full detail) and searches the personal bibliography. Localhost only, zero external resources — no CDN, no webfonts, no analytics. |
+| **Web UI** | The tools plus the library in a browser page: `python3 academic_tools.py serve`, then open http://127.0.0.1:8000/. The Analisis Kualitas tab has "Saran rewrite gaya", "Cek duplikasi dengan pustaka", and "Simpan ke pustaka" checkboxes, the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text, and an "Analisis se-folder" section uploads a whole folder (or several files) and returns the same recap table as `analyze folder/` — top-level .txt/.md only, the rest listed as skipped. The Pustaka tab opens with a Statistik card — runs, average score, best run, a score trend with a bar per run, and the most-cited references — then lists saved runs (click one for the full detail) and searches the personal bibliography. Localhost only, zero external resources — no CDN, no webfonts, no analytics. |
 
 **The rule:** never invent a reference. A `[cite:key]` with no bibliography entry prints as `[PERLU RUJUKAN: key]` — a gap to fill, not a paper to fake.
 
@@ -132,7 +132,7 @@ Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key sin
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.22.0)
+academic_tools.py            # everything (v1.23.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -140,7 +140,7 @@ skills/research/             # four skills: the three tools + a quality-check sk
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 285 tests, stdlib unittest only
+tests/                       # 294 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -159,7 +159,7 @@ The `skills/research/` folders hold the same tools as agent skills: the three to
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 285 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 294 tests, no dependencies
 ```
 
 ## License

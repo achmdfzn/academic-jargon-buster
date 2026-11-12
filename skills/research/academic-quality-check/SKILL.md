@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
 description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
-version: 1.2.5
+version: 1.2.6
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -128,7 +128,7 @@ python3 academic_tools.py serve            # http://127.0.0.1:8000/
 python3 academic_tools.py serve --port 8000
 ```
 
-Localhost only, standard library `http.server`, no external resources (no CDN, no webfonts, no analytics). The Analisis Kualitas tab has "Saran rewrite gaya" and "Simpan ke pustaka" checkboxes; a saved run shows its library id, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. The Pustaka tab opens with a Statistik card — runs, average score, best run, a score trend with a bar per run, and the most-cited references — then lists saved runs — click one for the full detail, including the text — and searches the personal bibliography. JSON API: `/api/analyze`, `/api/jargon`, `/api/cite`, `/api/prompts`, `/api/prompts/fill`, `/api/humanize` (`apply: true` returns `fixed_text`), plus GET `/api/library/history`, `/api/library/analysis?id=<n>`, `/api/library/refs?search=<q>`, `/api/library/stats` (each with `?limit=` up to 100; a missing analysis id is a 404). Request bodies are capped at 1 MB; errors are honest JSON 400 / 404 / 413 / 500 (413 when the body is over the cap).
+Localhost only, standard library `http.server`, no external resources (no CDN, no webfonts, no analytics). The Analisis Kualitas tab has "Saran rewrite gaya" and "Simpan ke pustaka" checkboxes; a saved run shows its library id, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. The same tab has an "Analisis se-folder" section: pick a whole folder (or several files) and the recap table from `analyze <folder>` comes back — same rules (top-level .txt/.md only, in name order; subfolder files and other extensions are listed as skipped, not failed), same verify / duplicates / save checkboxes, bibliography and language from the tab's own selectors. The upload is `POST /api/analyze-folder` (multipart/form-data, 10 MB body cap, honest 400/413; the parser is hand-written stdlib — `cgi` is gone in Python 3.13). The Pustaka tab opens with a Statistik card — runs, average score, best run, a score trend with a bar per run, and the most-cited references — then lists saved runs — click one for the full detail, including the text — and searches the personal bibliography. JSON API: `/api/analyze`, `/api/jargon`, `/api/cite`, `/api/prompts`, `/api/prompts/fill`, `/api/humanize` (`apply: true` returns `fixed_text`), plus GET `/api/library/history`, `/api/library/analysis?id=<n>`, `/api/library/refs?search=<q>`, `/api/library/stats` (each with `?limit=` up to 100; a missing analysis id is a 404). Request bodies are capped at 1 MB; errors are honest JSON 400 / 404 / 413 / 500 (413 when the body is over the cap).
 
 ## Rules (non-negotiable)
 

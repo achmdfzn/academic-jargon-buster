@@ -83,6 +83,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime
+import difflib
 import hashlib
 import http.server
 import io
@@ -97,12 +98,12 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.18.0"
+__version__ = "1.19.0"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.1"
-CLI_VERSION = "1.11.0"
+QUALITY_VERSION = "1.2.2"
+CLI_VERSION = "1.12.0"
 
 # ======================================================================
 # Jargon Buster
@@ -1520,10 +1521,15 @@ _PASSIVE_VERBS = (
 _YANG_MANA_RE = re.compile(r"\byang mana\b|\bdimana\b", re.IGNORECASE)
 
 
+def _split_sentences(text: str) -> list[str]:
+    """Sentences as strings; splits on . ! ? followed by space/end."""
+    parts = re.split(r"[.!?]+(?:\s+|$)", text.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
 def _sentence_word_counts(text: str) -> list[int]:
     """Word counts per sentence; splits on . ! ? followed by space/end."""
-    parts = re.split(r"[.!?]+(?:\s+|$)", text.strip())
-    return [len(p.split()) for p in parts if p.strip()]
+    return [len(s.split()) for s in _split_sentences(text)]
 
 
 def _stdev(values: list[int]) -> float:
@@ -2253,6 +2259,12 @@ _ANALYZE_STRINGS = {
         "doi_none": "Tidak ada DOI untuk diverifikasi.",
         "style": "Gaya",
         "style_clean": "tidak ada pola kaku yang terdeteksi",
+        "duplicates": "Duplikasi",
+        "duplicates_none": "Tidak ada kalimat yang berulang dengan pustaka.",
+        "duplicates_found": "kalimat berulang",
+        "duplicates_similar": "mirip",
+        "duplicates_in_text": "naskah ini",
+        "duplicates_in_library": "pustaka",
         "signals": {
             "nominalization": "verba ringan",
             "connectors": "konektor",
@@ -2278,6 +2290,12 @@ _ANALYZE_STRINGS = {
         "doi_none": "No DOIs to verify.",
         "style": "Style",
         "style_clean": "no stiff patterns detected",
+        "duplicates": "Duplication",
+        "duplicates_none": "No sentences repeat the library.",
+        "duplicates_found": "repeated sentences",
+        "duplicates_similar": "similar to",
+        "duplicates_in_text": "this text",
+        "duplicates_in_library": "library",
         "signals": {
             "nominalization": "light verbs",
             "connectors": "connectors",
@@ -2382,6 +2400,28 @@ def format_analyze(result: dict, lang: str = "id") -> str:
     else:
         lines.append(f"{s['style']}: {style['style_score']}/25 — "
                      f"{s['style_clean']}")
+    dups = result.get("duplicates")
+    if dups is not None:
+        if dups["duplicates"]:
+            lines.append(f"{s['duplicates']}: {dups['count']} "
+                         f"{s['duplicates_found']}")
+            for d in dups["duplicates"]:
+                sent = d["sentence"]
+                if len(sent) > 90:
+                    sent = sent[:90].rstrip() + "…"
+                match = d["match"]
+                if len(match) > 90:
+                    match = match[:90].rstrip() + "…"
+                if d["source_id"] is None:
+                    source = s["duplicates_in_text"]
+                else:
+                    source = (f"{s['duplicates_in_library']} "
+                              f"#{d['source_id']}")
+                lines.append(f"  - \"{sent}\" — {d['similarity']:.0%} "
+                             f"{s['duplicates_similar']} \"{match}\" "
+                             f"({source})")
+        else:
+            lines.append(s["duplicates_none"])
     sugs = result.get("suggestions") or {"suggestions": [], "count": 0}
     if sugs["suggestions"]:
         lines.append(format_suggestions(sugs, lang=lang).rstrip("\n"))
@@ -2412,9 +2452,13 @@ def analyze_main(argv=None) -> int:
     p.add_argument("--save", action="store_true",
                    help="record this run in the library "
                         "(~/.academic-tools/library.db)")
+    p.add_argument("--duplicates", action="store_true",
+                   help="also check sentences against saved runs in the "
+                        "library (same database as --save)")
     p.add_argument("--title", help="label for the saved run "
                    "(default: first line of the text)")
-    p.add_argument("--db", help="library database path (with --save)")
+    p.add_argument("--db", help="library database path (with --save or "
+                   "--duplicates)")
     p.add_argument("--json", action="store_true",
                    help="print the raw result as JSON instead of readable text")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -2435,6 +2479,12 @@ def analyze_main(argv=None) -> int:
     result = analyze_text_quality(text, references, lang=args.lang,
                                   verify_dois=not args.no_verify,
                                   suggest=args.suggest)
+    if args.duplicates:
+        try:
+            result["duplicates"] = find_duplicates(text, db=args.db)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 1
     if args.save:
         try:
             result["library_id"] = save_analysis(
@@ -2453,6 +2503,185 @@ def analyze_main(argv=None) -> int:
                   for v in result["doi_verification"].values())
     missing = result["citations"]["missing"] if result["citations"] else []
     return 1 if missing or bad_doi else 0
+
+
+# ======================================================================
+# Duplicate sentences: the text against its own saved drafts
+# ======================================================================
+
+def _normalize_sentence(sentence: str) -> str:
+    """Lowercase, no punctuation, single spaces — for comparison only."""
+    cleaned = re.sub(r"[^\w\s]", " ", sentence.lower(), flags=re.UNICODE)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _word_overlap(a: set, b: set) -> float:
+    """Shared words over the shorter sentence's word count (0-1)."""
+    if not a or not b:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
+
+
+def _sentence_similarity(a: str, b: str) -> float:
+    """0-1 similarity of two normalized sentences (difflib ratio)."""
+    if a == b:
+        return 1.0
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def _past_texts(db=None) -> list:
+    """Saved runs as {id, title, created_at, text, text_hash}, newest first."""
+    conn = open_library(db)
+    try:
+        rows = conn.execute(
+            "SELECT id, title, created_at, text, text_hash FROM analyses "
+            "ORDER BY id DESC").fetchall()
+    finally:
+        conn.close()
+    return [{"id": r["id"], "title": r["title"],
+             "created_at": r["created_at"], "text": r["text"],
+             "text_hash": r["text_hash"]} for r in rows]
+
+
+def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
+                    min_words: int = 6, past_runs=None) -> dict:
+    """Find sentences in `text` that repeat the user's own saved drafts.
+
+    Each sentence of at least `min_words` words is compared against
+    every sentence of every saved analysis in the library, plus against
+    the other sentences of the text itself. A match is a normalized
+    difflib ratio of at least `threshold`; only the best match per
+    sentence is reported. The text itself is never matched against its
+    own saved copy (same text hash), so re-analyzing a saved run does
+    not flag every sentence. A word-overlap pre-filter (half the words
+    of the shorter sentence shared) keeps the comparison fast.
+
+    Returns {"duplicates": [...], "count": n, "checked": m} where m is
+    the number of saved runs compared. Each duplicate carries sentence,
+    match, similarity, source_id, source_title, source_date; a repeat
+    inside the text itself has source_id None and source_title
+    "naskah ini".
+    """
+    if not 0 < threshold <= 1:
+        raise ValueError("threshold harus di antara 0 dan 1")
+    sentences = [s for s in _split_sentences(text)
+                 if len(s.split()) >= min_words]
+    if past_runs is None:
+        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        past_runs = [r for r in _past_texts(db)
+                     if r["text_hash"] != text_hash]
+    normalized = [_normalize_sentence(s) for s in sentences]
+    word_sets = [set(n.split()) for n in normalized]
+
+    corpus = []
+    for run in past_runs:
+        for sent in _split_sentences(run["text"]):
+            if len(sent.split()) < min_words:
+                continue
+            norm = _normalize_sentence(sent)
+            corpus.append((norm, sent, set(norm.split()), run))
+    duplicates = []
+    for i, (sent, norm, words) in enumerate(zip(sentences, normalized,
+                                                word_sets)):
+        best = None
+        for cand_norm, cand_sent, cand_words, run in corpus:
+            if _word_overlap(words, cand_words) < 0.5:
+                continue
+            sim = _sentence_similarity(norm, cand_norm)
+            if sim >= threshold and (best is None or sim > best[0]):
+                best = (sim, cand_sent, run)
+        for j in range(i + 1, len(sentences)):
+            if _word_overlap(words, word_sets[j]) < 0.5:
+                continue
+            sim = _sentence_similarity(norm, normalized[j])
+            if sim >= threshold and (best is None or sim > best[0]):
+                best = (sim, sentences[j], None)
+        if best is not None:
+            sim, match, run = best
+            duplicates.append({
+                "sentence": sent, "match": match,
+                "similarity": round(sim, 2),
+                "source_id": run["id"] if run else None,
+                "source_title": run["title"] if run else "naskah ini",
+                "source_date": (run["created_at"][:10] if run else None),
+            })
+    return {"duplicates": duplicates, "count": len(duplicates),
+            "checked": len(past_runs)}
+
+
+_DUPLICATES_STRINGS = {
+    "id": {
+        "heading": "Duplikasi internal",
+        "none": "Tidak ada kalimat yang berulang dengan pustaka.",
+        "checked": "Dibandingkan dengan {n} analisis tersimpan.",
+        "similar": "mirip",
+        "source": "sumber",
+    },
+    "en": {
+        "heading": "Internal duplication",
+        "none": "No sentences repeat the library.",
+        "checked": "Compared with {n} saved analyses.",
+        "similar": "similar to",
+        "source": "source",
+    },
+}
+
+
+def format_duplicates(result: dict, lang: str = "id") -> str:
+    """Render a find_duplicates() result as readable text."""
+    s = _DUPLICATES_STRINGS.get(lang, _DUPLICATES_STRINGS["id"])
+    lines = [s["heading"], s["checked"].format(n=result["checked"])]
+    if not result["duplicates"]:
+        lines.append(s["none"])
+        return "\n".join(lines)
+    for d in result["duplicates"]:
+        if d["source_id"] is None:
+            source = s["source"] + ": " + d["source_title"]
+        else:
+            source = (f"{s['source']}: pustaka #{d['source_id']} — "
+                      f"{d['source_title']}"
+                      + (f" ({d['source_date']})" if d["source_date"]
+                         else ""))
+        lines.append(f"  - {d['sentence']}")
+        lines.append(f"    {d['similarity']:.0%} {s['similar']}: {d['match']}")
+        lines.append(f"    {source}")
+    return "\n".join(lines)
+
+
+def duplicates_main(argv=None) -> int:
+    p = argparse.ArgumentParser(
+        description="Check a text for sentences that repeat the user's "
+                    "own saved drafts in the library.")
+    p.add_argument("input", nargs="?", help="plain-text file to check")
+    p.add_argument("--text", help="check this text instead of a file")
+    p.add_argument("--db", help="library database path "
+                   "(default: ~/.academic-tools/library.db)")
+    p.add_argument("--threshold", type=float, default=0.8,
+                   help="minimum similarity 0-1 to report (default: 0.8)")
+    p.add_argument("--json", action="store_true",
+                   help="print the raw result as JSON instead of readable text")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    args = p.parse_args(argv)
+
+    if args.text:
+        text = args.text
+    elif args.input:
+        with open(args.input, encoding="utf-8") as f:
+            text = f.read()
+    else:
+        p.error("give a file or --text")
+        return 2
+    try:
+        result = find_duplicates(text, db=args.db,
+                                 threshold=args.threshold)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    if args.json:
+        sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    else:
+        sys.stdout.write(format_duplicates(result) + "\n")
+    return 1 if result["count"] else 0
 
 
 def humanize_main(argv=None) -> int:
@@ -3741,6 +3970,7 @@ STRINGS = {
         "search_refs": "Cari referensi",
         "import_refs": "Impor bibliografi dari JSON",
         "export_refs": "Ekspor bibliografi ke JSON",
+        "duplicates": "Cek duplikasi",
         "analysis_id": "Nomor analisis (#)",
         "analysis_missing": "Tidak ada analisis",
         "search_query": "Kata kunci (judul/penulis/DOI)",
@@ -3813,6 +4043,7 @@ STRINGS = {
         "search_refs": "Search references",
         "import_refs": "Import a bibliography JSON",
         "export_refs": "Export the bibliography to JSON",
+        "duplicates": "Check duplication",
         "analysis_id": "Analysis number (#)",
         "analysis_missing": "No such analysis",
         "search_query": "Keyword (title/author/DOI)",
@@ -4221,8 +4452,9 @@ class CLI:
             print(f"3. {self.t['search_refs']}")
             print(f"4. {self.t['import_refs']}")
             print(f"5. {self.t['export_refs']}")
+            print(f"6. {self.t['duplicates']}")
             print(f"0. {self.t['back']}")
-            choice = self.ask_choice(self.t["choice"], 5)
+            choice = self.ask_choice(self.t["choice"], 6)
             if choice == -1:
                 continue
             if choice == 1:
@@ -4259,6 +4491,16 @@ class CLI:
                     with open(path, "w", encoding="utf-8") as f:
                         json.dump(refs, f, ensure_ascii=False, indent=2)
                     print(f"{self.t['exported']}: {len(refs)} -> {path}")
+                self.pause()
+            elif choice == 6:
+                text = self.read_text()
+                if text:
+                    try:
+                        result = find_duplicates(text)
+                    except ValueError as e:
+                        print(str(e))
+                    else:
+                        print(f"\n{format_duplicates(result, lang=self.lang)}")
                 self.pause()
             elif choice == 0 or choice is None:
                 return
@@ -4580,6 +4822,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
           <label>&nbsp;</label>
           <label style="font-weight:400"><input type="checkbox" id="analyze-verify"> Verifikasi DOI <span class="hint">(butuh internet)</span></label>
           <label style="font-weight:400"><input type="checkbox" id="analyze-suggest"> Saran rewrite gaya</label>
+          <label style="font-weight:400"><input type="checkbox" id="analyze-duplicates"> Cek duplikasi dengan pustaka <span class="hint">(kalimat yang berulang)</span></label>
           <label style="font-weight:400"><input type="checkbox" id="analyze-save"> Simpan ke pustaka <span class="hint">(riwayat di komputer ini)</span></label>
         </div>
       </div>
@@ -4890,6 +5133,20 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         h += '<div class="card"><h2>Gaya <span class="meta">' + st.style_score + '/25</span></h2><p>Tidak ada pola kaku yang terdeteksi.</p></div>';
       }
     }
+    if (res.duplicates) {
+      var d = res.duplicates;
+      if (d.duplicates.length) {
+        h += '<div class="card"><h2>Duplikasi <span class="meta">' + d.duplicates.length + ' kalimat berulang</span></h2><ul>';
+        d.duplicates.forEach(function (x) {
+          h += "<li>" + esc(x.sentence) + '<br><span class="meta">'
+            + Math.round(x.similarity * 100) + "% mirip &ldquo;" + esc(x.match)
+            + "&rdquo; — " + (x.source_id ? "pustaka #" + x.source_id + " — " + esc(x.source_title) : "naskah ini") + "</span></li>";
+        });
+        h += "</ul></div>";
+      } else {
+        h += '<div class="card"><h2>Duplikasi</h2><p>Tidak ada kalimat yang berulang dengan pustaka.</p></div>';
+      }
+    }
     if (res.recommendations && res.recommendations.length) {
       h += '<div class="card"><h2>Rekomendasi</h2><ul>';
       res.recommendations.forEach(function (r) { h += "<li>" + esc(r) + "</li>"; });
@@ -4967,6 +5224,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       body.lang = $("analyze-lang").value;
       body.verify = $("analyze-verify").checked;
       body.suggest = $("analyze-suggest").checked;
+      body.duplicates = $("analyze-duplicates").checked;
       body.save = $("analyze-save").checked;
       var res = await post("/api/analyze", body);
       $("analyze-result").innerHTML = renderAnalyze(res, body.lang);
@@ -5306,6 +5564,8 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         result = analyze_text_quality(
             text, refs, lang=lang, verify_dois=bool(body.get("verify")),
             suggest=bool(body.get("suggest")))
+        if body.get("duplicates"):
+            result["duplicates"] = find_duplicates(text)
         if body.get("save"):
             result["library_id"] = save_analysis(text, result, refs)
         return result
@@ -5389,7 +5649,7 @@ def main(argv=None) -> int:
     """Entry point. No args -> interactive menu; jargon/cite/prompts -> passthrough."""
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in ("jargon", "cite", "prompts", "analyze",
-                           "humanize", "library", "serve"):
+                           "humanize", "library", "serve", "duplicates"):
         tool, rest = argv[0], argv[1:]
         if tool == "jargon":
             return jargon_main(rest)
@@ -5401,6 +5661,8 @@ def main(argv=None) -> int:
             return humanize_main(rest)
         if tool == "library":
             return library_main(rest)
+        if tool == "duplicates":
+            return duplicates_main(rest)
         if tool == "serve":
             return serve_main(rest)
         return prompts_main(rest)

@@ -243,6 +243,23 @@ class LibraryTestCase(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(list_analyses(db=self.db), [])
 
+    def test_menu_library_duplicates(self):
+        saved = ("Penelitian ini melakukan pengukuran terhadap kepuasan "
+                 "pengguna. Data dikumpulkan melalui kuesioner yang disebar "
+                 "kepada tiga puluh responden terpilih.")
+        refs = tools.load_references(tools.DEFAULT_REFS)
+        result = tools.analyze_text_quality(saved, refs, lang="id",
+                                            verify_dois=False)
+        save_analysis(saved, result, refs, title="Bab 1", db=self.db)
+        check = ("Penelitian ini melakukan pengukuran terhadap kepuasan "
+                 "pengguna. Hasilnya akan dibahas pada bab berikutnya.")
+        with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": self.db}):
+            code, out = run_cli(["6", "6", "1", check, "", "", "0", "0"])
+        self.assertEqual(code, 0)
+        self.assertIn("Duplikasi internal", out)
+        self.assertIn("100%", out)
+        self.assertIn("pustaka #1", out)
+
     def test_corrupt_db_history_is_clean_error(self):
         corrupt = os.path.join(self.tmp.name, "corrupt.db")
         with open(corrupt, "wb") as f:

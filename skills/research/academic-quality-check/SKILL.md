@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
 description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
-version: 1.2.1
+version: 1.2.2
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -55,8 +55,9 @@ Four components, 25 points each, one score 0–100:
 - **Without `--refs`, citation audit and DOI checks are skipped** (neutral 25 each) and the report says so.
 - **`--no-verify`** skips DOI verification even when `--refs` is given.
 - **`--suggest`** adds the Humanize rewrite suggestions to the same pass.
+- **`--duplicates`** also checks every sentence against the saved runs in the library and reports near-duplicates (same or nearly the same sentence in an earlier draft, or repeated inside the text itself). The JSON result then carries `duplicates`. Duplicates never change the score and never change the exit code — they are a warning to read, not a failure.
 - **`--save`** records the run in the library (`--title` labels it, `--db` picks another database). The JSON result then carries `library_id`.
-- **`--json`** prints the raw result (`jargon`, `citations`, `doi_verification`, `style`, `quality_score`, `recommendations`, `suggestions`).
+- **`--json`** prints the raw result (`jargon`, `citations`, `doi_verification`, `style`, `quality_score`, `recommendations`, `suggestions`, `duplicates` when `--duplicates` was passed).
 - **Exit code is 1** when a citation is missing or a DOI is not found in either source, 0 otherwise. In the interactive menu, this is option 4, Analisis Kualitas.
 
 ## Style check (`check_style`)
@@ -112,6 +113,7 @@ python3 academic_tools.py library --export library-refs.json
 - **`library --history`** lists past runs, newest first. **`--show <id>`** prints one run in full, including the text.
 - **`library --refs`** lists the personal bibliography; **`--search <query>`** matches key, title, authors, or DOI.
 - **`library --import <refs.json>`** upserts a bibliography file (reports added vs updated); **`--export <out.json>`** writes the whole bibliography back out as `refs.json` for use with `cite` / `analyze --refs`.
+- **Duplication check (`duplicates`)** — `python3 academic_tools.py duplicates naskah.txt` (or `--text "..."`) compares each sentence of at least 6 words against every sentence of every saved run, plus against the other sentences of the text itself. A match is a normalized similarity of 0.8 or more (`--threshold` changes it, 0–1); only the best match per sentence is reported, with the source run (id, title, date) or "naskah ini" for a repeat inside the text. The text itself is never matched against its own saved copy. Exit 1 when duplicates are found, 0 when clean. In the interactive menu, this is option 6 in Pustaka; in the web UI, the Analisis Kualitas tab has a "Cek duplikasi dengan pustaka" checkbox.
 - **`--json`** prints raw results for `--history`, `--show`, and `--refs` / `--search`.
 - In the interactive menu, this is option 6, Pustaka (the analyze menu asks after each run whether to save it).
 

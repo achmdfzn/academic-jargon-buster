@@ -105,6 +105,28 @@ class TestServe(unittest.TestCase):
             self.assertEqual(res["library_id"], 1)
             self.assertEqual(len(tools.list_analyses(db=db)), 1)
 
+    def test_analyze_duplicates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
+                status, body = _request(self.base, "POST", "/api/analyze", {
+                    "text": TEXT, "refs": "sample", "verify": False,
+                    "save": True})
+                self.assertEqual(status, 200)
+                dup_text = ("Metode penelitian ini memakai purposive "
+                            "sampling dan thematic analysis. Bab ini "
+                            "membahas hasil.")
+                status, body = _request(self.base, "POST", "/api/analyze", {
+                    "text": dup_text, "refs": "none", "verify": False,
+                    "duplicates": True})
+            self.assertEqual(status, 200)
+            res = json.loads(body)
+            self.assertEqual(res["duplicates"]["count"], 1)
+            self.assertEqual(
+                res["duplicates"]["duplicates"][0]["similarity"], 1.0)
+            self.assertEqual(
+                res["duplicates"]["duplicates"][0]["source_id"], 1)
+
     def test_analyze_without_save_has_no_library_id(self):
         status, body = _request(self.base, "POST", "/api/analyze", {
             "text": TEXT, "refs": "sample", "verify": False})

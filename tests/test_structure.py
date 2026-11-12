@@ -45,9 +45,9 @@ class TestCoreStaysOneFile(unittest.TestCase):
                 imported.add(node.module.split(".")[0])
         stdlib = getattr(sys, "stdlib_module_names", None)
         if stdlib is None:  # Python 3.9 has no stdlib_module_names
-            stdlib = {"__future__", "argparse", "csv", "datetime", "hashlib",
-                      "http", "io", "json", "os", "re", "sqlite3", "sys",
-                      "urllib"}
+            stdlib = {"__future__", "argparse", "csv", "datetime", "difflib",
+                      "hashlib", "http", "io", "json", "os", "re", "sqlite3",
+                      "sys", "urllib"}
         self.assertEqual(imported - set(stdlib), set())
 
     def test_shims_reexport_the_core(self):
@@ -81,7 +81,9 @@ class TestCoreStaysOneFile(unittest.TestCase):
                      "save_analysis", "list_analyses", "get_analysis",
                      "list_references", "search_references",
                      "import_references", "export_references",
-                     "open_library", "library_main"):
+                     "open_library", "library_main",
+                     "find_duplicates", "format_duplicates",
+                     "duplicates_main"):
             self.assertTrue(hasattr(academic_cli, name), name)
             self.assertIn(name, academic_cli.__all__)
         self.assertIn("jargon_main", jargon_buster.__all__)

@@ -117,3 +117,18 @@ class TestCitationWeaver(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNoneReferences(unittest.TestCase):
+    """v1.25.2: weave() / audit_citations() treat None as {}."""
+
+    def test_weave_with_none_references(self):
+        out, woven = weave("Metode ini [cite:devlin2019].", None)
+        self.assertIn("[PERLU RUJUKAN: devlin2019]", woven)
+        self.assertIn("[PERLU RUJUKAN: devlin2019]", out)
+
+    def test_audit_with_none_references(self):
+        from citation_weaver import audit_citations
+        result = audit_citations("Metode ini [cite:devlin2019].", None)
+        self.assertEqual(result["missing"], ["devlin2019"])
+        self.assertEqual(result["unused"], [])

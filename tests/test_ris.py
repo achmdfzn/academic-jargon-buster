@@ -195,3 +195,31 @@ class TestRISExport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRefTypeAliases(unittest.TestCase):
+    """v1.25.2: raw Crossref types map to canonical record types."""
+
+    def test_crossref_aliases_map_to_canonical_types(self):
+        out = tools.export_ris({
+            "a": {"title": "T", "type": "journal-article"},
+            "b": {"title": "T", "type": "book-chapter"},
+            "c": {"title": "T", "type": "proceedings-article"},
+            "d": {"title": "T", "type": "dissertation"},
+        })
+        self.assertIn("TY  - JOUR", out)
+        self.assertIn("TY  - CHAP", out)
+        self.assertIn("TY  - CONF", out)
+        self.assertIn("TY  - GEN", out)
+
+    def test_export_bibtex_and_ris_together_is_rejected(self):
+        # v1.25.2: the combination is an error (exit 2), not a
+        # silent BibTeX win.
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "refs.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"a": {"title": "T", "type": "article"}}, f)
+            with self.assertRaises(SystemExit) as cm:
+                tools.cite_main(["--refs", path, "--export-bibtex",
+                                 "--export-ris"])
+        self.assertEqual(cm.exception.code, 2)

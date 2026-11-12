@@ -91,7 +91,7 @@ class TestLookupRouting(unittest.TestCase):
         def fake_get(url):
             calls["n"] += 1
             if calls["n"] == 1:
-                raise tools.LookupError("not found (HTTP 404)")
+                raise tools.LookupNotFoundError("not found (HTTP 404)")
             return OPENALEX_FIXTURE
 
         with patch.object(tools, "_lookup_get", side_effect=fake_get) as m:
@@ -200,7 +200,7 @@ class TestCiteMainLookup(unittest.TestCase):
 
     def test_cite_main_lookup_not_found_exits_2(self):
         with patch.object(tools, "_lookup_get",
-                          side_effect=tools.LookupError("not found (HTTP 404)")):
+                          side_effect=tools.LookupNotFoundError("not found (HTTP 404)")):
             with self.assertRaises(SystemExit) as cm:
                 tools.cite_main(["--lookup", "10.9999/tidak-ada"])
         self.assertEqual(cm.exception.code, 2)
@@ -270,10 +270,10 @@ class TestVerifyDois(unittest.TestCase):
             if "crossref" in url:
                 if crossref_ok:
                     return CROSSREF_FIXTURE
-                raise tools.LookupError("not found (HTTP 404)")
+                raise tools.LookupNotFoundError("not found (HTTP 404)")
             if openalex_ok:
                 return OPENALEX_FIXTURE
-            raise tools.LookupError("not found (HTTP 404)")
+            raise tools.LookupNotFoundError("not found (HTTP 404)")
         return fake
 
     def _refs(self, doi: str = "10.1038/nature14539") -> dict:
@@ -376,3 +376,36 @@ class TestVerifyDois(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDoiSourceStatusStructural(unittest.TestCase):
+    """v1.25.2: _doi_source_status detects 404 by exception type,
+    not by grepping the message for "404"."""
+
+    def test_not_found_error_is_not_found(self):
+        with patch.object(tools, "_lookup_get",
+                          side_effect=tools.LookupNotFoundError(
+                              "not found (HTTP 404)")):
+            self.assertEqual(
+                tools._doi_source_status("https://x.example/1"),
+                "not-found")
+
+    def test_lookup_error_mentioning_404_is_error(self):
+        # A network error whose message happens to contain "404"
+        # must not be mistaken for a confirmed 404.
+        with patch.object(tools, "_lookup_get",
+                          side_effect=tools.LookupError(
+                              "proxy replied 404-ish garbage")):
+            self.assertEqual(
+                tools._doi_source_status("https://x.example/1"), "error")
+
+    def test_lookup_get_raises_not_found_error_on_404(self):
+        # The real _lookup_get turns an HTTPError 404 into the
+        # distinct subclass (message unchanged for old callers).
+        import urllib.error
+        err = urllib.error.HTTPError("https://x.example/1", 404,
+                                     "Not Found", {}, None)
+        with patch.object(tools.urllib.request, "urlopen",
+                          side_effect=err):
+            with self.assertRaises(tools.LookupNotFoundError):
+                tools._lookup_get("https://x.example/1")

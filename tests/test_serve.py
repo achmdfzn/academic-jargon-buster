@@ -372,7 +372,7 @@ class TestServe(unittest.TestCase):
         self.assertEqual(
             [(s["file"], s["reason"]) for s in res["skipped"]],
             [("catatan.pdf", "bukan .txt atau .md"),
-             ("skripsi/bab2.txt", "bukan file tingkat atas")])
+             ("bab2.txt", "bukan file tingkat atas")])
 
     def test_folder_upload_bad_utf8_file_is_recorded_not_fatal(self):
         status, body = _request_multipart(self.base,
@@ -542,11 +542,21 @@ class TestServe(unittest.TestCase):
                     self.base, "GET", "/api/library/refs")
                 self.assertEqual(status, 200)
                 refs = json.loads(body)["references"]
-                self.assertEqual([r["key"] for r in refs], ["devlin2019"])
+                # v1.25.2: save_analysis upserts every reference in
+                # the bibliography, not only the cited one.
+                self.assertEqual([r["key"] for r in refs],
+                                 ["brooke1996", "brown2020", "devlin2019",
+                                  "ferraiolo1992", "goodfellow2016",
+                                  "likert1932", "vaswani2017"])
                 status, body = _request(
                     self.base, "GET", "/api/library/refs?search=BERT")
                 self.assertEqual(status, 200)
-                self.assertEqual(len(json.loads(body)["references"]), 1)
+                # "BERT" matches devlin2019's title — and brown2020's
+                # author list ("Herbert-Voss"): substring search.
+                self.assertEqual(
+                    [r["key"] for r in
+                     json.loads(body)["references"]],
+                    ["brown2020", "devlin2019"])
                 status, body = _request(
                     self.base, "GET", "/api/library/refs?search=tidakada")
                 self.assertEqual(status, 200)
@@ -734,3 +744,93 @@ class TestServe(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _request_headers(base, path):
+    """GET returning (status, headers, body) for header assertions."""
+    req = urllib.request.Request(base + path, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.status, resp.headers, resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers, e.read().decode("utf-8")
+
+
+class TestServeNiceToHave1252(unittest.TestCase):
+    """v1.25.2: security headers, multipart params, no text echo."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.server = tools.make_server("127.0.0.1", 0)
+        cls.thread = threading.Thread(
+            target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        host, port = cls.server.server_address[:2]
+        cls.base = f"http://{host}:{port}"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def test_security_headers_on_page_and_404(self):
+        status, headers, _ = _request_headers(self.base, "/")
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            headers.get("Content-Security-Policy"),
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline'")
+        self.assertEqual(headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertEqual(headers.get("X-Frame-Options"), "DENY")
+        self.assertEqual(headers.get("Server"), "academic-tools")
+        status, headers, _ = _request_headers(self.base, "/nope")
+        self.assertEqual(status, 404)
+        self.assertEqual(headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertEqual(headers.get("Server"), "academic-tools")
+
+    def test_multipart_param_handles_semicolon_and_quote(self):
+        body = (b"--B\r\nContent-Disposition: form-data; name=\"files\"; "
+                b"filename=\"a;b.txt\"\r\n\r\nhello\r\n--B--\r\n")
+        parts = tools._parse_multipart(body, b"B")
+        self.assertEqual(parts[0]["filename"], "a;b.txt")
+        body = (b"--B\r\nContent-Disposition: form-data; name=\"files\"; "
+                b"filename=\"a\\\"b.txt\"\r\n\r\nhello\r\n--B--\r\n")
+        parts = tools._parse_multipart(body, b"B")
+        self.assertEqual(parts[0]["filename"], 'a"b.txt')
+
+    def test_folder_upload_response_omits_file_text(self):
+        status, body = _request_multipart(self.base,
+            "/api/analyze-folder", [
+                ("refs", None, b"sample"),
+                ("files", "bab1.txt",
+                 b"Penelitian ini memakai skala likert."),
+            ])
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertEqual(res["folder"]["count"], 1)
+        self.assertNotIn("text", res["folder"]["files"][0])
+
+    def test_folder_upload_leading_slash_name_falls_back(self):
+        status, body = _request_multipart(self.base,
+            "/api/analyze-folder", [
+                ("refs", None, b"sample"),
+                ("files", "/bab1.txt",
+                 b"Penelitian ini memakai skala likert."),
+                ("files", "bab2.txt",
+                 b"Penelitian ini memakai skala likert."),
+            ])
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertEqual(res["folder"]["folder"], "unggahan")
+        self.assertEqual(res["folder"]["count"], 1)
+        self.assertEqual(
+            [(s["file"], s["reason"]) for s in res["skipped"]],
+            [("bab1.txt", "bukan file tingkat atas")])
+
+    def test_js_uses_num_helper_and_escapes_labels(self):
+        html = tools.WEB_UI_HTML
+        self.assertIn("function num(v, max)", html)
+        self.assertIn("esc(label)", html)
+        self.assertIn("esc(labels[s.pattern] || s.pattern)", html)
+        self.assertIn("num(res.quality_score, 100)", html)
+        self.assertIn("num(e.quality_score, 100)", html)

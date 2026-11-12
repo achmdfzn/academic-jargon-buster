@@ -106,3 +106,37 @@ class TestTypoInAnalyze(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTypoSuffixes(unittest.TestCase):
+    """v1.25.2: -ku/-mu/-nya/-lah/-kah/-pun stay attached to the fix."""
+
+    def test_suffix_forms(self):
+        cases = [
+            ("Kerjasamaku dengan tim berjalan baik.", "kerja samaku"),
+            ("Kerjasamamu juga penting.", "kerja samamu"),
+            ("Disinilah penelitian dilakukan.", "di sinilah"),
+            ("Dirumahku ada tiga ruangan.", "di rumahku"),
+            ("Kerjasamakah yang dimaksud?", "kerja samakah"),
+            ("Dirumahpun ia belajar.", "di rumahpun"),
+        ]
+        for text, expected in cases:
+            with self.subTest(text=text):
+                found = _typo_suggestions(text)
+                self.assertEqual(len(found), 1, text)
+                self.assertEqual(found[0]["replacement"], expected)
+                # "fixed" capitalizes a sentence-initial word.
+                self.assertIn(expected, found[0]["fixed"].lower())
+
+    def test_suffix_apply_is_idempotent(self):
+        text = "Disinilah data dikumpulkan. Kerjasamaku berjalan baik."
+        result = suggest_style_fixes(text, limit=None)
+        applied = apply_suggestions(text, result)
+        self.assertEqual(
+            applied["text"],
+            "Di sinilah data dikumpulkan. Kerja samaku berjalan baik.")
+        again = apply_suggestions(
+            applied["text"],
+            suggest_style_fixes(applied["text"], limit=None))
+        self.assertEqual(len(again["applied"]), 0)
+        self.assertEqual(again["text"], applied["text"])

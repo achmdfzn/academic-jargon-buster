@@ -99,12 +99,12 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.25.1"
+__version__ = "1.25.2"
 JARGON_VERSION = "1.0.5"
-CITATION_VERSION = "1.5.1"
+CITATION_VERSION = "1.5.2"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.8"
-CLI_VERSION = "1.16.1"
+QUALITY_VERSION = "1.2.9"
+CLI_VERSION = "1.16.2"
 
 # ======================================================================
 # Jargon Buster
@@ -631,7 +631,6 @@ def jargon_main(argv=None) -> int:
             text = f.read()
     else:
         p.error("give a file or --text")
-        return 2
 
     if args.format == "csv":
         sys.stdout.write(to_csv(text, field=args.field))
@@ -777,6 +776,15 @@ class LookupError(Exception):
     """A reference lookup failed (not found, rate-limited, offline)."""
 
 
+class LookupNotFoundError(LookupError):
+    """A lookup that answered 404: the DOI / work does not exist.
+
+    Raised (instead of a plain LookupError) so callers can tell a
+    confirmed 404 from a network error without grepping the
+    message for "404" — see _doi_source_status.
+    """
+
+
 def _lookup_get(url: str, timeout: int = 15):
     """GET JSON from a lookup API. Raises LookupError on any failure."""
     req = urllib.request.Request(url, headers={"User-Agent": LOOKUP_USER_AGENT})
@@ -785,7 +793,7 @@ def _lookup_get(url: str, timeout: int = 15):
             return json.load(resp)
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            raise LookupError("not found (HTTP 404)")
+            raise LookupNotFoundError("not found (HTTP 404)")
         if e.code in (401, 403):
             raise LookupError(
                 "API access denied (HTTP %d). OpenAlex has required a free API "
@@ -930,8 +938,10 @@ def _doi_source_status(url: str) -> str:
     try:
         _lookup_get(url)
         return "ok"
-    except LookupError as e:
-        return "not-found" if "404" in str(e) else "error"
+    except LookupNotFoundError:
+        return "not-found"
+    except LookupError:
+        return "error"
 
 
 def _doi_verdict(entry: dict) -> str:
@@ -1252,6 +1262,8 @@ def weave(text: str, references: dict, style: str = "apa", lang: str = "id"):
     alone. Unknown keys are marked [PERLU RUJUKAN: key] /
     [REFERENCE NEEDED: key], never invented.
     """
+    if references is None:
+        references = {}
     if style not in STYLES:
         raise ValueError(f"unknown style: {style}; choose one of {', '.join(STYLES)}")
     msg = MESSAGES["en" if lang == "en" else "id"]
@@ -1330,8 +1342,29 @@ def _bibtex_pages(pages) -> str:
     return p.replace("--", "-").replace("-", "--")
 
 
+_REF_TYPE_ALIASES = {
+    "journal-article": "article",
+    "book-chapter": "chapter",
+    "proceedings-article": "conference",
+    "book": "book",
+}
+
+
+def _norm_ref_type(kind) -> str:
+    """Map a raw Crossref-style type to the canonical repo type.
+
+    A bibliography written from a raw Crossref record can carry
+    "journal-article" where the repo expects "article"; without
+    this the export falls through to @misc / GEN. Anything
+    unrecognised (report, dissertation, dataset, ...) is returned
+    unchanged and still falls through to @misc / GEN.
+    """
+    return _REF_TYPE_ALIASES.get(str(kind or "").strip(), kind)
+
+
 def _bibtex_entry(key: str, ref: dict) -> str:
-    entry_type = _BIBTEX_TYPES.get(ref.get("type", ""), "misc")
+    entry_type = _BIBTEX_TYPES.get(
+        _norm_ref_type(ref.get("type", "")), "misc")
     fields = []
     authors = ref.get("authors") or []
     if authors:
@@ -1363,12 +1396,12 @@ def _bibtex_entry(key: str, ref: dict) -> str:
     if ref.get("year"):
         fields.append(("year", _flat(ref["year"])))
     if ref.get("doi"):
-        fields.append(("doi", _flat(ref["doi"])))
+        fields.append(("doi", _bibtex_escape(_flat(ref["doi"]))))
     if ref.get("arxiv"):
-        fields.append(("eprint", _flat(ref["arxiv"])))
+        fields.append(("eprint", _bibtex_escape(_flat(ref["arxiv"]))))
         fields.append(("archivePrefix", "arXiv"))
     if ref.get("url"):
-        fields.append(("url", _flat(ref["url"])))
+        fields.append(("url", _bibtex_escape(_flat(ref["url"]))))
     lines = [f"@{entry_type}{{{_flat(key)},"]
     for name, value in fields:
         lines.append(f"  {name} = {{{value}}},")
@@ -1414,7 +1447,8 @@ def _ris_pages(pages) -> tuple:
 
 
 def _ris_entry(key: str, ref: dict) -> str:
-    entry_type = _RIS_TYPES.get(ref.get("type", ""), "GEN")
+    entry_type = _RIS_TYPES.get(
+        _norm_ref_type(ref.get("type", "")), "GEN")
     lines = [f"TY  - {entry_type}", f"ID  - {_flat(key)}"]
     authors = ref.get("authors") or []
     for a in authors:
@@ -1484,6 +1518,8 @@ def audit_citations(text: str, references: dict) -> dict:
     "unused": [...]}. `cited` keeps first-appearance order; `missing`
     and `unused` are sorted.
     """
+    if references is None:
+        references = {}
     cited = []
     counts = {}
     for match in _CITE_PATTERN.finditer(text):
@@ -1689,9 +1725,13 @@ def check_style(text: str) -> dict:
     - flagged: names of the flagged signals
 
     Density signals need at least two occurrences to flag, so one
-    stray connector in a short note does not fail the check. Rhythm
-    is only judged on five or more sentences: flagged when 60% or
-    more of them sit within two words of the mean sentence length.
+    stray connector in a short note does not fail the check, and a
+    text under 10 words is never flagged on density at all (a short
+    note cannot have a meaningful density). The density thresholds
+    are inclusive (>=): exactly 1.0 nominalizations per 100 words
+    flags, as does exactly 5.0 passive verbs. Rhythm is only judged
+    on five or more sentences: flagged when 60% or more of them sit
+    within two words of the mean sentence length.
     """
     words = text.split()
     n_words = len(words)
@@ -1701,7 +1741,8 @@ def check_style(text: str) -> dict:
     nominal = {
         "count": len(matches),
         "density_per_100": per_100(len(matches)),
-        "flagged": len(matches) >= 2 and per_100(len(matches)) > 1.0,
+        "flagged": (n_words >= 10 and len(matches) >= 2
+                    and per_100(len(matches)) >= 1.0),
         "examples": [" ".join(m).strip() for m in matches[:3]],
     }
 
@@ -1712,7 +1753,8 @@ def check_style(text: str) -> dict:
     connectors = {
         "count": len(conn_hits),
         "density_per_100": per_100(len(conn_hits)),
-        "flagged": len(conn_hits) >= 2 and per_100(len(conn_hits)) > 2.0,
+        "flagged": (n_words >= 10 and len(conn_hits) >= 2
+                    and per_100(len(conn_hits)) >= 2.0),
         "examples": conn_hits[:3],
     }
 
@@ -1723,7 +1765,8 @@ def check_style(text: str) -> dict:
     passive = {
         "count": len(passive_hits),
         "density_per_100": per_100(len(passive_hits)),
-        "flagged": len(passive_hits) >= 3 and per_100(len(passive_hits)) > 5.0,
+        "flagged": (n_words >= 10 and len(passive_hits) >= 3
+                    and per_100(len(passive_hits)) >= 5.0),
         "examples": passive_hits[:3],
     }
 
@@ -1877,8 +1920,14 @@ _TYPO_TABLE = {
 
 # Word boundaries so "kerjasama" never matches inside "kerjasamanya"
 # (that has its own entry) and "didalam" never matches "didalamnya".
+# A clitic suffix (-ku/-mu/-nya/-lah/-kah/-pun) may follow the fused
+# form and stays attached to the last word of the fix: "kerjasamaku"
+# -> "kerja samaku", "disinilah" -> "di sinilah", "dirumahku" ->
+# "di rumahku".
+_TYPO_SUFFIXES = ("ku", "mu", "nya", "lah", "kah", "pun")
 _TYPO_RE = re.compile(
-    r"\b(" + "|".join(sorted(_TYPO_TABLE, key=len, reverse=True)) + r")\b",
+    r"\b(" + "|".join(sorted(_TYPO_TABLE, key=len, reverse=True)) + r")"
+    r"((?:" + "|".join(_TYPO_SUFFIXES) + r"))?\b",
     re.IGNORECASE)
 
 
@@ -2044,10 +2093,14 @@ def suggest_style_fixes(text: str, lang: str = "id",
     # 6. Typos: fused words that EYD writes separate (or hyphenated).
     # Mechanical — the table only holds always-wrong forms.
     for m in _TYPO_RE.finditer(text):
+        # A clitic suffix stays attached to the last word of the
+        # fix: "kerjasamaku" -> "kerja samaku".
+        replacement = (_TYPO_TABLE[m.group(1).lower()]
+                       + (m.group(2) or ""))
         suggestions.append({
             "pattern": "typo",
             "original": m.group(0),
-            "replacement": _TYPO_TABLE[m.group(0).lower()],
+            "replacement": replacement,
             "context": _context_sentence(spans, m.start()),
             "fixed": None,
             "note": notes["typo"],
@@ -2553,7 +2606,7 @@ def _score_parts(result: dict) -> list:
         parts.append(25 * (ok + 0.5 * unverified) / len(checkable))
     else:
         parts.append(25.0)
-    parts.append(float(result["style"]["style_score"]))
+    parts.append(float(result["style"].get("style_score", 0)))
     return parts
 
 
@@ -2685,18 +2738,17 @@ def analyze_main(argv=None) -> int:
             p.error("--suggest tidak didukung untuk folder")
         if args.title:
             p.error("--title tidak didukung untuk folder")
-        if args.text:
+        if args.text is not None:
             p.error("--text tidak bisa dipakai bersama folder")
         return _analyze_folder_main(args)
 
-    if args.text:
+    if args.text is not None:
         text = args.text
     elif args.input:
         with open(args.input, encoding="utf-8") as f:
             text = f.read()
     else:
         p.error("give a file or --text")
-        return 2
 
     references = None
     if args.refs:
@@ -2718,6 +2770,9 @@ def analyze_main(argv=None) -> int:
             print(str(e), file=sys.stderr)
             return 1
     if args.json:
+        # The web /api/analyze response carries score_parts; the CLI
+        # --json matches it so the components never need recomputing.
+        result["score_parts"] = _score_parts(result)
         sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     else:
         sys.stdout.write(format_analyze(result, lang=args.lang))
@@ -2795,7 +2850,10 @@ def _analyze_one_file(entry: dict, text: str, references=None, *,
 def analyze_folder(folder: str, references=None, *, lang: str = "id",
                    verify_dois: bool = True, duplicates: bool = False,
                    save: bool = False, db=None) -> dict:
-    """Analyze every top-level .txt/.md file in `folder`, in name order.
+    """Analyze every top-level .txt/.md file in `folder`.
+
+    Dotfiles (names starting with ".") are skipped, and the order
+    is case-insensitive, so "Bab2.md" sorts next to "bab1.txt".
 
     Each file is one analyze_text_quality() pass. With `duplicates`,
     each file is also checked against the library — and, when `save`
@@ -2805,6 +2863,8 @@ def analyze_folder(folder: str, references=None, *, lang: str = "id",
     name as its title.
 
     Returns {"folder", "files": [...], "count": n, "average": float|None}.
+    Each file's "result" carries "score_parts" (the four 25-point
+    components), like the single-file --json output.
     A file entry carries file, text, result (the full analyze pass),
     quality_score, jargon_count, citations_cited, citations_missing,
     doi_ok, doi_total, doi_missing, style_score, duplicates (count, or
@@ -2813,9 +2873,12 @@ def analyze_folder(folder: str, references=None, *, lang: str = "id",
     encoding, permissions) is recorded with its error and the rest
     still run.
     """
-    names = sorted(n for n in os.listdir(folder)
-                   if n.lower().endswith(_FOLDER_EXTENSIONS)
-                   and os.path.isfile(os.path.join(folder, n)))
+    names = sorted(
+        (n for n in os.listdir(folder)
+         if not n.startswith(".")
+         and n.lower().endswith(_FOLDER_EXTENSIONS)
+         and os.path.isfile(os.path.join(folder, n))),
+        key=str.lower)
     entries = []
     for name in names:
         path = os.path.join(folder, name)
@@ -2832,6 +2895,11 @@ def analyze_folder(folder: str, references=None, *, lang: str = "id",
                                          verify_dois=verify_dois,
                                          duplicates=duplicates, save=save,
                                          db=db))
+        # The CLI folder --json carries the four components per
+        # file, like the single-file --json and /api/analyze.
+        if entries[-1]["result"] is not None:
+            entries[-1]["result"]["score_parts"] = _score_parts(
+                entries[-1]["result"])
     scores = [e["quality_score"] for e in entries
               if e["quality_score"] is not None and not e.get("error")]
     average = round(sum(scores) / len(scores), 1) if scores else None
@@ -2961,12 +3029,21 @@ def _sentence_similarity(a: str, b: str) -> float:
 
 
 def _past_texts(db=None) -> list:
-    """Saved runs as {id, title, created_at, text, text_hash}, newest first."""
-    conn = open_library(db)
+    """Saved runs as {id, title, created_at, text, text_hash}, newest first.
+
+    At most the 100 newest runs: the duplication check compares
+    every sentence against the corpus, and an unbounded library
+    would make it slower with every saved run. When the library
+    file does not exist yet there is nothing to compare against.
+    """
+    try:
+        conn = open_library(db, create=False)
+    except FileNotFoundError:
+        return []
     try:
         rows = conn.execute(
             "SELECT id, title, created_at, text, text_hash FROM analyses "
-            "ORDER BY id DESC").fetchall()
+            "ORDER BY id DESC LIMIT 100").fetchall()
     finally:
         conn.close()
     return [{"id": r["id"], "title": r["title"],
@@ -3008,13 +3085,20 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
     """
     if not 0 < threshold <= 1:
         raise ValueError("threshold harus di antara 0 dan 1")
+    if min_words < 1:
+        raise ValueError("min_words harus >= 1")
     sentences = [s for s in _split_sentences(text)
                  if len(s.split()) >= min_words]
     if past_runs is None:
-        text_hash = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+        # The hash is taken from the stored form of the text (see
+        # _MAX_STORED_TEXT): a run longer than the cap is stored
+        # truncated, so the comparison truncates the same way.
+        text_hash = hashlib.sha256(
+            text.strip()[:_MAX_STORED_TEXT].encode("utf-8")).hexdigest()
         past_runs = [r for r in _past_texts(db)
                      if hashlib.sha256(
-                         r["text"].strip().encode("utf-8")).hexdigest()
+                         r["text"].strip()[:_MAX_STORED_TEXT]
+                         .encode("utf-8")).hexdigest()
                      != text_hash]
     normalized = [_normalize_sentence(s) for s in sentences]
     word_sets = [set(n.split()) for n in normalized]
@@ -3049,7 +3133,8 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
                 "similarity": round(sim, 2),
                 "source_id": run["id"] if run else None,
                 "source_title": run["title"] if run else "naskah ini",
-                "source_date": (run["created_at"][:10] if run else None),
+                "source_date": (str(run["created_at"])[:10]
+                                if run else None),
             })
     return {"duplicates": duplicates, "count": len(duplicates),
             "checked": len(past_runs)}
@@ -3116,7 +3201,6 @@ def duplicates_main(argv=None) -> int:
             text = f.read()
     else:
         p.error("give a file or --text")
-        return 2
     try:
         result = find_duplicates(text, db=args.db,
                                  threshold=args.threshold)
@@ -3160,13 +3244,10 @@ def humanize_main(argv=None) -> int:
             text = f.read()
     else:
         p.error("give a file or --text")
-        return 2
     if args.in_place and not args.input:
         p.error("--in-place needs a file input")
-        return 2
     if args.out and args.in_place:
         p.error("--out and --in-place cannot be combined")
-        return 2
     result = suggest_style_fixes(text, lang=args.lang,
                                  limit=None if args.apply else 10)
     fixed = apply_suggestions(text, result) if args.apply else None
@@ -3279,21 +3360,38 @@ def library_path(db: str | None = None) -> str:
     return DEFAULT_LIBRARY_DB
 
 
-def open_library(db: str | None = None) -> sqlite3.Connection:
-    """Open (creating if needed) the library database.
+def open_library(db: str | None = None, *,
+                 create: bool = True) -> sqlite3.Connection:
+    """Open the library database.
 
+    With `create` (the default) the file and its directory are
+    created when missing. With `create=False` (read-only callers)
+    a missing file raises FileNotFoundError instead of creating
+    one — a read must never conjure a library into existence.
     A corrupt or unreadable file raises ValueError with a plain
     message instead of leaking a sqlite3 traceback to the user.
     """
     path = library_path(db)
-    parent = os.path.dirname(path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
     conn = None
     try:
-        conn = sqlite3.connect(path)
+        if create:
+            parent = os.path.dirname(path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            conn = sqlite3.connect(path)
+        else:
+            conn = sqlite3.connect(
+                f"file:{quote(path)}?mode=rw", uri=True)
         conn.row_factory = sqlite3.Row
-        conn.executescript(_LIBRARY_SCHEMA)
+        if create:
+            conn.executescript(_LIBRARY_SCHEMA)
+    except sqlite3.OperationalError:
+        if conn is not None:
+            conn.close()
+        if not create:
+            raise FileNotFoundError(f"pustaka belum ada: {path}")
+        raise ValueError(
+            f"pustaka rusak: {path} — hapus atau ganti file databasenya")
     except sqlite3.Error:
         if conn is not None:
             conn.close()
@@ -3363,10 +3461,19 @@ def _upsert_reference(conn: sqlite3.Connection, key: str, ref: dict,
            ON CONFLICT(key) DO UPDATE SET
              title=excluded.title, authors=excluded.authors,
              year=excluded.year, doi=excluded.doi, url=excluded.url,
-             source=excluded.source, data=excluded.data""",
+             source=excluded.source, data=excluded.data,
+             added_at=excluded.added_at""",
         (key, cols["title"], cols["authors"], cols["year"], cols["doi"],
          cols["url"], now, source, json.dumps(ref, ensure_ascii=False)))
     return "updated" if exists else "added"
+
+
+# The library stores at most this many characters of a run's text
+# (see save_analysis): a 200k-character manuscript would otherwise
+# bloat the database for text nobody re-reads in full. The
+# self-match hash in find_duplicates is taken from the same stored
+# form, so re-analyzing a long run still recognises its own copy.
+_MAX_STORED_TEXT = 100_000
 
 
 def save_analysis(text: str, result: dict,
@@ -3375,13 +3482,16 @@ def save_analysis(text: str, result: dict,
                   db: str | None = None) -> int:
     """Record an analyze_text_quality() run in the library.
 
-    The cited references are upserted into the personal bibliography
-    (source "analyze") and linked to the run. Returns the run id.
+    Every reference in the bibliography is upserted into the
+    personal bibliography (source "analyze"); the cited ones are
+    linked to the run. Returns the run id.
 
     A reference that cannot be serialized to JSON raises ValueError
     here, before anything is written — never a bare TypeError from
-    deep inside the upsert.
+    deep inside the upsert. Only the first 100_000 characters of
+    the text are stored (see _MAX_STORED_TEXT).
     """
+    text = text[:_MAX_STORED_TEXT]
     if references:
         for key, ref in references.items():
             try:
@@ -3413,9 +3523,13 @@ def save_analysis(text: str, result: dict,
              hashlib.sha256(text.strip().encode("utf-8")).hexdigest(), text))
         analysis_id = cur.lastrowid
         if references:
+            # Every reference enters the personal bibliography, not
+            # only the cited ones: an unused entry is still a
+            # reference the author owns.
+            for key, ref in references.items():
+                _upsert_reference(conn, key, ref, "analyze")
             for key in cit.get("cited") or []:
                 if key in references:
-                    _upsert_reference(conn, key, references[key], "analyze")
                     conn.execute(
                         "INSERT OR IGNORE INTO analysis_references "
                         "(analysis_id, ref_key) VALUES (?, ?)",
@@ -3428,7 +3542,12 @@ def save_analysis(text: str, result: dict,
 
 def list_analyses(db: str | None = None, limit: int = 20) -> list[dict]:
     """Past runs, newest first (id, date, title, scores)."""
-    conn = open_library(db)
+    if limit is not None:
+        limit = max(1, min(limit, 1000))
+    try:
+        conn = open_library(db, create=False)
+    except FileNotFoundError:
+        return []
     try:
         rows = conn.execute(
             """SELECT id, created_at, title, quality_score, jargon_count,
@@ -3478,14 +3597,20 @@ def list_references(db: str | None = None, limit: int = 20) -> list[dict]:
 def search_references(query: str, db: str | None = None,
                       limit: int = 20) -> list[dict]:
     """Search the bibliography by key, title, authors, or DOI."""
-    like = f"%{query}%"
-    conn = open_library(db)
+    escaped = (query.replace("\\", "\\\\").replace("%", "\\%")
+               .replace("_", "\\_"))
+    like = f"%{escaped}%"
+    try:
+        conn = open_library(db, create=False)
+    except FileNotFoundError:
+        return []
     try:
         rows = conn.execute(
             """SELECT key, title, authors, year, doi, url, added_at, source
                FROM library_references
-               WHERE key LIKE ? OR title LIKE ? OR authors LIKE ?
-                     OR doi LIKE ?
+               WHERE key LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\'
+                     OR authors LIKE ? ESCAPE '\\'
+                     OR doi LIKE ? ESCAPE '\\'
                ORDER BY added_at DESC, key LIMIT ?""",
             (like, like, like, like, limit)).fetchall()
         return [dict(r) for r in rows]
@@ -3577,7 +3702,12 @@ def library_stats(db=None, *, top_refs: int = 5) -> dict:
     runs cite them ({key, title, count}). Empty library: runs 0,
     average_score None, best None, trend [], most_cited [].
     """
-    conn = open_library(db)
+    top_refs = max(1, min(top_refs, 100))
+    try:
+        conn = open_library(db, create=False)
+    except FileNotFoundError:
+        return {"runs": 0, "average_score": None, "best": None,
+                "trend": [], "most_cited": []}
     try:
         rows = conn.execute(
             "SELECT id, title, created_at, quality_score FROM analyses "
@@ -3788,12 +3918,14 @@ def cite_main(argv=None) -> int:
             print(f"{d['id']} / {d['en']} — {d['style']}")
         return 0
 
+    if args.export_bibtex and args.export_ris:
+        p.error("--export-bibtex and --export-ris cannot be combined")
+
     if args.lookup:
         try:
             ref = lookup_reference(args.lookup)
         except LookupError as e:
             p.error(str(e))
-            return 2
         if args.add_to:
             key = save_reference(ref, args.add_to, key=args.key)
             print(f"Saved as [{key}] in {args.add_to}")
@@ -3804,7 +3936,6 @@ def cite_main(argv=None) -> int:
     if args.export_bibtex:
         if not args.refs:
             p.error("--refs <bibliography.json> is required with --export-bibtex")
-            return 2
         references = load_references(args.refs)
         bib = export_bibtex(references)
         if args.out:
@@ -3818,7 +3949,6 @@ def cite_main(argv=None) -> int:
     if args.export_ris:
         if not args.refs:
             p.error("--refs <bibliography.json> is required with --export-ris")
-            return 2
         references = load_references(args.refs)
         ris = export_ris(references)
         if args.out:
@@ -3832,7 +3962,6 @@ def cite_main(argv=None) -> int:
     if args.audit:
         if not args.refs:
             p.error("--refs <bibliography.json> is required with --audit")
-            return 2
         if args.text:
             text = args.text
         elif args.input:
@@ -3840,7 +3969,6 @@ def cite_main(argv=None) -> int:
                 text = f.read()
         else:
             p.error("give a file or --text")
-            return 2
         references = load_references(args.refs)
         result = audit_citations(text, references)
         links = None
@@ -3853,7 +3981,6 @@ def cite_main(argv=None) -> int:
     if args.verify:
         if not args.refs:
             p.error("--refs <bibliography.json> is required with --verify")
-            return 2
         references = load_references(args.refs)
         result = verify_reference_dois(references)
         sys.stdout.write(format_verification(result, lang=args.lang))
@@ -3864,12 +3991,10 @@ def cite_main(argv=None) -> int:
         style = style_for_discipline(args.jurusan)
         if not style:
             p.error(f"unknown jurusan: {args.jurusan} (see --list-jurusan)")
-            return 2
     if not style:
         style = "apa"
     if not args.refs:
         p.error("--refs <bibliography.json> is required")
-        return 2
 
     if args.text:
         text = args.text
@@ -3878,7 +4003,6 @@ def cite_main(argv=None) -> int:
             text = f.read()
     else:
         p.error("give a file or --text")
-        return 2
 
     references = load_references(args.refs)
     output, _ = weave(text, references, style=style, lang=args.lang)
@@ -4514,7 +4638,6 @@ def prompts_main(argv=None) -> int:
     prompt = get_prompt(args.prompt_id)
     if prompt is None:
         p.error(f"unknown prompt: {args.prompt_id} (see --list)")
-        return 2
 
     if not args.set_values:
         template = prompt["template"]
@@ -4527,14 +4650,12 @@ def prompts_main(argv=None) -> int:
     for item in args.set_values:
         if "=" not in item:
             p.error(f"--set needs key=value, got: {item}")
-            return 2
         key, value = item.split("=", 1)
         values[key.strip()] = value
     try:
         sys.stdout.write(fill_prompt(args.prompt_id, values, lang=args.lang) + "\n")
     except ValueError as e:
         p.error(str(e))
-        return 2
     return 0
 
 
@@ -5699,6 +5820,16 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c];
     });
   }
+  function num(v, max) {
+    // Numbers from the server are numbers — but a missing or
+    // mistyped field must never render "NaN" or "undefined":
+    // coerce and clamp (scores 0–100, components 0–25, counts 0+).
+    var n = Number(v);
+    if (!isFinite(n)) return 0;
+    if (n < 0) n = 0;
+    if (max !== undefined && n > max) n = max;
+    return n;
+  }
   function showError(id, msg) {
     var el = $(id);
     el.textContent = msg;
@@ -5752,19 +5883,19 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     } else {
       h += '<div class="card"><h2>Riwayat analisis</h2><ul>';
       rows.forEach(function (a) {
-        h += '<li><a href="#" data-analysis="' + a.id + '">#' + a.id + " " + esc(a.title) + "</a> — "
-          + esc(a.created_at.slice(0, 10)) + ", skor " + a.quality_score + "/100, gaya "
-          + a.style_score + "/25</li>";
+        h += '<li><a href="#" data-analysis="' + num(a.id) + '">#' + num(a.id) + " " + esc(a.title) + "</a> — "
+          + esc(a.created_at.slice(0, 10)) + ", skor " + num(a.quality_score, 100) + "/100, gaya "
+          + num(a.style_score, 25) + "/25</li>";
       });
       h += "</ul></div>";
     }
     $("library-history").innerHTML = h;
   }
   function renderDetail(a) {
-    var h = '<div class="card"><h2>Analisis #' + a.id + " — " + esc(a.title) + "</h2>"
-      + "<p>" + esc(a.created_at.slice(0, 10)) + " · Skor " + a.quality_score + "/100 · Gaya "
-      + a.style_score + "/25 · Jargon " + a.jargon_count + " · Sitasi hilang "
-      + a.citations_missing + " · DOI " + a.doi_ok + "/" + a.doi_total + "</p>";
+    var h = '<div class="card"><h2>Analisis #' + num(a.id) + " — " + esc(a.title) + "</h2>"
+      + "<p>" + esc(a.created_at.slice(0, 10)) + " · Skor " + num(a.quality_score, 100) + "/100 · Gaya "
+      + num(a.style_score, 25) + "/25 · Jargon " + num(a.jargon_count) + " · Sitasi hilang "
+      + num(a.citations_missing) + " · DOI " + num(a.doi_ok) + "/" + num(a.doi_total) + "</p>";
     if (a.references && a.references.length) {
       h += "<p>Referensi dikutip: " + esc(a.references.join(", ")) + "</p>";
     }
@@ -5780,7 +5911,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     } else {
       h += '<div class="card"><h2>Referensi <span class="meta">' + rows.length + "</span></h2><ul>";
       rows.forEach(function (r) {
-        h += "<li><strong>" + esc(r.key) + "</strong>" + (r.year ? " (" + r.year + ")" : "")
+        h += "<li><strong>" + esc(r.key) + "</strong>" + (r.year ? " (" + num(r.year) + ")" : "")
           + ": " + esc(r.title || "-")
           + (r.authors ? ' <span class="src">' + esc(r.authors) + "</span>" : "")
           + (r.doi ? ' <span class="src">doi:' + esc(r.doi) + "</span>" : "") + "</li>";
@@ -5811,17 +5942,17 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       return;
     }
     var h = '<div class="card"><h2>Statistik</h2><div class="stats-grid">'
-      + '<div class="stat"><span class="stat-num">' + st.runs + '</span><span class="stat-label">Analisis tersimpan</span></div>'
-      + '<div class="stat"><span class="stat-num">' + st.average_score + '</span><span class="stat-label">Rata-rata skor /100</span></div>';
-    if (st.best) h += '<div class="stat"><span class="stat-num">' + st.best.quality_score + '</span><span class="stat-label">Terbaik: ' + esc(st.best.title) + '</span></div>';
+      + '<div class="stat"><span class="stat-num">' + num(st.runs) + '</span><span class="stat-label">Analisis tersimpan</span></div>'
+      + '<div class="stat"><span class="stat-num">' + num(st.average_score, 100) + '</span><span class="stat-label">Rata-rata skor /100</span></div>';
+    if (st.best) h += '<div class="stat"><span class="stat-num">' + num(st.best.quality_score, 100) + '</span><span class="stat-label">Terbaik: ' + esc(st.best.title) + '</span></div>';
     h += '</div><h3>Tren skor</h3>';
     st.trend.forEach(function (t) {
-      h += '<div class="trend-row"><span class="trend-label">' + esc(t.title) + '</span><div class="bar"><span style="width:' + t.quality_score + '%"></span></div><span class="num">' + t.quality_score + '</span></div>';
+      h += '<div class="trend-row"><span class="trend-label">' + esc(t.title) + '</span><div class="bar"><span style="width:' + num(t.quality_score, 100) + '%"></span></div><span class="num">' + num(t.quality_score, 100) + '</span></div>';
     });
     if (st.most_cited.length) {
       h += '<h3>Referensi paling sering dikutip</h3><ul>';
       st.most_cited.forEach(function (c) {
-        h += '<li><strong>' + esc(c.key) + '</strong> — ' + esc(c.title || c.key) + ' (' + c.count + ' kali)</li>';
+        h += '<li><strong>' + esc(c.key) + '</strong> — ' + esc(c.title || c.key) + ' (' + num(c.count) + ' kali)</li>';
       });
       h += '</ul>';
     }
@@ -5862,11 +5993,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 
   function renderFolderResult(res, lang) {
     var f = res.folder;
-    var h = '<div class="card"><h2>' + esc(f.folder) + ' <span class="meta">' + f.count + ' file</span></h2>';
+    var h = '<div class="card"><h2>' + esc(f.folder) + ' <span class="meta">' + num(f.count) + ' file</span></h2>';
     if (f.average === null || f.average === undefined) {
       h += '<p>Tidak ada file .txt atau .md yang bisa dianalisis.</p>';
     } else {
-      h += '<p>Rata-rata skor: <strong>' + f.average + '/100</strong></p>';
+      h += '<p>Rata-rata skor: <strong>' + num(f.average, 100) + '/100</strong></p>';
     }
     if (f.files.length) {
       h += '<table><thead><tr><th>File</th><th>Skor</th><th>Jargon</th><th>Sitasi</th><th>DOI</th><th>Gaya</th><th>Duplikat</th></tr></thead><tbody>';
@@ -5875,10 +6006,10 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         if (e.error) {
           h += '<td colspan="6">Gagal: ' + esc(e.error) + '</td>';
         } else {
-          h += '<td>' + e.quality_score + '/100</td><td>' + e.jargon_count + '</td>';
-          h += '<td>' + e.citations_cited + ' dikutip' + (e.citations_missing.length ? ', ' + e.citations_missing.length + ' hilang' : '') + '</td>';
-          h += '<td>' + e.doi_ok + '/' + e.doi_total + '</td><td>' + e.style_score + '/25</td>';
-          h += '<td>' + ((e.duplicates === null || e.duplicates === undefined) ? '-' : e.duplicates) + '</td>';
+          h += '<td>' + num(e.quality_score, 100) + '/100</td><td>' + num(e.jargon_count) + '</td>';
+          h += '<td>' + num(e.citations_cited) + ' dikutip' + (e.citations_missing.length ? ', ' + e.citations_missing.length + ' hilang' : '') + '</td>';
+          h += '<td>' + num(e.doi_ok) + '/' + num(e.doi_total) + '</td><td>' + num(e.style_score, 25) + '/25</td>';
+          h += '<td>' + ((e.duplicates === null || e.duplicates === undefined) ? '-' : num(e.duplicates)) + '</td>';
         }
         h += '</tr>';
       });
@@ -5912,10 +6043,10 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     var h = '<div class="card gauge-card"><h2>Skor kualitas</h2>'
       + '<p class="caption">' + (lang === "en" ? "Score 0–100 from 4 components × 25 points." : "Skor 0–100 dari 4 komponen × 25 poin.") + '</p>'
       + '<div class="gauge-body"><div class="gauge-wrap">'
-      + '<svg class="gauge" viewBox="0 0 120 120" role="img" aria-label="Skor kualitas ' + res.quality_score + ' dari 100">'
+      + '<svg class="gauge" viewBox="0 0 120 120" role="img" aria-label="Skor kualitas ' + num(res.quality_score, 100) + ' dari 100">'
       + '<circle class="gauge-track" cx="60" cy="60" r="52"></circle>'
-      + '<circle class="gauge-arc" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="100" stroke-dashoffset="' + (100 - res.quality_score) + '" style="stroke:' + band.color + '"></circle>'
-      + '</svg><div class="gauge-center"><span class="gauge-num">' + res.quality_score + '</span><span class="gauge-of">/ 100</span><span class="gauge-band">' + band.label + '</span></div></div>';
+      + '<circle class="gauge-arc" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="100" stroke-dashoffset="' + (100 - num(res.quality_score, 100)) + '" style="stroke:' + band.color + '"></circle>'
+      + '</svg><div class="gauge-center"><span class="gauge-num">' + num(res.quality_score, 100) + '</span><span class="gauge-of">/ 100</span><span class="gauge-band">' + band.label + '</span></div></div>';
     var parts = res.score_parts;
     if (parts && parts.length === 4) {
       var labels = lang === "en" ? ["Jargon", "Citations", "DOI", "Style"] : ["Jargon", "Sitasi", "DOI", "Gaya"];
@@ -5934,7 +6065,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     var h = "";
     h += scoreGauge(res, lang);
     if (res.library_id) {
-      h += '<div class="card"><p>Tersimpan di pustaka (id ' + res.library_id + ").</p></div>";
+      h += '<div class="card"><p>Tersimpan di pustaka (id ' + num(res.library_id) + ").</p></div>";
     }
     if (res.jargon && res.jargon.length) {
       h += '<div class="card"><h2>Istilah jargon <span class="meta">' + res.jargon.length + ' ditemukan</span></h2><ul>';
@@ -5966,23 +6097,23 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     var st = res.style;
     if (st) {
       if (st.flagged.length) {
-        h += '<div class="card"><h2>Gaya <span class="meta">' + st.style_score + "/25</span></h2><ul>";
+        h += '<div class="card"><h2>Gaya <span class="meta">' + num(st.style_score, 25) + "/25</span></h2><ul>";
         st.flagged.forEach(function (name) {
           var s = st.signals[name];
           var label = {nominalization: "Verba ringan", connectors: "Konektor",
             passive: "Verba pasif", yang_mana: "'yang mana'/'dimana'",
             rhythm: "Ritme kalimat"}[name] || name;
           if (name === "rhythm") {
-            h += "<li>" + label + ": " + Math.round(s.same_length_share * 100)
+            h += "<li>" + esc(label) + ": " + Math.round(num(s.same_length_share, 1) * 100)
               + "% kalimat hampir sama panjang</li>";
           } else {
-            h += "<li>" + label + ": " + s.count
+            h += "<li>" + esc(label) + ": " + num(s.count)
               + (s.examples && s.examples.length ? " (" + esc(s.examples.join(", ")) + ")" : "") + "</li>";
           }
         });
         h += "</ul></div>";
       } else {
-        h += '<div class="card"><h2>Gaya <span class="meta">' + st.style_score + '/25</span></h2><p>Tidak ada pola kaku yang terdeteksi.</p></div>';
+        h += '<div class="card"><h2>Gaya <span class="meta">' + num(st.style_score, 25) + '/25</span></h2><p>Tidak ada pola kaku yang terdeteksi.</p></div>';
       }
     }
     if (res.duplicates) {
@@ -5991,8 +6122,8 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         h += '<div class="card"><h2>Duplikasi <span class="meta">' + d.duplicates.length + ' kalimat berulang</span></h2><ul>';
         d.duplicates.forEach(function (x) {
           h += "<li>" + esc(x.sentence) + '<br><span class="meta">'
-            + Math.round(x.similarity * 100) + "% mirip &ldquo;" + esc(x.match)
-            + "&rdquo; — " + (x.source_id ? "pustaka #" + x.source_id + " — " + esc(x.source_title) : "naskah ini") + "</span></li>";
+            + Math.round(num(x.similarity, 1) * 100) + "% mirip &ldquo;" + esc(x.match)
+            + "&rdquo; — " + (x.source_id ? "pustaka #" + num(x.source_id) + " — " + esc(x.source_title) : "naskah ini") + "</span></li>";
         });
         h += "</ul></div>";
       } else {
@@ -6009,9 +6140,9 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       var labels = {nominalization: "Verba ringan", connectors: "Konektor",
         passive: "Verba pasif", yang_mana: "'yang mana'/'dimana'",
         rhythm: "Ritme kalimat", typo: "Ejaan"};
-      h += '<div class="card"><h2>Saran rewrite gaya <span class="meta">' + sg.count + "</span></h2>";
+      h += '<div class="card"><h2>Saran rewrite gaya <span class="meta">' + num(sg.count) + "</span></h2>";
       sg.suggestions.forEach(function (s, i) {
-        h += "<p><strong>" + (i + 1) + ". " + (labels[s.pattern] || s.pattern) + "</strong> — “" + esc(s.original.trim()) + "”";
+        h += "<p><strong>" + (i + 1) + ". " + esc(labels[s.pattern] || s.pattern) + "</strong> — “" + esc(s.original.trim()) + "”";
         if (s.replacement !== null) {
           h += " → “" + (s.replacement === "" ? "(hapus)" : esc(s.replacement)) + "”";
         }
@@ -6024,7 +6155,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         h += "</p>";
       });
       if (sg.count > sg.suggestions.length) {
-        h += "<p>Menampilkan " + sg.suggestions.length + " dari " + sg.count + " saran.</p>";
+        h += "<p>Menampilkan " + sg.suggestions.length + " dari " + num(sg.count) + " saran.</p>";
       }
       h += '<div class="actions"><button id="copy-fixed-btn" onclick="copyFixedText()">Salin teks yang diperbaiki</button> <span class="status" id="copy-fixed-status"></span></div>';
       h += "</div>";
@@ -6352,12 +6483,38 @@ def _read_json_body(handler) -> dict:
 
 
 def _multipart_param(disposition: str, param: str):
-    """One quoted parameter out of a Content-Disposition header."""
-    for piece in disposition.split(";"):
+    """One parameter out of a Content-Disposition header (RFC 7578).
+
+    Splits on ';' outside quoted strings and unescapes \" and \\
+    inside a quoted value, so a filename like "a;b.txt" — or one
+    containing a quote — survives intact instead of being cut at
+    the first semicolon.
+    """
+    pieces = []
+    buf = []
+    in_quotes = False
+    escaped = False
+    for ch in disposition:
+        if escaped:
+            buf.append(ch)
+            escaped = False
+        elif ch == "\\" and in_quotes:
+            escaped = True
+        elif ch == '"':
+            in_quotes = not in_quotes
+            buf.append(ch)
+        elif ch == ";" and not in_quotes:
+            pieces.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    pieces.append("".join(buf))
+    for piece in pieces:
         piece = piece.strip()
         if piece.startswith(param + "="):
             value = piece[len(param) + 1:].strip()
-            if value.startswith('"') and value.endswith('"'):
+            if len(value) >= 2 and value.startswith('"') \
+                    and value.endswith('"'):
                 value = value[1:-1]
             return value
     return None
@@ -6447,6 +6604,22 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
 
+    def version_string(self):
+        # No "BaseHTTP/0.6 Python/3.12.3": the Server header must
+        # not advertise the interpreter version.
+        return "academic-tools"
+
+    def _security_headers(self):
+        # Every response carries the same three headers. The page
+        # uses inline CSS/JS, so the CSP must allow 'unsafe-inline'
+        # for style and script (default-src stays 'self').
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline'")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+
     def log_message(self, *args):  # keep the console quiet
         pass
 
@@ -6455,6 +6628,7 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
+        self._security_headers()
         self.end_headers()
         self.wfile.write(data)
 
@@ -6464,6 +6638,7 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
+        self._security_headers()
         self.end_headers()
         self.wfile.write(data)
 
@@ -6613,15 +6788,15 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
             rels.append(rel)
             name = rel.rsplit("/", 1)[-1]
             if "/" in rel:
-                skipped.append({"file": rel,
+                skipped.append({"file": name,
                                 "reason": "bukan file tingkat atas"})
                 continue
             if not name.lower().endswith(_FOLDER_EXTENSIONS):
-                skipped.append({"file": rel,
+                skipped.append({"file": name,
                                 "reason": "bukan .txt atau .md"})
                 continue
             if len(part["data"]) > _MAX_FILE_BYTES:
-                skipped.append({"file": rel,
+                skipped.append({"file": name,
                                 "reason": "file lebih dari 1 MB"})
                 continue
             entry = _blank_folder_entry(name)
@@ -6637,10 +6812,19 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
                 duplicates="duplicates" in fields,
                 save="save" in fields))
         firsts = {r.split("/", 1)[0] for r in rels if "/" in r}
-        folder_name = firsts.pop() if len(firsts) == 1 else "unggahan"
+        folder_name = "unggahan"
+        if len(firsts) == 1:
+            only = firsts.pop()
+            if only:
+                folder_name = only
         scores = [e["quality_score"] for e in entries
                   if e["quality_score"] is not None and not e.get("error")]
         average = round(sum(scores) / len(scores), 1) if scores else None
+        # The browser's recap table never reads the file text,
+        # so it is not sent back: a folder upload would otherwise
+        # echo every manuscript. (The CLI folder --json keeps "text".)
+        for e in entries:
+            e.pop("text", None)
         return {"folder": {"folder": folder_name, "files": entries,
                            "count": len(entries), "average": average},
                 "skipped": skipped}

@@ -173,3 +173,29 @@ class TestBibTeXExport(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRefTypeAliases(unittest.TestCase):
+    """v1.25.2: raw Crossref types map to canonical entry types."""
+
+    def test_crossref_aliases_map_to_canonical_types(self):
+        out = tools.export_bibtex({
+            "a": {"title": "T", "type": "journal-article"},
+            "b": {"title": "T", "type": "book-chapter"},
+            "c": {"title": "T", "type": "proceedings-article"},
+            "d": {"title": "T", "type": "report"},
+        })
+        self.assertIn("@article{a,", out)
+        self.assertIn("@incollection{b,", out)
+        self.assertIn("@inproceedings{c,", out)
+        self.assertIn("@misc{d,", out)
+
+    def test_doi_url_eprint_are_latex_escaped(self):
+        out = tools.export_bibtex({
+            "a": {"title": "T", "type": "article",
+                  "doi": "10.1/a_b%c", "url": "https://x.example/a_b",
+                  "arxiv": "2301.00001_v2"},
+        })
+        self.assertIn("doi = {10.1/a\\_b\\%c}", out)
+        self.assertIn("url = {https://x.example/a\\_b}", out)
+        self.assertIn("eprint = {2301.00001\\_v2}", out)

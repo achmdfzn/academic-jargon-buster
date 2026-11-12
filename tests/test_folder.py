@@ -272,3 +272,38 @@ class TestAnalyzeFolderMain(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFolderNiceToHave1252(unittest.TestCase):
+    """v1.25.2: dotfiles, case-insensitive sort, --json score_parts."""
+
+    def test_dotfiles_are_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _write(tmp, ".hidden.txt", GOOD)
+            _write(tmp, "bab1.txt", GOOD)
+            result = analyze_folder(tmp, _refs(), verify_dois=False)
+            self.assertEqual(result["count"], 1)
+            self.assertEqual([e["file"] for e in result["files"]],
+                             ["bab1.txt"])
+
+    def test_sort_is_case_insensitive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _write(tmp, "Bab2.txt", GOOD)
+            _write(tmp, "bab1.txt", GOOD)
+            _write(tmp, "BAB3.txt", OTHER)
+            result = analyze_folder(tmp, _refs(), verify_dois=False)
+            self.assertEqual([e["file"] for e in result["files"]],
+                             ["bab1.txt", "Bab2.txt", "BAB3.txt"])
+
+    def test_folder_json_carries_score_parts_per_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _write(tmp, "bab1.txt", GOOD)
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = analyze_main([tmp, "--no-verify", "--json"])
+            self.assertEqual(code, 0)
+            result = json.loads(out.getvalue())
+            entry = result["files"][0]
+            self.assertEqual(len(entry["result"]["score_parts"]), 4)
+            self.assertEqual(entry["result"]["score_parts"],
+                             tools._score_parts(entry["result"]))

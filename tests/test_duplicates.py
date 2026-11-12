@@ -249,3 +249,42 @@ class TestAnalyzeDuplicatesFlag(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDuplicatesReadOnlyAndValidation(unittest.TestCase):
+    """v1.25.2: read paths never create the library file."""
+
+    def test_find_duplicates_on_missing_db_creates_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            db = os.path.join(d, "sub", "library.db")
+            result = find_duplicates(PAST_TEXT, db=db)
+            self.assertEqual(result, {"duplicates": [], "count": 0,
+                                      "checked": 0})
+            self.assertFalse(os.path.exists(db))
+            self.assertFalse(os.path.exists(os.path.dirname(db)))
+
+    def test_min_words_must_be_positive(self):
+        for bad in (0, -1):
+            with self.subTest(min_words=bad):
+                with self.assertRaises(ValueError):
+                    find_duplicates(PAST_TEXT, min_words=bad,
+                                    past_runs=[])
+
+    def test_created_at_coerced_to_string(self):
+        run = {"id": 1, "title": "Bab 1", "created_at": 20260101,
+               "text": PAST_TEXT}
+        result = find_duplicates(EDITED, past_runs=[run])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["duplicates"][0]["source_date"],
+                         "20260101")
+
+    def test_past_texts_capped_at_100_newest(self):
+        with tempfile.TemporaryDirectory() as d:
+            db = os.path.join(d, "library.db")
+            for i in range(105):
+                _save(db,
+                      f"Kalimat unik nomor {i} untuk pengujian pustaka.",
+                      title=f"Run {i}")
+            runs = tools._past_texts(db)
+            self.assertEqual(len(runs), 100)
+            self.assertEqual(runs[0]["id"], 105)

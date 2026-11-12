@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
 description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
-version: 1.2.8
+version: 1.2.9
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -57,9 +57,9 @@ Four components, 25 points each, one score 0–100:
 - **`--no-verify`** skips DOI verification even when `--refs` is given.
 - **`--suggest`** adds the Humanize rewrite suggestions to the same pass.
 - **`--duplicates`** also checks every sentence against the saved runs in the library and reports near-duplicates (same or nearly the same sentence in an earlier draft, or repeated inside the text itself). The JSON result then carries `duplicates`. Duplicates never change the score and never change the exit code — they are a warning to read, not a failure.
-- **A folder instead of a file** — `analyze <folder>` analyzes every top-level `.txt`/`.md` file in the folder, in name order, and prints a recap table (file, score, jargon, citations, DOI, style, duplicates) plus the average. `--refs`, `--no-verify`, `--save` (each run recorded with the file name as its title), `--duplicates`, `--db`, and `--json` all work; `--suggest` and `--title` are rejected for folders. With `--save --duplicates`, files analyzed earlier in the same run are already in the library, so a sentence repeated in a later chapter is flagged. A file that cannot be read is recorded with its error and the rest still run. An empty file is recorded the same way (`teks kosong`). A file with an error — unreadable, empty, a failed duplicates check, or a failed save — is left out of the folder average, so one bad chapter cannot drag the average down. In the interactive menu, Analisis Kualitas offers "Baca folder" as a third choice; the web UI has an "Analisis se-folder" section that uploads a whole folder (or several files).
+- **A folder instead of a file** — `analyze <folder>` analyzes every top-level `.txt`/`.md` file in the folder, in name order (case-insensitive; dotfiles are skipped), and prints a recap table (file, score, jargon, citations, DOI, style, duplicates) plus the average. `--refs`, `--no-verify`, `--save` (each run recorded with the file name as its title), `--duplicates`, `--db`, and `--json` all work; `--suggest` and `--title` are rejected for folders. With `--save --duplicates`, files analyzed earlier in the same run are already in the library, so a sentence repeated in a later chapter is flagged. A file that cannot be read is recorded with its error and the rest still run. An empty file is recorded the same way (`teks kosong`). A file with an error — unreadable, empty, a failed duplicates check, or a failed save — is left out of the folder average, so one bad chapter cannot drag the average down. In the interactive menu, Analisis Kualitas offers "Baca folder" as a third choice; the web UI has an "Analisis se-folder" section that uploads a whole folder (or several files).
 - **`--save`** records the run in the library (`--title` labels it, `--db` picks another database). The JSON result then carries `library_id`.
-- **`--json`** prints the raw result (`jargon`, `citations`, `doi_verification`, `style`, `quality_score`, `recommendations`, `suggestions`, `duplicates` when `--duplicates` was passed).
+- **`--json`** prints the raw result (`jargon`, `citations`, `doi_verification`, `style`, `quality_score`, `score_parts` — the four 25-point components — `recommendations`, `suggestions`, `duplicates` when `--duplicates` was passed). Per-file results in a folder `--json` carry `score_parts` too.
 - **Exit code is 1** when a citation is missing or a DOI is not found in either source, 0 otherwise. In the interactive menu, this is option 4, Analisis Kualitas.
 
 ## Style check (`check_style`)
@@ -68,11 +68,13 @@ Five signals, five points each, calibrated on Indonesian academic prose. On Engl
 
 | Signal | Flagged when |
 | --- | --- |
-| Light verbs | 2+ occurrences of `melakukan` / `memberikan` / `mengalami` / `melaksanakan` / `mengadakan` / `menjalani` + a nominalized noun, and more than 1.0 per 100 words |
-| Connectors | 2+ stacked connectors (`selain itu`, `oleh karena itu`, `dengan demikian`, …), more than 2.0 per 100 words |
-| Passive verbs | 3+ passive verbs (`dilakukan`, `diperoleh`, `ditunjukkan`, …), more than 5.0 per 100 words |
+| Light verbs | 2+ occurrences of `melakukan` / `memberikan` / `mengalami` / `melaksanakan` / `mengadakan` / `menjalani` + a nominalized noun, and 1.0 or more per 100 words |
+| Connectors | 2+ stacked connectors (`selain itu`, `oleh karena itu`, `dengan demikian`, …), 2.0 or more per 100 words |
+| Passive verbs | 3+ passive verbs (`dilakukan`, `diperoleh`, `ditunjukkan`, …), 5.0 or more per 100 words |
 | `yang mana` / `dimana` | 1+ occurrence used as a relative pronoun |
 | Sentence rhythm | 5+ sentences and 60% or more are within ±2 words of the mean sentence length |
+
+Density signals are only judged on texts of at least 10 words — a short note cannot have a meaningful density.
 
 The check is a report, not a rewrite and not a detector dodge. A text that passes all five scores 25/25.
 
@@ -89,7 +91,7 @@ For each stiff pattern, Humanize proposes a concrete replacement and shows it be
 - **Light verbs become direct verbs** — "melakukan pengukuran terhadap" → "mengukur", "mengalami peningkatan sebesar 12%" → "meningkatkan 12%". The noun→verb table is written from Indonesian grammar; a trailing preposition that belongs to the frame (`terhadap`, `atas`, `antara`, `sebesar`, `kepada`) is dropped with it, while `untuk`, `dengan`, `dari`, `dalam` are kept because they change the meaning.
 - **Connectors are dropped** — "Selain itu, penelitian…" → "Penelitian…", with the next word re-capitalized.
 - **"yang mana" splits the sentence** — "…, yang mana hal ini mengurangi…" → "…. Hal ini mengurangi…".
-- **Spelling (Tata tulis) is fixed mechanically** — a curated table of fused words that EYD writes separate (or hyphenated): "disini" → "di sini", "didalam" → "di dalam", "terimakasih" → "terima kasih", "kerjasama" → "kerja sama", "masingmasing" → "masing-masing", plus "-nya" forms ("didalamnya" → "di dalamnya", "kerjasamanya" → "kerja samanya"). Only always-wrong forms are in the table; "dimana" stays guidance (its fix depends on the sentence) and fused "di"+verb forms ("ditulis", "dibaca") are correct and untouched. Word boundaries keep "kerjasama" from matching inside "kerjasamanya".
+- **Spelling (Tata tulis) is fixed mechanically** — a curated table of fused words that EYD writes separate (or hyphenated): "disini" → "di sini", "didalam" → "di dalam", "terimakasih" → "terima kasih", "kerjasama" → "kerja sama", "masingmasing" → "masing-masing", plus clitic suffixes ("didalamnya" → "di dalamnya", "kerjasamanya" → "kerja samanya", "kerjasamaku" → "kerja samaku", "disinilah" → "di sinilah" — -ku/-mu/-nya/-lah/-kah/-pun stay attached to the last word of the fix). Only always-wrong forms are in the table; "dimana" stays guidance (its fix depends on the sentence) and fused "di"+verb forms ("ditulis", "dibaca") are correct and untouched. Word boundaries keep "kerjasama" from matching inside "kerjasamanya".
 - **Guidance instead of a made-up rewrite** for passive voice, `dimana`, flat rhythm, and light verbs with no known verb form. These need a human decision; no replacement is invented.
 
 Rules:
@@ -113,7 +115,7 @@ python3 academic_tools.py library --import my-refs.json
 python3 academic_tools.py library --export library-refs.json
 ```
 
-- **`analyze --save`** records the run (title, date, score 0–100, style, jargon count, missing citations, DOI counts, suggestions, the text and its hash). Every cited reference is upserted into the personal bibliography, so the bibliography grows from real use.
+- **`analyze --save`** records the run (title, date, score 0–100, style, jargon count, missing citations, DOI counts, suggestions, the text — first 100,000 characters — and its hash). Every reference in the bibliography is upserted into the personal bibliography (not only the cited ones), so the bibliography grows from real use. Read-only commands (`--history`, `--stats`, `--refs`, `--search`, `duplicates`) never create the database file when it does not exist yet — an empty library is just empty.
 - **`library --history`** lists past runs, newest first. **`--show <id>`** prints one run in full, including the text.
 - **Library statistics (`library --stats`)** — runs, average score, best run, a score trend (every run oldest first, one bar per run), and the top 5 most-cited references (by how many saved runs cite them). Empty library prints an honest "run `analyze --save` first" instead of zeros. In the interactive menu, this is option 7 in Pustaka.
 - **`library --refs`** lists the personal bibliography; **`--search <query>`** matches key, title, authors, or DOI.

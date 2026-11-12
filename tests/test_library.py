@@ -386,3 +386,103 @@ class TestLibraryStats(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLibraryNiceToHave1252(unittest.TestCase):
+    """v1.25.2: read-only paths, clamps, LIKE escaping, upserts, cap."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = os.path.join(self.tmp.name, "library.db")
+        self.refs_path = os.path.join(self.tmp.name, "refs.json")
+        with open(self.refs_path, "w", encoding="utf-8") as f:
+            json.dump(SAMPLE_REFS, f)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _result(self):
+        return tools.analyze_text_quality(
+            TEXT, SAMPLE_REFS, lang="id", verify_dois=False)
+
+    """v1.25.2: read-only paths, clamps, LIKE escaping, upserts, cap."""
+
+    def test_read_paths_do_not_create_db(self):
+        with tempfile.TemporaryDirectory() as d:
+            db = os.path.join(d, "sub", "library.db")
+            self.assertEqual(tools.library_stats(db=db)["runs"], 0)
+            self.assertEqual(list_analyses(db=db), [])
+            self.assertEqual(search_references("x", db=db), [])
+            self.assertFalse(os.path.exists(db))
+            self.assertFalse(os.path.exists(os.path.dirname(db)))
+
+    def test_list_limit_is_clamped(self):
+        for i in range(3):
+            save_analysis(TEXT, self._result(), SAMPLE_REFS,
+                          title=f"Run {i}", db=self.db)
+        self.assertEqual(len(list_analyses(db=self.db, limit=-1)), 1)
+        self.assertEqual(len(list_analyses(db=self.db, limit=5000)), 3)
+
+    def test_top_refs_is_clamped(self):
+        text = ("Penelitian memakai [cite:devlin2019] dan "
+                "[cite:brooke1996].")
+        result = tools.analyze_text_quality(text, SAMPLE_REFS,
+                                            verify_dois=False)
+        save_analysis(text, result, SAMPLE_REFS, db=self.db)
+        stats = tools.library_stats(db=self.db, top_refs=-1)
+        self.assertEqual(len(stats["most_cited"]), 1)
+        stats = tools.library_stats(db=self.db, top_refs=500)
+        self.assertEqual(len(stats["most_cited"]), 2)
+
+    def test_search_escapes_like_wildcards(self):
+        import_references({
+            "a%b": {"title": "Persen", "authors": [], "year": 2020},
+            "abc": {"title": "Biasa", "authors": [], "year": 2020},
+            "a_c": {"title": "Garis", "authors": [], "year": 2020},
+        }, db=self.db)
+        self.assertEqual([r["key"] for r in
+                          search_references("%", db=self.db)], ["a%b"])
+        self.assertEqual([r["key"] for r in
+                          search_references("_", db=self.db)], ["a_c"])
+
+    def test_upsert_refreshes_added_at(self):
+        import sqlite3
+        import_references({"k1": {"title": "Lama", "authors": [],
+                                  "year": 2020}}, db=self.db)
+        conn = sqlite3.connect(self.db)
+        conn.execute(
+            "UPDATE library_references SET added_at = "
+            "'2000-01-01T00:00:00+07:00' WHERE key = 'k1'")
+        conn.commit()
+        conn.close()
+        import_references({"k1": {"title": "Baru", "authors": [],
+                                  "year": 2021}}, db=self.db)
+        rows = list_references(db=self.db)
+        self.assertEqual(rows[0]["title"], "Baru")
+        self.assertNotEqual(rows[0]["added_at"],
+                            "2000-01-01T00:00:00+07:00")
+
+    def test_save_upserts_unused_references(self):
+        save_analysis(TEXT, self._result(), SAMPLE_REFS, db=self.db)
+        keys = [r["key"] for r in list_references(db=self.db)]
+        self.assertIn("brooke1996", keys)  # never cited, still stored
+        self.assertIn("devlin2019", keys)
+
+    def test_text_is_capped_at_100k(self):
+        long_text = "Kalimat yang cukup panjang untuk pengujian. " * 3000
+        self.assertGreater(len(long_text), 100_000)
+        result = tools.analyze_text_quality(long_text, None,
+                                            verify_dois=False)
+        rid = save_analysis(long_text, result, None, db=self.db)
+        saved = get_analysis(rid, db=self.db)
+        self.assertEqual(len(saved["text"]), 100_000)
+        self.assertEqual(
+            saved["text_hash"],
+            hashlib.sha256(saved["text"].strip().encode("utf-8"))
+            .hexdigest())
+        # The long run still recognises itself: no library match
+        # against its own saved copy (within-text repeats aside).
+        dups = tools.find_duplicates(long_text, db=self.db)
+        lib_matches = [d for d in dups["duplicates"]
+                       if d["source_id"] == rid]
+        self.assertEqual(lib_matches, [])

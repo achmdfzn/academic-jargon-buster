@@ -208,3 +208,39 @@ class TestSkillDocsCoverTheTools(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNoDeadReturnsAfterPError(unittest.TestCase):
+    def test_no_unreachable_return_after_p_error(self):
+        # v1.25.2: argparse's p.error() raises SystemExit(2), so a
+        # `return 2` right after it can never run — the codebase
+        # must not carry dead returns.
+        tree = ast.parse(read_text("academic_tools.py"))
+        bad = []
+
+        def _is_p_error(stmt):
+            return (isinstance(stmt, ast.Expr)
+                    and isinstance(stmt.value, ast.Call)
+                    and isinstance(stmt.value.func, ast.Attribute)
+                    and stmt.value.func.attr == "error")
+
+        def _is_return_2(stmt):
+            return (isinstance(stmt, ast.Return)
+                    and isinstance(stmt.value, ast.Constant)
+                    and stmt.value.value == 2)
+
+        def _walk(node):
+            for _field, value in ast.iter_fields(node):
+                if isinstance(value, list):
+                    stmts = [s for s in value if isinstance(s, ast.stmt)]
+                    for prev, cur in zip(stmts, stmts[1:]):
+                        if _is_p_error(prev) and _is_return_2(cur):
+                            bad.append(cur.lineno)
+                    for item in value:
+                        if isinstance(item, ast.AST):
+                            _walk(item)
+                elif isinstance(value, ast.AST):
+                    _walk(value)
+
+        _walk(tree)
+        self.assertEqual(bad, [])

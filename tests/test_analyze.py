@@ -313,3 +313,69 @@ class TestAnalyzeMain(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNiceToHave1252(unittest.TestCase):
+    """v1.25.2: empty --text, --json score_parts, style thresholds."""
+
+    def test_analyze_empty_text_is_value_error(self):
+        # An explicit --text "" is "teks kosong", not the
+        # misleading "give a file or --text".
+        with self.assertRaises(ValueError) as cm:
+            tools.analyze_main(["--text", ""])
+        self.assertEqual(str(cm.exception), "teks kosong")
+
+    def test_analyze_empty_text_exits_1_via_main(self):
+        from contextlib import redirect_stderr
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            code = tools.main(["analyze", "--text", ""])
+        self.assertEqual(code, 1)
+        self.assertIn("teks kosong", buf.getvalue())
+
+    def test_json_carries_score_parts(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = tools.analyze_main(["--text", TEXT, "--no-verify",
+                                       "--json"])
+        self.assertEqual(code, 0)
+        result = json.loads(out.getvalue())
+        self.assertEqual(len(result["score_parts"]), 4)
+        self.assertEqual(result["score_parts"],
+                         tools._score_parts(result))
+
+    def test_density_exactly_at_threshold_flags(self):
+        # Nominalization: 2 light verbs in exactly 200 words = 1.0.
+        text = ("Melakukan pengukuran dan melakukan analisis "
+                + " ".join(["kata"] * 195) + ".")
+        self.assertEqual(len(text.split()), 200)
+        out = tools.check_style(text)
+        self.assertTrue(out["signals"]["nominalization"]["flagged"])
+        # Connectors: 2 connectors in exactly 100 words = 2.0.
+        text = ("Selain itu, oleh karena itu, "
+                + " ".join(["kata"] * 95) + ".")
+        self.assertEqual(len(text.split()), 100)
+        out = tools.check_style(text)
+        self.assertTrue(out["signals"]["connectors"]["flagged"])
+        # Passive: 3 passive verbs in exactly 60 words = 5.0.
+        text = ("Data dilakukan diperoleh ditunjukkan "
+                + " ".join(["kata"] * 56) + ".")
+        self.assertEqual(len(text.split()), 60)
+        out = tools.check_style(text)
+        self.assertTrue(out["signals"]["passive"]["flagged"])
+
+    def test_density_signals_need_ten_words(self):
+        # A huge density in a 7-word note is not meaningful.
+        out = tools.check_style(
+            "Selain itu, oleh karena itu penelitian dilakukan.")
+        self.assertFalse(out["signals"]["connectors"]["flagged"])
+        out = tools.check_style(
+            "Melakukan pengukuran dan melakukan analisis.")
+        self.assertFalse(out["signals"]["nominalization"]["flagged"])
+
+    def test_score_parts_tolerates_missing_style_score(self):
+        result = {"citations": {"cited": ["a"], "missing": []},
+                  "doi_verification": {}, "style": {}}
+        parts = tools._score_parts(result)
+        self.assertEqual(len(parts), 4)
+        self.assertEqual(parts[3], 0)

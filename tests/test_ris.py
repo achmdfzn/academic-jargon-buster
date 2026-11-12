@@ -117,6 +117,28 @@ class TestRISExport(unittest.TestCase):
         self.assertEqual(tools._ris_pages("189—194"), ("189", "194"))
         self.assertEqual(tools._ris_pages("189-194"), ("189", "194"))
 
+    def test_string_authors_becomes_one_author(self):
+        # H-2: a lone author string is exported as one AU line, not
+        # one line per character.
+        out = tools.export_ris({
+            "solo2020": {"authors": "Doe, Jane", "title": "Solo",
+                         "type": "article", "year": 2020}
+        })
+        self.assertIn("AU  - Doe, Jane", out)
+        self.assertNotIn("AU  - D\n", out)
+
+    def test_non_list_authors_is_a_clean_error(self):
+        with self.assertRaises(ValueError):
+            tools.export_ris({
+                "bad2020": {"authors": 123, "title": "T",
+                            "type": "article", "year": 2020}
+            })
+        with self.assertRaises(ValueError):
+            tools.export_ris({
+                "bad2020": {"authors": ["Ok, A", 42], "title": "T",
+                            "type": "article", "year": 2020}
+            })
+
     def test_newlines_in_values_are_flattened(self):
         # A CR/LF inside a value must not inject a line break into
         # the RIS record (which would look like a new field).

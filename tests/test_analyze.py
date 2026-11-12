@@ -212,6 +212,41 @@ class TestAnalyzeTextQuality(unittest.TestCase):
         self.assertNotIn("█", text)
 
 
+class TestSplitSentences(unittest.TestCase):
+    """H-4: abbreviations and closing quotes must not split a sentence."""
+
+    def test_abbreviation_does_not_split(self):
+        # Sentences come back without their terminator: what matters
+        # is the count — "Dr." must not become a sentence of its own.
+        self.assertEqual(
+            tools._split_sentences(
+                "Dr. Budi datang ke kampus. Ia membawa buku."),
+            ["Dr. Budi datang ke kampus", "Ia membawa buku"])
+        self.assertEqual(
+            len(tools._split_sentences(
+                "Prof. Sari dan Drs. Andi membahas dst. dan dll. "
+                "No. 5 sudah dibaca kemarin. Hasilnya bagus.")),
+            2)
+
+    def test_closing_quote_belongs_to_its_sentence(self):
+        self.assertEqual(
+            tools._split_sentences(
+                "'Jangan!' Begitu katanya. Lalu pergi."),
+            ["'Jangan!'", "Begitu katanya", "Lalu pergi"])
+
+    def test_normal_text_is_unchanged(self):
+        text = ("Penelitian ini memakai metode survei. Data dikumpulkan "
+                "melalui kuesioner. Hasilnya dianalisis dengan statistik "
+                "deskriptif.")
+        self.assertEqual(len(tools._split_sentences(text)), 3)
+
+    def test_ellipsis_and_questions_still_split(self):
+        self.assertEqual(
+            len(tools._split_sentences(
+                "Apakah ini benar? Ya, tentu saja... Lalu ia pergi.")),
+            3)
+
+
 class TestCheckStyle(unittest.TestCase):
     def test_clean_sample_texts_pass(self):
         base = Path(__file__).resolve().parent.parent

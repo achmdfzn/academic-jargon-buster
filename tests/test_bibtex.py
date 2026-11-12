@@ -72,6 +72,49 @@ class TestBibTeXExport(unittest.TestCase):
         self.assertIn(r"booktitle = {Usability Evaluation in Industry (Taylor \& Francis)},", out)
         self.assertIn("pages = {189--194},", out)
 
+    def test_string_authors_becomes_one_author(self):
+        # H-2: a lone author string is exported as one author, not
+        # one AU line per character.
+        out = tools.export_bibtex({
+            "solo2020": {"authors": "Doe, Jane", "title": "Solo",
+                         "type": "article", "year": 2020}
+        })
+        self.assertIn("author = {Doe, Jane},", out)
+        self.assertEqual(out.count("author ="), 1)  # one author, not one per character
+
+    def test_non_list_authors_is_a_clean_error(self):
+        with self.assertRaises(ValueError):
+            tools.export_bibtex({
+                "bad2020": {"authors": 123, "title": "T",
+                            "type": "article", "year": 2020}
+            })
+        with self.assertRaises(ValueError):
+            tools.export_bibtex({
+                "bad2020": {"authors": ["Ok, A", 42], "title": "T",
+                            "type": "article", "year": 2020}
+            })
+
+    def test_volume_issue_year_are_escaped_and_key_sanitized(self):
+        # N-5: the auditor's examples — raw & _ % in volume/issue/
+        # year break a LaTeX compile, and braces in a key break the
+        # entry header.
+        out = tools.export_bibtex({
+            "k{1}": {"authors": ["A, B"], "title": "T",
+                     "type": "article", "volume": "12 & 3",
+                     "issue": "1_2", "year": "2020%"}
+        })
+        self.assertIn("@article{k-1,", out)
+        self.assertIn("volume = {12 \\& 3},", out)
+        self.assertIn("number = {1\\_2},", out)
+        self.assertIn("year = {2020\\%},", out)
+
+    def test_bibtex_pages_normalizes_dashes(self):
+        # N-6: en dash / em dash become "--" like _ris_pages.
+        self.assertEqual(tools._bibtex_pages("189–194"), "189--194")
+        self.assertEqual(tools._bibtex_pages("189—194"), "189--194")
+        self.assertEqual(tools._bibtex_pages("189--194"), "189--194")
+        self.assertEqual(tools._bibtex_pages("189-194"), "189--194")
+
     def test_unknown_type_becomes_misc(self):
         out = tools.export_bibtex({
             "weird2020": {
@@ -110,7 +153,7 @@ class TestBibTeXExport(unittest.TestCase):
                 "doi": "10.1/x\r\ny",
             }
         })
-        self.assertIn("@article{aneh 2020,", out)
+        self.assertIn("@article{aneh-2020,", out)  # key sanitized: no whitespace
         self.assertIn('author = {A B},', out)
         self.assertIn('title = {Judul baris kedua},', out)
         self.assertIn('journal = {Jurnal  X},', out)

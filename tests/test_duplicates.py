@@ -190,6 +190,86 @@ class TestFindDuplicates(unittest.TestCase):
         self.assertIn("Tidak ada kalimat yang berulang", clean)
 
 
+class TestSelfMatchOver100k(unittest.TestCase):
+    """B-2: a run over 100,000 characters must still recognise itself.
+
+    The stored text is the canonical form — stripped, then cut to
+    100,000 characters — and the stored hash is the hash of that
+    same form. Before this fix save hashed text[:100k].strip() while
+    find_duplicates hashed text.strip()[:100k], so a long run with
+    whitespace at the ends (or a space at character 100,000)
+    matched its own saved copy 400 times.
+    """
+
+    def _long_distinct_text(self):
+        # 400 sentences, each built from words unique to it, so no
+        # sentence resembles another: within-text matches are 0 and
+        # any match can only come from the saved run itself.
+        sents = [" ".join(f"kata{i}_{j}" for j in range(30)) + "."
+                 for i in range(400)]
+        return "  \n" + " ".join(sents) + "\n\n"
+
+    def test_long_text_does_not_match_itself(self):
+        text = self._long_distinct_text()
+        self.assertGreater(len(text), 100_000)
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            _save(db, text)
+            result = find_duplicates(text, db=db)
+            self.assertEqual(result["count"], 0)
+            self.assertEqual(result["checked"], 0)
+
+    def test_long_template_text_has_no_library_self_match(self):
+        # The auditor's repro: 400 near-identical template
+        # sentences. Within-text matches between the templates are
+        # real (the sentences ARE near-duplicates of each other),
+        # but none may point back at the run's own saved copy.
+        words = ["survei", "wawancara", "observasi", "eksperimen",
+                 "studi kasus", "analisis isi", "etnografi", "kuesioner"]
+        sents = []
+        for i in range(400):
+            sents.append(
+                f"Bagian {i} menguraikan {words[i % len(words)]} nomor "
+                f"{i} dengan pendekatan {words[(i + 3) % len(words)]} "
+                f"serta temuan {words[(i + 5) % len(words)]} yang relevan "
+                f"bagi {words[(i + 7) % len(words)]} dan implikasi "
+                f"{words[(i + 1) % len(words)]} untuk {words[(i + 2) % len(words)]} "
+                f"beserta saran {words[(i + 4) % len(words)]} bagi "
+                f"{words[(i + 6) % len(words)]} maupun rekomendasi "
+                f"{words[i % len(words)]} untuk {words[(i + 3) % len(words)]}. "
+                "Hasilnya dicatat dalam laporan akhir bab ini.")
+        text = "  \n" + " ".join(sents) + "\n\n"
+        self.assertGreater(len(text), 100_000)
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            rid = _save(db, text)
+            result = find_duplicates(text, db=db)
+            lib_matches = [d for d in result["duplicates"]
+                           if d["source_id"] == rid]
+            self.assertEqual(lib_matches, [])
+
+    def test_legacy_hash_run_still_excluded(self):
+        # A run saved by v1.25.2 (hash of text[:100k].strip()) must
+        # still be recognised as "itself" after the canonical form
+        # changed.
+        import hashlib
+        import sqlite3
+
+        text = self._long_distinct_text()
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            rid = _save(db, text)
+            legacy = hashlib.sha256(
+                text[:100_000].strip().encode("utf-8")).hexdigest()
+            conn = sqlite3.connect(db)
+            conn.execute("UPDATE analyses SET text_hash = ? WHERE id = ?",
+                         (legacy, rid))
+            conn.commit()
+            conn.close()
+            result = find_duplicates(text, db=db)
+            self.assertEqual(result["count"], 0)
+
+
 class TestDuplicatesMain(unittest.TestCase):
     def test_exit_codes_and_json(self):
         with tempfile.TemporaryDirectory() as tmp:

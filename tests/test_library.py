@@ -311,8 +311,52 @@ class LibraryTestCase(unittest.TestCase):
                             "authors": {"satu", "dua"}}
         with self.assertRaises(ValueError) as cm:
             save_analysis(TEXT, self._result(), bad_refs, db=self.db)
-        self.assertIn("tidak bisa disimpan", str(cm.exception))
+        # A set is not a list of names: the shape check rejects it
+        # before the JSON check would have.
+        self.assertIn("harus berupa daftar nama", str(cm.exception))
         self.assertEqual(list_analyses(db=self.db), [])
+
+    def test_save_rejects_non_dict_reference(self):
+        # H-3: a non-dict reference is a ValueError, not a bare
+        # AttributeError from deep inside the upsert — and nothing
+        # is written.
+        with self.assertRaises(ValueError):
+            save_analysis(TEXT, self._result(),
+                          {"aneh": "bukan dict"}, db=self.db)
+        self.assertEqual(list_analyses(db=self.db), [])
+
+    def test_save_rejects_bad_authors_shape(self):
+        # H-3 + H-2: authors as a number is caught at validation
+        # time, before any row is written.
+        bad_refs = dict(SAMPLE_REFS)
+        bad_refs["aneh"] = {"title": "Penulis angka",
+                            "authors": 123, "year": 2020}
+        with self.assertRaises(ValueError):
+            save_analysis(TEXT, self._result(), bad_refs, db=self.db)
+        self.assertEqual(list_analyses(db=self.db), [])
+
+    def test_import_rejects_bad_reference_shape(self):
+        # H-3: import_references validates before opening the DB.
+        with self.assertRaises(ValueError):
+            import_references({"aneh": "bukan dict"}, db=self.db)
+        with self.assertRaises(ValueError):
+            import_references(
+                {"aneh": {"title": "T", "authors": 123}}, db=self.db)
+        self.assertEqual(list_references(db=self.db), [])
+
+    def test_save_then_export_round_trip_with_string_authors(self):
+        # T-2: a reference saved with a lone author string exports
+        # cleanly as one author (BibTeX and RIS alike).
+        refs = {"solo2020": {"title": "Solo", "authors": "Doe, Jane",
+                             "type": "article", "year": 2020}}
+        save_analysis(TEXT, self._result(), refs, db=self.db)
+        exported = export_references(db=self.db)
+        # The library normalises a lone author string to [string]
+        # on save, like load_references does.
+        self.assertEqual(exported["solo2020"]["authors"], ["Doe, Jane"])
+        self.assertIn("author = {Doe, Jane},",
+                      tools.export_bibtex(exported))
+        self.assertIn("AU  - Doe, Jane", tools.export_ris(exported))
 
 
 class TestLibraryStats(unittest.TestCase):
@@ -413,6 +457,10 @@ class TestLibraryNiceToHave1252(unittest.TestCase):
             self.assertEqual(tools.library_stats(db=db)["runs"], 0)
             self.assertEqual(list_analyses(db=db), [])
             self.assertEqual(search_references("x", db=db), [])
+            # N-7: the three remaining read paths are read-only too.
+            self.assertIsNone(get_analysis(999, db=db))
+            self.assertEqual(list_references(db=db), [])
+            self.assertEqual(export_references(db=db), {})
             self.assertFalse(os.path.exists(db))
             self.assertFalse(os.path.exists(os.path.dirname(db)))
 

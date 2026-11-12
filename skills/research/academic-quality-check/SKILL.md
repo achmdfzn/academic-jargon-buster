@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
 description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
-version: 1.2.10
+version: 1.2.11
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -49,7 +49,7 @@ Four components, 25 points each, one score 0–100:
 | --- | --- | --- |
 | Jargon | Every jargon term in the text is found and explained (see `academic-jargon-buster`) | Always 25 — terms found are explained by construction, and no recognised jargon is neutral. The effective score floor is therefore 75 with no references and 38 with references (style 0 + citations 0 + DOI 0) |
 | Citations | `[cite:key]` / `\cite{key}` markers against the bibliography (see `citation-weaver`) | Proportional: 25 × (cited − missing) / cited — one missing marker out of two costs half (12.5); every marker missing scores 0 |
-| DOI verification | Every DOI in the bibliography against Crossref and OpenAlex | Every DOI that exists is found in at least one source; entries without a DOI do not count as failures. An `unverified` DOI (one source could not be checked) earns half credit (12.5) — not checked is not the same as confirmed fake |
+| DOI verification | Every DOI in the bibliography against Crossref and OpenAlex | Every DOI that exists is found in at least one source; entries without a DOI do not count as failures. A DOI is `missing` when a checked source returns 404 and no source errors — a Crossref 404 is already `missing` when OpenAlex was merely skipped for lack of a key (a skipped source does not shield a checked 404). Only a source error, or nothing checked at all, leaves a DOI `unverified`, and an `unverified` DOI earns half credit (12.5) — not checked is not the same as confirmed fake |
 | Style | Five stiff-prose signals (below) | All five signals clean |
 
 - **Without `--refs`, citation audit and DOI checks are skipped** (neutral 25 each) and the report says so.
@@ -60,7 +60,7 @@ Four components, 25 points each, one score 0–100:
 - **A folder instead of a file** — `analyze <folder>` analyzes every top-level `.txt`/`.md` file in the folder, in name order (case-insensitive; dotfiles are skipped), and prints a recap table (file, score, jargon, citations, DOI, style, duplicates) plus the average. `--refs`, `--no-verify`, `--save` (each run recorded with the file name as its title), `--duplicates`, `--db`, and `--json` all work; `--suggest` and `--title` are rejected for folders. With `--save --duplicates`, files analyzed earlier in the same run are already in the library, so a sentence repeated in a later chapter is flagged. A file that cannot be read is recorded with its error and the rest still run. An empty file is recorded the same way (`teks kosong`). A file with an error — unreadable, empty, a failed duplicates check, or a failed save — is left out of the folder average, so one bad chapter cannot drag the average down. In the interactive menu, Analisis Kualitas offers "Baca folder" as a third choice; the web UI has an "Analisis se-folder" section that uploads a whole folder (or several files).
 - **`--save`** records the run in the library (`--title` labels it, `--db` picks another database). The JSON result then carries `library_id`.
 - **`--json`** prints the raw result (`jargon`, `citations`, `doi_verification`, `style`, `quality_score`, `score_parts` — the four 25-point components — `recommendations`, `suggestions`, `duplicates` when `--duplicates` was passed). Per-file results in a folder `--json` carry `score_parts` too.
-- **Exit code is 1** when a citation is missing or a DOI is not found in either source, 0 otherwise. In the interactive menu, this is option 4, Analisis Kualitas.
+- **Exit code is 1** when a citation is missing or a DOI is not found in a checked source, 0 otherwise. In the interactive menu, this is option 4, Analisis Kualitas.
 
 ## Style check (`check_style`)
 

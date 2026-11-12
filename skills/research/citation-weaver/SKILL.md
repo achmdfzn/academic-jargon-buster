@@ -1,7 +1,7 @@
 ---
 name: citation-weaver
 description: "Weave citations into narrative text automatically."
-version: 1.5.2
+version: 1.5.3
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -62,10 +62,10 @@ python3 academic_tools.py cite --refs my-refs.json --verify
 
 - Each DOI is looked up in **Crossref and OpenAlex**; the table shows both columns and a verdict.
 - **`ok` if either source has it.** arXiv and dataset DOIs register with DataCite, not Crossref, so requiring both would flag real papers.
-- **`NOT FOUND` only when both sources answer 404.** A network error, a timeout, or a single checked source is `unverified`, not fake.
-- **Without `OPENALEX_API_KEY` the OpenAlex column reads `no key`** and a Crossref miss stays `unverified`. Set the key to check both.
+- **`NOT FOUND` when a checked source answers 404 and no source errors.** A network error or a timeout is `unverified`, not fake — but a skipped source (no OpenAlex key) does not shield a checked 404.
+- **Without `OPENALEX_API_KEY` the OpenAlex column reads `no key`** — but a Crossref miss is already `missing` then (a skipped source does not shield a checked 404); only a source error, or nothing checked at all, leaves a DOI `unverified`. Set the key to check both.
 - **References without a DOI are `no DOI`.** Use `--audit --check-links` for arXiv IDs and plain URLs.
-- Exit code is 1 only when a DOI is missing from both sources, 0 otherwise — safe for a CI step. Menu option 7 runs the same check.
+- Exit code is 1 only when a DOI is missing from a checked source, 0 otherwise — safe for a CI step. Menu option 7 runs the same check.
 
 ## Quality check (analyze)
 
@@ -87,7 +87,7 @@ python3 academic_tools.py cite --refs my-refs.json --export-bibtex --out my-refs
 # or print to stdout: omit --out
 ```
 
-Entry types follow the stored `type`: `article` → `@article`, `book` → `@book`, `conference` → `@inproceedings`, `chapter` → `@incollection`, anything else → `@misc`. Raw Crossref types are normalised first (`journal-article` → `article`, `book-chapter` → `chapter`, `proceedings-article` → `conference`); anything else unrecognised still becomes `@misc`. arXiv IDs become `eprint` + `archivePrefix`. Chapter page ranges split out of the venue into `pages = {189--194}`. LaTeX special characters (`& % $ # _ { } ~ ^ \`) are escaped — including in DOI, URL, and eprint fields. `--export-bibtex` and `--export-ris` together are rejected (exit 2). Only fields actually present are exported — a missing title simply means no title field, never an invented one. A sample export of the bundled bibliography lives in `demos/citation-weaver/references.bib`.
+Entry types follow the stored `type`: `article` → `@article`, `book` → `@book`, `conference` → `@inproceedings`, `chapter` → `@incollection`, anything else → `@misc`. Raw Crossref types are normalised first (`journal-article` → `article`, `book-chapter` → `chapter`, `proceedings-article` → `conference`); anything else unrecognised still becomes `@misc`. arXiv IDs become `eprint` + `archivePrefix`. Chapter page ranges split out of the venue into `pages = {189--194}` — en/em dashes in a page range are normalised to `--` first, so `189–194` also becomes `189--194`. LaTeX special characters (`& % $ # _ { } ~ ^ \`) are escaped in every string field — including DOI, URL, eprint, volume, issue, and year. A lone author string is exported as one author; a non-list `authors`, or a list holding a non-string, is a plain `ValueError` instead of a broken record. Keys are sanitised (braces, commas, and whitespace become `-`). `--export-bibtex` and `--export-ris` together are rejected (exit 2). Only fields actually present are exported — a missing title simply means no title field, never an invented one. A sample export of the bundled bibliography lives in `demos/citation-weaver/references.bib`.
 
 ## RIS export (v1.5.0)
 
@@ -99,7 +99,7 @@ python3 academic_tools.py cite --refs my-refs.json --export-ris --out my-refs.ri
 # or in the interactive menu: Citation Weaver option 8
 ```
 
-Record types follow the stored `type`: `article` → `JOUR`, `book` → `BOOK`, `conference` → `CONF`, `chapter` → `CHAP`, anything else → `GEN`. Raw Crossref types are normalised first (`journal-article` → `JOUR`, `book-chapter` → `CHAP`, `proceedings-article` → `CONF`); anything else unrecognised still becomes `GEN`. The bibliography key is kept as the `ID` line so the record can be traced back. Authors become one `AU` line each, the venue becomes `JO` (journal), `PB` (publisher), `T2` (proceedings / book title), or `N1` (note) depending on the type, and chapter page ranges split out of the venue into `SP` / `EP`. DOIs become `DO`, URLs become `UR`, arXiv IDs become an `https://arxiv.org/abs/…` URL line. Only fields actually present are exported — never an invented one. A sample export of the bundled bibliography lives in `demos/citation-weaver/references.ris`.
+Record types follow the stored `type`: `article` → `JOUR`, `book` → `BOOK`, `conference` → `CONF`, `chapter` → `CHAP`, anything else → `GEN`. Raw Crossref types are normalised first (`journal-article` → `JOUR`, `book-chapter` → `CHAP`, `proceedings-article` → `CONF`); anything else unrecognised still becomes `GEN`. The bibliography key is kept as the `ID` line so the record can be traced back. Authors become one `AU` line each — a lone author string is exported as one author; a non-list `authors`, or a list holding a non-string, is a plain `ValueError` instead of a broken record. The venue becomes `JO` (journal), `PB` (publisher), `T2` (proceedings / book title), or `N1` (note) depending on the type, and chapter page ranges split out of the venue into `SP` / `EP`. DOIs become `DO`, URLs become `UR`, arXiv IDs become an `https://arxiv.org/abs/…` URL line. Only fields actually present are exported — never an invented one. A sample export of the bundled bibliography lives in `demos/citation-weaver/references.ris`.
 
 ## Citation audit (v1.3.0)
 

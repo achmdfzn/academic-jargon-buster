@@ -114,18 +114,31 @@ class TestCalibration(unittest.TestCase):
             result = tools.detect_ai(text)
             self.assertGreater(result["ai_score"], 60, result)
 
+    def test_ai_like_texts_reach_the_ai_verdict(self):
+        # T-1: the calibration contract is a verdict, not just a
+        # number — every AI-like text has all 4 signals applicable,
+        # so none of them is capped and all reach the top band.
+        for text in AI_TEXTS:
+            result = tools.detect_ai(text)
+            self.assertEqual(
+                sum(1 for s in result["signals"].values()
+                    if s["applicable"]), 4, result)
+            self.assertFalse(result["verdict_capped"])
+            self.assertEqual(result["verdict"], "Kemungkinan besar AI")
+
     def test_calibration_texts_are_separated(self):
         human = [tools.detect_ai(t)["ai_score"] for t in HUMAN_TEXTS]
         ai = [tools.detect_ai(t)["ai_score"] for t in AI_TEXTS]
         self.assertLess(max(human), min(ai))
-        # The gap is wide on purpose: the bands (40 / 70) sit inside it.
+        # The gap is wide on purpose: the bands (40 / 60) sit inside it.
         self.assertLess(max(human), 40)
         self.assertGreater(min(ai), 60)
 
     def test_result_shape(self):
         result = tools.detect_ai(AI_1)
         self.assertEqual(set(result),
-                         {"ai_score", "verdict", "signals", "sentences",
+                         {"ai_score", "verdict", "verdict_capped",
+                          "verdict_capped_reason", "signals", "sentences",
                           "note"})
         self.assertEqual(set(result["signals"]),
                          {"burstiness", "template_phrases",
@@ -268,14 +281,19 @@ class TestEdgeCases(unittest.TestCase):
         self.assertEqual(tools.detect_ai(AI_1)["verdict"],
                          "Kemungkinan besar AI")
         # Uniform sentences + dense templates read as AI, even when short:
-        # the weak signals no longer dilute the two strong ones.
+        # the weak signals no longer dilute the two strong ones — but
+        # only two signals apply to this short text, so the verdict is
+        # capped at "Campuran" instead of "Kemungkinan besar AI".
         light = ("Teknologi informasi telah mengubah cara perusahaan beroperasi dalam satu dekade terakhir. "
                  "Perusahaan yang mengadopsi teknologi digital dapat meningkatkan efisiensi operasional mereka. "
                  "Selain itu, teknologi digital memungkinkan perusahaan menjangkau pasar yang lebih luas. "
                  "Dalam hal ini, transformasi digital menjadi kebutuhan bagi perusahaan modern. "
                  "Perusahaan harus berinvestasi dalam teknologi untuk tetap kompetitif di pasar global.")
         result = tools.detect_ai(light)
-        self.assertEqual(result["verdict"], "Kemungkinan besar AI")
+        self.assertGreaterEqual(result["ai_score"], 60)
+        self.assertTrue(result["verdict_capped"])
+        self.assertIn("2 dari 4", result["verdict_capped_reason"])
+        self.assertEqual(result["verdict"], "Campuran / tidak pasti")
         # Uniform sentences but no template phrases: honestly uncertain.
         mixed = ("Perusahaan teknologi itu berdiri pada tahun dua ribu lima belas di sebuah ruko kecil. "
                  "Pendirinya, seorang insinyur muda, memulai usaha dengan modal pinjaman dari keluarga dekat. "
@@ -311,6 +329,68 @@ class TestEdgeCases(unittest.TestCase):
     def test_unknown_lang_falls_back_to_id(self):
         result = tools.detect_ai(HUMAN_1, lang="xx")
         self.assertEqual(result["verdict"], "Kemungkinan besar manusia")
+
+
+class TestVerdictCap(unittest.TestCase):
+    """B-1: the top verdict needs a score >= 60 AND >= 3 signals.
+
+    A short text has only burstiness + template phrases applicable;
+    stiff human prose trips both, so the score is honest but the
+    verdict is capped at "Campuran / tidak pasti".
+    """
+
+    METHODS_PARAGRAPH = (
+        "Penelitian ini menggunakan metode survei. "
+        "Data dikumpulkan melalui kuesioner yang disebarkan kepada responden. "
+        "Selain itu, wawancara dilakukan dengan beberapa informan kunci. "
+        "Data yang terkumpul dianalisis menggunakan statistik deskriptif. "
+        "Secara keseluruhan, metode ini dipilih karena sesuai dengan "
+        "tujuan penelitian.")
+
+    def test_human_methods_paragraph_is_capped(self):
+        result = tools.detect_ai(self.METHODS_PARAGRAPH)
+        # The score is not hidden: 80.5 is honestly high.
+        self.assertGreaterEqual(result["ai_score"], 60)
+        self.assertEqual(
+            sum(1 for s in result["signals"].values()
+                if s["applicable"]), 2)
+        self.assertTrue(result["verdict_capped"])
+        self.assertIn("2 dari 4", result["verdict_capped_reason"])
+        self.assertEqual(result["verdict"], "Campuran / tidak pasti")
+
+    def test_uncapped_ai_verdict_has_no_reason(self):
+        result = tools.detect_ai(AI_1)
+        self.assertFalse(result["verdict_capped"])
+        self.assertIsNone(result["verdict_capped_reason"])
+
+    def test_too_short_is_not_capped(self):
+        result = tools.detect_ai("Ini teks pendek sekali.")
+        self.assertFalse(result["verdict_capped"])
+        self.assertIsNone(result["verdict_capped_reason"])
+
+    def test_capped_reason_shows_in_format(self):
+        out = tools.format_detect(tools.detect_ai(self.METHODS_PARAGRAPH))
+        self.assertIn("Campuran / tidak pasti", out)
+        self.assertIn("hanya 2 dari 4 sinyal", out)
+
+    def test_capped_reason_in_english(self):
+        # The same shape in English: 5 uniform sentences, two
+        # English template phrases, under 100 words — only 2 signals
+        # apply, so the verdict is capped at Mixed / uncertain.
+        text = ("This study uses a survey method. "
+                "Data were collected through a questionnaire distributed to "
+                "the respondents. "
+                "Moreover, interviews were conducted with several key "
+                "informants. "
+                "The collected data were analyzed using descriptive "
+                "statistics. "
+                "In conclusion, this method was chosen because it fits the "
+                "purpose of the study.")
+        result = tools.detect_ai(text, lang="en")
+        self.assertGreaterEqual(result["ai_score"], 60)
+        self.assertTrue(result["verdict_capped"])
+        self.assertIn("only 2 of 4 signals", result["verdict_capped_reason"])
+        self.assertEqual(result["verdict"], "Mixed / uncertain")
 
 
 class TestFormatDetect(unittest.TestCase):
@@ -363,7 +443,8 @@ class TestDetectMain(unittest.TestCase):
         data = json.loads(out)
         self.assertEqual(data["ai_score"], 78.9)
         self.assertEqual(set(data),
-                         {"ai_score", "verdict", "signals", "sentences",
+                         {"ai_score", "verdict", "verdict_capped",
+                          "verdict_capped_reason", "signals", "sentences",
                           "note"})
 
     def test_file_input(self):
@@ -410,8 +491,8 @@ class TestDetectMain(unittest.TestCase):
         with redirect_stdout(buf):
             code = tools.main(["--version"])
         self.assertEqual(code, 0)
-        self.assertIn("ai_detector 1.0.0", buf.getvalue())
-        self.assertIn("academic_tools.py 1.26.0", buf.getvalue())
+        self.assertIn("ai_detector 1.0.1", buf.getvalue())
+        self.assertIn("academic_tools.py 1.26.1", buf.getvalue())
 
 
 class TestDetectMenu(unittest.TestCase):

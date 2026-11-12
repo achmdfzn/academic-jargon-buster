@@ -8,6 +8,7 @@ import http.client
 import io
 import json
 import os
+import socket
 import sys
 import tempfile
 import threading
@@ -898,3 +899,237 @@ class TestServeNiceToHave1252(unittest.TestCase):
         self.assertIn("esc(labels[s.pattern] || s.pattern)", html)
         self.assertIn("num(res.quality_score, 100)", html)
         self.assertIn("num(e.quality_score, 100)", html)
+
+
+class TestServeHardening1261(unittest.TestCase):
+    """v1.26.1: IPv6 loopback, quoted boundaries, error headers,
+    quiet client aborts, socket timeout, thread cap end-to-end."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.server = tools.make_server("127.0.0.1", 0)
+        cls.thread = threading.Thread(
+            target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        host, port = cls.server.server_address[:2]
+        cls.base = f"http://{host}:{port}"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def _headers(self, conn, method, path, body=None, headers=None):
+        conn.request(method, path, body=body, headers=headers or {})
+        resp = conn.getresponse()
+        data = resp.read()
+        return resp, data
+
+    def test_make_server_ipv6_loopback(self):
+        # H-1: ::1 binds on a machine with IPv6 — or fails with a
+        # clean ValueError on one without. A socket.gaierror must
+        # never escape.
+        try:
+            server = tools.make_server("::1", 0)
+        except ValueError as e:
+            self.assertIn("IPv6", str(e))
+        else:
+            try:
+                self.assertEqual(server.address_family, socket.AF_INET6)
+            finally:
+                server.server_close()
+
+    def test_ipv6_bind_failure_is_clean_value_error(self):
+        # H-1: the OSError path, forced with a mock so the test does
+        # not depend on the machine having no IPv6.
+        with patch.object(tools, "_BoundedThreadingHTTPServer6",
+                          side_effect=OSError("no ipv6")):
+            with self.assertRaises(ValueError) as cm:
+                tools.make_server("::1", 0)
+            self.assertEqual(str(cm.exception),
+                             "IPv6 tidak didukung di mesin ini")
+
+    def test_serve_ipv6_without_ipv6_exits_1_cleanly(self):
+        # H-1: the CLI path — main() turns the ValueError into a
+        # plain stderr message and exit 1, never a traceback.
+        err = io.StringIO()
+        with patch.object(tools, "_BoundedThreadingHTTPServer6",
+                          side_effect=OSError("no ipv6")):
+            with redirect_stderr(err):
+                code = tools.main(["serve", "--host", "::1",
+                                   "--port", "0"])
+        self.assertEqual(code, 1)
+        self.assertIn("IPv6 tidak didukung", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+
+    def test_quoted_boundary_with_semicolon(self):
+        # N-1: a quoted boundary containing ';' must survive intact.
+        host, port = self.server.server_address[:2]
+        conn = http.client.HTTPConnection(host, port, timeout=10)
+        body = (b'--a;b\r\nContent-Disposition: form-data; name="files"; '
+                b'filename="a.txt"\r\nContent-Type: text/plain\r\n\r\n'
+                b"Penelitian memakai metode survei dan analisis data."
+                b"\r\n--a;b--\r\n")
+        try:
+            resp, data = self._headers(
+                conn, "POST", "/api/analyze-folder", body=body,
+                headers={"Content-Type":
+                         'multipart/form-data; boundary="a;b"'})
+        finally:
+            conn.close()
+        self.assertEqual(resp.status, 200)
+        res = json.loads(data)
+        self.assertEqual(res["folder"]["count"], 1)
+
+    def test_unsupported_methods_get_501_with_security_headers(self):
+        # N-2: the stdlib 501 page carries the same three headers.
+        host, port = self.server.server_address[:2]
+        for method in ("PUT", "DELETE", "OPTIONS", "HEAD"):
+            conn = http.client.HTTPConnection(host, port, timeout=10)
+            try:
+                resp, _ = self._headers(conn, method, "/api/detect",
+                                        body=b"{}")
+            finally:
+                conn.close()
+            with self.subTest(method=method):
+                self.assertEqual(resp.status, 501)
+                self.assertIsNotNone(
+                    resp.getheader("Content-Security-Policy"))
+                self.assertEqual(
+                    resp.getheader("X-Content-Type-Options"), "nosniff")
+                self.assertEqual(
+                    resp.getheader("X-Frame-Options"), "DENY")
+
+    def test_security_headers_on_error_responses(self):
+        # 400, 413, and 500 JSON errors carry the same three headers
+        # as a 200.
+        host, port = self.server.server_address[:2]
+        cases = []
+        # 400: empty text.
+        cases.append(("POST", "/api/analyze",
+                      json.dumps({"text": ""}).encode(),
+                      {"Content-Type": "application/json"}, 400))
+        # 413: oversize body.
+        cases.append(("POST", "/api/analyze",
+                      json.dumps({"text": "x" * (tools._MAX_BODY + 1)})
+                      .encode(),
+                      {"Content-Type": "application/json"}, 413))
+        for method, path, body, headers, want in cases:
+            conn = http.client.HTTPConnection(host, port, timeout=10)
+            try:
+                resp, _ = self._headers(conn, method, path, body=body,
+                                        headers=headers)
+            finally:
+                conn.close()
+            with self.subTest(status=want):
+                self.assertEqual(resp.status, want)
+                self.assertIsNotNone(
+                    resp.getheader("Content-Security-Policy"))
+                self.assertEqual(
+                    resp.getheader("X-Content-Type-Options"), "nosniff")
+                self.assertEqual(
+                    resp.getheader("X-Frame-Options"), "DENY")
+        # 500: a handler crash is honest JSON, still with headers.
+        with patch.object(tools, "detect_ai",
+                          side_effect=RuntimeError("boom")):
+            conn = http.client.HTTPConnection(host, port, timeout=10)
+            try:
+                resp, data = self._headers(
+                    conn, "POST", "/api/detect",
+                    body=json.dumps({"text": TEXT}).encode(),
+                    headers={"Content-Type": "application/json"})
+            finally:
+                conn.close()
+        self.assertEqual(resp.status, 500)
+        self.assertNotIn("Traceback", data.decode())
+        self.assertIsNotNone(resp.getheader("Content-Security-Policy"))
+        self.assertEqual(resp.getheader("X-Content-Type-Options"),
+                         "nosniff")
+        self.assertEqual(resp.getheader("X-Frame-Options"), "DENY")
+
+    def test_handle_error_swallows_client_abort(self):
+        # N-3: process_request_thread calls the SERVER's
+        # handle_error, not the handler's — a broken pipe or reset
+        # writes nothing to stderr; a real error still logs.
+        server = tools.make_server("127.0.0.1", 0)
+        try:
+            for exc_type in (BrokenPipeError, ConnectionResetError):
+                err = io.StringIO()
+                with patch("sys.exc_info",
+                           return_value=(exc_type, exc_type(), None)):
+                    with redirect_stderr(err):
+                        server.handle_error(None, ("127.0.0.1", 1))
+                self.assertEqual(err.getvalue(), "", exc_type)
+            err = io.StringIO()
+            with patch("sys.exc_info",
+                       return_value=(ValueError, ValueError("x"), None)):
+                with redirect_stderr(err):
+                    server.handle_error(None, ("127.0.0.1", 1))
+            self.assertIn("Exception occurred during processing",
+                          err.getvalue())
+        finally:
+            server.server_close()
+
+    def test_handler_sets_socket_timeout(self):
+        # N-4: every connection gets a 30-second timeout, so a
+        # stalled client cannot hold a handler slot forever.
+        import socket
+
+        handler = object.__new__(tools._UIHandler)
+        handler.request = socket.socket()
+        try:
+            tools._UIHandler.setup(handler)
+            self.assertEqual(handler.request.gettimeout(), 30)
+        finally:
+            handler.request.close()
+
+    def test_js_detect_band_is_capped(self):
+        # B-1 (web UI): the AI band is 60, and a capped verdict is
+        # forced to the mixed band with its reason shown.
+        html = tools.WEB_UI_HTML
+        self.assertIn("function detectBand(score, lang, capped)", html)
+        self.assertIn("score >= 60", html)
+        self.assertIn("res.verdict_capped", html)
+        self.assertIn("esc(res.verdict_capped_reason)", html)
+
+    def test_thread_cap_end_to_end_with_stalled_connections(self):
+        # The 8-slot cap, end to end: 8 connections that never
+        # finish their body hold all 8 slots, so a 9th request gets
+        # no answer within 2 seconds; closing one stalled
+        # connection frees a slot and the 9th request answers.
+        # (The in-process semaphore test in TestServe pins the cap
+        # itself; this test pins that the cap actually gates
+        # requests.)
+        server = tools.make_server("127.0.0.1", 0)
+        thread = threading.Thread(target=server.serve_forever,
+                                  daemon=True)
+        thread.start()
+        host, port = server.server_address[:2]
+        stalled = []
+        try:
+            for _ in range(8):
+                s = http.client.socket.create_connection(
+                    (host, port), timeout=10)
+                s.sendall(b"POST /api/analyze HTTP/1.1\r\n"
+                          b"Host: x\r\n"
+                          b"Content-Type: application/json\r\n"
+                          b"Content-Length: 100000\r\n\r\n"
+                          b'{"text": "abc')
+                stalled.append(s)
+            time.sleep(0.5)  # let all 8 handlers block on the body
+            conn = http.client.HTTPConnection(host, port, timeout=2)
+            try:
+                conn.request("GET", "/api/prompts")
+                with self.assertRaises((TimeoutError, OSError)):
+                    conn.getresponse()
+            finally:
+                conn.close()
+            stalled.pop().close()  # free one slot
+            status, _ = _request(f"http://{host}:{port}", "GET",
+                                 "/api/prompts")
+            self.assertEqual(status, 200)
+        finally:
+            for s in stalled:
+                s.close()
+            server.shutdown()
+            server.server_close()

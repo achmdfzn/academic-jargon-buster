@@ -262,7 +262,8 @@ class TestVerifyDois(unittest.TestCase):
 
     A DOI counts as real when at least one source has it, because arXiv
     and datasets register with DataCite, not Crossref. 'missing' needs
-    both sources to answer 404.
+    a checked source to answer 404 with no source erroring — a skipped
+    source (no OpenAlex key) does not shield a checked 404.
     """
 
     def _fake_lookup(self, crossref_ok: bool, openalex_ok: bool):
@@ -303,14 +304,30 @@ class TestVerifyDois(unittest.TestCase):
                 result = tools.verify_reference_dois(self._refs())
         self.assertEqual(result["lecun2015"]["verdict"], "missing")
 
-    def test_openalex_skipped_without_key_leaves_unverified(self):
+    def test_crossref_404_without_key_is_missing(self):
+        # H-5: a checked source saying 404 is already "missing" when
+        # the other source was merely skipped for lack of a key — a
+        # skipped source does not shield a checked 404.
         with patch.dict(os.environ, {"OPENALEX_API_KEY": ""}):
             with patch.object(tools, "_lookup_get",
                               side_effect=self._fake_lookup(False, False)) as get:
                 result = tools.verify_reference_dois(self._refs())
         self.assertEqual(result["lecun2015"]["openalex"], "skipped")
-        self.assertEqual(result["lecun2015"]["verdict"], "unverified")
+        self.assertEqual(result["lecun2015"]["crossref"], "not-found")
+        self.assertEqual(result["lecun2015"]["verdict"], "missing")
         self.assertEqual(get.call_count, 1)  # Crossref only
+
+    def test_error_in_one_source_blocks_missing(self):
+        # One source erroring means the DOI could not be checked
+        # properly, even if the other source says 404.
+        def fake(url, **kwargs):
+            if "api.crossref.org" in url:
+                raise tools.LookupNotFoundError("404")
+            raise tools.LookupError("offline")
+        with patch.dict(os.environ, {"OPENALEX_API_KEY": "test"}):
+            with patch.object(tools, "_lookup_get", side_effect=fake):
+                result = tools.verify_reference_dois(self._refs())
+        self.assertEqual(result["lecun2015"]["verdict"], "unverified")
 
     def test_reference_without_doi_is_no_doi(self):
         result = tools.verify_reference_dois(self._refs(doi=""))

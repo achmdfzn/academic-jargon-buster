@@ -99,6 +99,7 @@ import io
 import json
 import os
 import re
+import socket
 import sqlite3
 import sys
 import threading
@@ -108,13 +109,13 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.26.0"
+__version__ = "1.26.1"
 JARGON_VERSION = "1.0.5"
-CITATION_VERSION = "1.5.2"
+CITATION_VERSION = "1.5.3"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.10"
-DETECTOR_VERSION = "1.0.0"
-CLI_VERSION = "1.17.0"
+QUALITY_VERSION = "1.2.11"
+DETECTOR_VERSION = "1.0.1"
+CLI_VERSION = "1.17.1"
 
 # ======================================================================
 # Jargon Buster
@@ -958,18 +959,21 @@ def _doi_verdict(entry: dict) -> str:
     """Combine both sources into ok / missing / unverified / no-doi.
 
     A DOI only needs to exist in one source to be real: arXiv and
-    datasets register with DataCite, not Crossref. 'missing' therefore
-    needs both sources to say 404; one source alone is 'unverified'.
-    Scoring treats 'unverified' as half credit (12.5 per DOI): a DOI
-    that could not be checked is not the same as a confirmed fake.
+    datasets register with DataCite, not Crossref. 'missing' needs
+    a checked source to say 404 with no source erroring — so a
+    Crossref 404 is already 'missing' when OpenAlex was merely
+    skipped for lack of a key. 'unverified' is for when a source
+    errored, or when nothing was actually checked. Scoring treats
+    'unverified' as half credit (12.5 per DOI): a DOI that could
+    not be checked is not the same as a confirmed fake.
     """
     if not entry["doi"]:
         return "no-doi"
-    checked = [s for s in (entry["crossref"], entry["openalex"])
-               if s in ("ok", "not-found")]
+    statuses = (entry["crossref"], entry["openalex"])
+    checked = [s for s in statuses if s in ("ok", "not-found")]
     if "ok" in checked:
         return "ok"
-    if len(checked) == 2:
+    if "not-found" in checked and "error" not in statuses:
         return "missing"
     return "unverified"
 
@@ -979,8 +983,9 @@ def verify_reference_dois(references: dict) -> dict:
 
     Returns {key: {doi, crossref, openalex, verdict}}. OpenAlex has
     required a key since February 2026; without OPENALEX_API_KEY its
-    column is 'skipped' and a DOI missing from Crossref alone stays
-    'unverified' instead of being called fake.
+    column is 'skipped' — but a Crossref 404 is already 'missing'
+    then (a skipped source does not shield a checked 404); only a
+    source error, or nothing checked at all, leaves 'unverified'.
     """
     openalex_available = bool(os.environ.get("OPENALEX_API_KEY", "").strip())
     result = {}
@@ -1346,10 +1351,43 @@ def _flat(value) -> str:
     return str(value).replace("\r", " ").replace("\n", " ")
 
 
+def _authors_list(authors, key: str) -> list:
+    """Authors as a list of strings: a lone string becomes [string].
+
+    Anything else — a number, a list holding a non-string — is a
+    ValueError, never a character-by-character export (H-2) or a
+    bare TypeError downstream.
+    """
+    if authors is None:
+        return []
+    if isinstance(authors, str):
+        return [authors]
+    if isinstance(authors, (list, tuple)):
+        for a in authors:
+            if not isinstance(a, str):
+                raise ValueError(
+                    f"authors referensi '{key}' harus berupa daftar "
+                    "nama (string)")
+        return list(authors)
+    raise ValueError(
+        f"authors referensi '{key}' harus berupa daftar nama")
+
+
+def _bibtex_key(key: str) -> str:
+    """A BibTeX key cannot hold braces, commas, or whitespace."""
+    return re.sub(r"[{},\s]+", "-", _flat(key)).strip("-")
+
+
 def _bibtex_pages(pages) -> str:
-    """Normalise a pages value to BibTeX form, e.g. '189-194' -> '189--194'."""
+    """Normalise a pages value to BibTeX form, e.g. '189-194' -> '189--194'.
+
+    Dashes are normalised first ('--', en dash, em dash all become
+    a single '-'), like _ris_pages, so '189–194' becomes '189--194'
+    instead of passing the en dash through untouched.
+    """
     p = _flat(pages).replace("pp. ", "").strip()
-    return p.replace("--", "-").replace("-", "--")
+    p = p.replace("--", "-").replace("–", "-").replace("—", "-")
+    return p.replace("-", "--")
 
 
 _REF_TYPE_ALIASES = {
@@ -1376,7 +1414,7 @@ def _bibtex_entry(key: str, ref: dict) -> str:
     entry_type = _BIBTEX_TYPES.get(
         _norm_ref_type(ref.get("type", "")), "misc")
     fields = []
-    authors = ref.get("authors") or []
+    authors = _authors_list(ref.get("authors"), key)
     if authors:
         fields.append(("author", " and ".join(_bibtex_escape(_flat(a)) for a in authors)))
     if ref.get("title"):
@@ -1398,13 +1436,13 @@ def _bibtex_entry(key: str, ref: dict) -> str:
     elif venue:
         fields.append(("note", _bibtex_escape(venue)))
     if ref.get("volume"):
-        fields.append(("volume", _flat(ref["volume"])))
+        fields.append(("volume", _bibtex_escape(_flat(ref["volume"]))))
     if ref.get("issue"):
-        fields.append(("number", _flat(ref["issue"])))
+        fields.append(("number", _bibtex_escape(_flat(ref["issue"]))))
     if pages:
         fields.append(("pages", _bibtex_pages(pages)))
     if ref.get("year"):
-        fields.append(("year", _flat(ref["year"])))
+        fields.append(("year", _bibtex_escape(_flat(ref["year"]))))
     if ref.get("doi"):
         fields.append(("doi", _bibtex_escape(_flat(ref["doi"]))))
     if ref.get("arxiv"):
@@ -1412,7 +1450,7 @@ def _bibtex_entry(key: str, ref: dict) -> str:
         fields.append(("archivePrefix", "arXiv"))
     if ref.get("url"):
         fields.append(("url", _bibtex_escape(_flat(ref["url"]))))
-    lines = [f"@{entry_type}{{{_flat(key)},"]
+    lines = [f"@{entry_type}{{{_bibtex_key(key)},"]
     for name, value in fields:
         lines.append(f"  {name} = {{{value}}},")
     lines.append("}")
@@ -1460,7 +1498,7 @@ def _ris_entry(key: str, ref: dict) -> str:
     entry_type = _RIS_TYPES.get(
         _norm_ref_type(ref.get("type", "")), "GEN")
     lines = [f"TY  - {entry_type}", f"ID  - {_flat(key)}"]
-    authors = ref.get("authors") or []
+    authors = _authors_list(ref.get("authors"), key)
     for a in authors:
         lines.append(f"AU  - {_flat(a)}")
     if ref.get("title"):
@@ -1705,10 +1743,39 @@ _PASSIVE_VERBS = (
 _YANG_MANA_RE = re.compile(r"\byang mana\b|\bdimana\b", re.IGNORECASE)
 
 
+# Abbreviations whose period never ends a sentence. Protected with
+# a private-use placeholder before splitting, restored after.
+_ABBREVIATIONS = ("Dr.", "Prof.", "Drs.", "dkk.", "dst.", "dll.",
+                  "e.g.", "No.")
+_ABBREV_PLACEHOLDER = "\ue000"
+
+
 def _split_sentences(text: str) -> list[str]:
-    """Sentences as strings; splits on . ! ? followed by space/end."""
-    parts = re.split(r"[.!?]+(?:\s+|$)", text.strip())
-    return [p.strip() for p in parts if p.strip()]
+    """Sentences as strings; splits on . ! ? followed by space/end.
+
+    A closing quote (or parenthesis) after the terminator belongs
+    to the sentence that just ended, so "'Jangan!' Begitu ..." is
+    three sentences, not two.
+    """
+    protected = text.strip()
+    for abbr in _ABBREVIATIONS:
+        protected = protected.replace(abbr, abbr[:-1] + _ABBREV_PLACEHOLDER)
+    # Scan for sentence ends instead of splitting: a closing quote
+    # (or parenthesis) after the terminator belongs to the sentence
+    # that just ended, so it must be kept, not consumed as a
+    # delimiter. A trailing fragment without a terminator is kept
+    # as its own sentence.
+    out: list[str] = []
+    pos = 0
+    for m in re.finditer(r"[^.!?]*[.!?]+['\"”’)]?", protected):
+        piece = m.group(0).strip().rstrip(".!?")
+        if piece:
+            out.append(piece)
+        pos = m.end()
+    tail = protected[pos:].strip()
+    if tail:
+        out.append(tail)
+    return [s.replace(_ABBREV_PLACEHOLDER, ".") for s in out]
 
 
 def _sentence_word_counts(text: str) -> list[int]:
@@ -3073,6 +3140,20 @@ def _overlap_gate(words_a: set, words_b: set) -> bool:
     return _word_overlap(words_a, words_b) >= 0.5
 
 
+def _is_own_run(run: dict, text_hash: str, legacy_hash: str) -> bool:
+    """True when a saved run is the text's own copy.
+
+    Primary: the stored text_hash column matches the canonical
+    hash, or the v1.25.2 legacy hash (truncate-then-strip). Fallback:
+    the stored text itself, hashed canonically, matches — for a run
+    saved with no hash, or by v1.25.1 with its full text.
+    """
+    stored = run.get("text_hash")
+    if stored in (text_hash, legacy_hash):
+        return True
+    return _stored_hash(run.get("text") or "") == text_hash
+
+
 def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
                     min_words: int = 6, past_runs=None) -> dict:
     """Find sentences in `text` that repeat the user's own saved drafts.
@@ -3081,9 +3162,10 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
     every sentence of every saved analysis in the library, plus against
     the other sentences of the text itself. A match is a normalized
     difflib ratio of at least `threshold`; only the best match per
-    sentence is reported. The text itself is never matched against its
-    own saved copy (same text, ignoring leading/trailing whitespace),
-    so re-analyzing a saved run does not flag every sentence. A
+    sentence is reported. The text itself is never matched against
+    its own saved copy: runs are excluded by their stored text_hash
+    (canonical hash, or the v1.25.2 legacy hash), so re-analyzing a
+    saved run — however long — does not flag every sentence. A
     word-overlap pre-filter (half the words of the shorter sentence
     shared) keeps the comparison fast.
 
@@ -3100,16 +3182,13 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
     sentences = [s for s in _split_sentences(text)
                  if len(s.split()) >= min_words]
     if past_runs is None:
-        # The hash is taken from the stored form of the text (see
-        # _MAX_STORED_TEXT): a run longer than the cap is stored
-        # truncated, so the comparison truncates the same way.
-        text_hash = hashlib.sha256(
-            text.strip()[:_MAX_STORED_TEXT].encode("utf-8")).hexdigest()
+        # Exclude the text's own saved copy by its stored hash —
+        # the canonical hash, or the v1.25.2 legacy hash for runs
+        # saved before the canonical form existed (see _is_own_run).
+        text_hash = _stored_hash(text)
+        legacy_hash = _legacy_stored_hash(text)
         past_runs = [r for r in _past_texts(db)
-                     if hashlib.sha256(
-                         r["text"].strip()[:_MAX_STORED_TEXT]
-                         .encode("utf-8")).hexdigest()
-                     != text_hash]
+                     if not _is_own_run(r, text_hash, legacy_hash)]
     normalized = [_normalize_sentence(s) for s in sentences]
     word_sets = [set(n.split()) for n in normalized]
 
@@ -3401,6 +3480,9 @@ _DETECT_STRINGS = {
         "template_detail": "{count} frasa, {density}/100 kata",
         "lexical_detail": "TTR {ttr}, {unique}/{total} kata unik",
         "starter_detail": "'{starter}' x {count} ({share} kalimat)",
+        "capped": ("Kesimpulan dibatasi ke Campuran: hanya {n} dari 4 "
+                   "sinyal yang berlaku — skor tinggi dari dua sinyal "
+                   "keseragaman saja belum cukup untuk menyebut teks ini AI."),
     },
     "en": {
         "heading": "AI Detection",
@@ -3414,6 +3496,9 @@ _DETECT_STRINGS = {
         "template_detail": "{count} phrases, {density}/100 words",
         "lexical_detail": "TTR {ttr}, {unique}/{total} unique words",
         "starter_detail": "'{starter}' x {count} ({share} of sentences)",
+        "capped": ("Verdict capped at Mixed: only {n} of 4 signals "
+                   "apply — a high score from two uniformity signals "
+                   "alone is not enough to call this text AI."),
     },
 }
 
@@ -3478,8 +3563,13 @@ def detect_ai(text: str, lang: str = "id") -> dict:
       most common opening two words — 100 at a 0.50 share, 0 at 0.20.
       Needs 6+ sentences.
     The final ai_score (0-100) is the weighted mean of the applicable
-    signals only (weights renormalized). Verdict bands: >= 70 "likely
-    AI", 40-69 "mixed / uncertain", < 40 "likely human". Under 30
+    signals only (weights renormalized). Verdict bands: >= 60 "likely
+    AI" — but only when at least 3 of the 4 signals apply. A score
+    >= 60 from fewer than 3 applicable signals is capped at "mixed /
+    uncertain" (verdict_capped True, with a reason): two uniformity
+    signals alone cannot call a text AI — short methods prose trips
+    burstiness + template phrases with nothing else to check.
+    40-59 is "mixed / uncertain", < 40 "likely human". Under 30
     words the verdict is "too short" and ai_score is None — there is
     not enough text to judge. An empty text raises ValueError, like
     analyze_text_quality. The returned "note" is always present: this
@@ -3497,6 +3587,7 @@ def detect_ai(text: str, lang: str = "id") -> dict:
     if n_words < 30:
         return {"ai_score": None,
                 "verdict": _DETECTOR_VERDICTS[lang]["short"],
+                "verdict_capped": False, "verdict_capped_reason": None,
                 "signals": {}, "sentences": [], "note": note}
 
     signals: dict = {}
@@ -3580,9 +3671,21 @@ def detect_ai(text: str, lang: str = "id") -> dict:
                 if s["applicable"])
     weights = sum(s["weight"] for s in signals.values() if s["applicable"])
     ai_score = round(total / weights, 1) if weights else 0.0
+    n_applicable = sum(1 for s in signals.values() if s["applicable"])
     verdicts = _DETECTOR_VERDICTS[lang]
-    if ai_score >= 70:
+    verdict_capped = False
+    verdict_capped_reason = None
+    if ai_score >= 60 and n_applicable >= 3:
         verdict = verdicts["ai"]
+    elif ai_score >= 60:
+        # Capped: a high score from only two uniformity signals
+        # (burstiness + template phrases on a short text) is not
+        # enough to call a text AI.
+        verdict = verdicts["mixed"]
+        verdict_capped = True
+        verdict_capped_reason = _DETECT_STRINGS.get(
+            lang, _DETECT_STRINGS["id"])["capped"].format(
+                n=n_applicable)
     elif ai_score >= 40:
         verdict = verdicts["mixed"]
     else:
@@ -3598,6 +3701,8 @@ def detect_ai(text: str, lang: str = "id") -> dict:
                                            hits_per_sentence, modal)
 
     return {"ai_score": ai_score, "verdict": verdict,
+            "verdict_capped": verdict_capped,
+            "verdict_capped_reason": verdict_capped_reason,
             "signals": signals, "sentences": sent_scores, "note": note}
 
 
@@ -3612,6 +3717,9 @@ def format_detect(result: dict, lang: str = "id") -> str:
         lines.append(_bold(f"{s['score']}: {result['ai_score']}/100"))
         lines.append(_green(_bar(result["ai_score"], 100)))
         lines.append(f"{s['verdict']}: {result['verdict']}")
+        if result.get("verdict_capped") and result.get(
+                "verdict_capped_reason"):
+            lines.append(result["verdict_capped_reason"])
     lines.append("")
     lines.append(f"{s['signals']}:")
     for name, label in labels.items():
@@ -3859,6 +3967,34 @@ def _upsert_reference(conn: sqlite3.Connection, key: str, ref: dict,
 _MAX_STORED_TEXT = 100_000
 
 
+def _canonical_text(text: str) -> str:
+    """The stored form of a manuscript: stripped, then capped.
+
+    One canonical form, used everywhere a text is stored or hashed:
+    strip first, then truncate. The order matters — truncate-then-
+    strip and strip-then-truncate hash differently whenever the
+    100_000th character lands on whitespace.
+    """
+    return text.strip()[:_MAX_STORED_TEXT]
+
+
+def _stored_hash(text: str) -> str:
+    """SHA-256 of the canonical stored form of a text."""
+    return hashlib.sha256(
+        _canonical_text(text).encode("utf-8")).hexdigest()
+
+
+def _legacy_stored_hash(text: str) -> str:
+    """SHA-256 as stored by v1.25.2: truncate first, then strip.
+
+    Kept only so runs saved by v1.25.2 are still recognised as
+    their own text (see find_duplicates). New runs use
+    _stored_hash.
+    """
+    return hashlib.sha256(
+        text[:_MAX_STORED_TEXT].strip().encode("utf-8")).hexdigest()
+
+
 def save_analysis(text: str, result: dict,
                   references: dict | None = None,
                   title: str | None = None,
@@ -3871,10 +4007,16 @@ def save_analysis(text: str, result: dict,
 
     A reference that cannot be serialized to JSON raises ValueError
     here, before anything is written — never a bare TypeError from
-    deep inside the upsert. Only the first 100_000 characters of
-    the text are stored (see _MAX_STORED_TEXT).
+    deep inside the upsert. Only the canonical form of the text is
+    stored (see _canonical_text: stripped, then capped at 100_000
+    characters), and its hash is the canonical hash.
     """
-    text = text[:_MAX_STORED_TEXT]
+    text = _canonical_text(text)
+    if references is not None:
+        # Shape first (a non-dict reference is a ValueError, never
+        # a bare AttributeError from deep inside the upsert), before
+        # anything is written or any connection opened.
+        _validate_references(references)
     if references:
         for key, ref in references.items():
             try:
@@ -3903,7 +4045,7 @@ def save_analysis(text: str, result: dict,
              sum(1 for v in with_doi if v.get("verdict") == "ok"),
              len(with_doi), result["style"]["style_score"],
              result.get("suggestions", {}).get("count", 0),
-             hashlib.sha256(text.strip().encode("utf-8")).hexdigest(), text))
+             _stored_hash(text), text))
         analysis_id = cur.lastrowid
         if references:
             # Every reference enters the personal bibliography, not
@@ -3946,7 +4088,10 @@ def list_analyses(db: str | None = None, limit: int = 20) -> list[dict]:
 def get_analysis(analysis_id: int,
                  db: str | None = None) -> dict | None:
     """One run in full: the row, its cited reference keys, the text."""
-    conn = open_library(db)
+    try:
+        conn = open_library(db, create=False)
+    except FileNotFoundError:
+        return None
     try:
         row = conn.execute(
             "SELECT * FROM analyses WHERE id = ?",
@@ -3966,7 +4111,10 @@ def get_analysis(analysis_id: int,
 
 def list_references(db: str | None = None, limit: int = 20) -> list[dict]:
     """Personal bibliography, most recently added first."""
-    conn = open_library(db)
+    try:
+        conn = open_library(db, create=False)
+    except FileNotFoundError:
+        return []
     try:
         rows = conn.execute(
             """SELECT key, title, authors, year, doi, url, added_at, source
@@ -4005,8 +4153,11 @@ def import_references(refs: dict, db: str | None = None,
                       source: str = "import") -> dict:
     """Upsert a bibliography dict ({key: ref}) into the library.
 
-    Returns {"added": n, "updated": m}.
+    Returns {"added": n, "updated": m}. Shape is validated first —
+    a non-dict reference is a ValueError, never a bare AttributeError
+    from deep inside the upsert.
     """
+    _validate_references(refs)
     conn = open_library(db)
     counts = {"added": 0, "updated": 0}
     try:
@@ -4020,7 +4171,10 @@ def import_references(refs: dict, db: str | None = None,
 
 def export_references(db: str | None = None) -> dict:
     """The whole personal bibliography as a {key: ref} dict."""
-    conn = open_library(db)
+    try:
+        conn = open_library(db, create=False)
+    except FileNotFoundError:
+        return {}
     try:
         rows = conn.execute(
             "SELECT key, data FROM library_references ORDER BY key"
@@ -6495,10 +6649,12 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     return h;
   }
 
-  /* Pita skor AI: label dari angka, bukan karangan — ambang tetap.
-     Warnanya terbalik dari gauge kualitas: skor AI tinggi itu buruk. */
-  function detectBand(score, lang) {
-    if (score >= 70) return {color: "var(--bad)", label: lang === "en" ? "Likely AI" : "Kemungkinan besar AI"};
+  /* Pita skor AI: label dari angka, bukan karangan — ambang 60.
+     Bila server men-cap verdict (kurang dari 3 sinyal berlaku),
+     pita dipaksa ke Campuran apa pun skornya. Warnanya terbalik
+     dari gauge kualitas: skor AI tinggi itu buruk. */
+  function detectBand(score, lang, capped) {
+    if (!capped && score >= 60) return {color: "var(--bad)", label: lang === "en" ? "Likely AI" : "Kemungkinan besar AI"};
     if (score >= 40) return {color: "var(--warn)", label: lang === "en" ? "Mixed / uncertain" : "Campuran / tidak pasti"};
     return {color: "var(--accent)", label: lang === "en" ? "Likely human" : "Kemungkinan besar manusia"};
   }
@@ -6509,7 +6665,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       h += '<div class="card"><h2>Deteksi AI</h2><p>' + esc(res.verdict) + " — "
         + (lang === "en" ? "at least 30 words are needed to judge." : "butuh minimal 30 kata untuk menilai.") + "</p></div>";
     } else {
-      var band = detectBand(res.ai_score, lang);
+      var band = detectBand(res.ai_score, lang, res.verdict_capped);
       h += '<div class="card gauge-card"><h2>Deteksi AI</h2>'
         + '<p class="caption">' + (lang === "en" ? "Heuristic AI score 0–100 — an indication, not proof." : "Skor AI heuristik 0–100 — indikasi, bukan bukti.") + '</p>'
         + '<div class="gauge-body"><div class="gauge-wrap">'
@@ -6517,6 +6673,9 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         + '<circle class="gauge-track" cx="60" cy="60" r="52"></circle>'
         + '<circle class="gauge-arc" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="100" stroke-dashoffset="' + (100 - num(res.ai_score, 100)) + '" style="stroke:' + band.color + '"></circle>'
         + '</svg><div class="gauge-center"><span class="gauge-num">' + num(res.ai_score, 100) + '</span><span class="gauge-of">/ 100</span><span class="gauge-band">' + band.label + '</span></div></div>';
+      if (res.verdict_capped && res.verdict_capped_reason) {
+        h += '<p class="caption">' + esc(res.verdict_capped_reason) + "</p>";
+      }
       var labels = lang === "en"
         ? {burstiness: "Sentence-length variation", template_phrases: "Template phrases", lexical_diversity: "Lexical diversity", starter_repetition: "Repeated sentence starters"}
         : {burstiness: "Variasi panjang kalimat", template_phrases: "Frasa template", lexical_diversity: "Keragaman kosakata", starter_repetition: "Pengulangan awalan kalimat"};
@@ -7104,6 +7263,32 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
 
     protocol_version = "HTTP/1.1"
 
+    def setup(self):
+        # A stalled connection must not hold one of the 8 handler
+        # slots forever: 30 seconds, then the socket gives up.
+        super().setup()
+        self.connection.settimeout(30)
+
+    def send_error(self, code, message=None, explain=None):
+        # The stdlib error page is HTML without the security
+        # headers; send the same page with them — and keep a
+        # hostile method token out of the raw status line. The
+        # Content-Length matters: without it an HTTP/1.1 client
+        # waits forever for the body to end.
+        safe = (message or "").replace("\r", " ").replace("\n", " ")
+        body = ("<!DOCTYPE HTML><html><head><title>%d</title></head>"
+                "<body><h1>%d</h1></body></html>"
+                % (code, code)).encode("utf-8")
+        self.send_response(code, safe or None)
+        self.send_header("Content-Type", "text/html;charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self._security_headers()
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def version_string(self):
         # No "BaseHTTP/0.6 Python/3.12.3": the Server header must
         # not advertise the interpreter version.
@@ -7253,11 +7438,9 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         ctype = self.headers.get("Content-Type", "")
         if "multipart/form-data" not in ctype:
             raise ValueError("unggahan folder harus multipart/form-data")
-        boundary = None
-        for piece in ctype.split(";"):
-            piece = piece.strip()
-            if piece.startswith("boundary="):
-                boundary = piece[len("boundary="):].strip().strip('"')
+        # Quote-aware: a boundary like "a;b" must survive intact —
+        # a naive split(";") would cut it at the semicolon.
+        boundary = _multipart_param(ctype, "boundary")
         if not boundary:
             raise ValueError("boundary multipart tidak ditemukan")
         raw = _read_body(self, _MAX_UPLOAD_BODY, _DRAIN_UPLOAD_CAP,
@@ -7423,6 +7606,23 @@ class _BoundedThreadingHTTPServer(http.server.ThreadingHTTPServer):
         with self._slots:
             super().process_request_thread(request, client_address)
 
+    def handle_error(self, request, client_address):
+        # process_request_thread calls the SERVER's handle_error
+        # (not the handler's): a client that aborts mid-request
+        # (broken pipe / reset) is not a server error — swallow it
+        # instead of logging a traceback to stderr. Anything else
+        # still goes to the default handler, traceback and all.
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+            return
+        super().handle_error(request, client_address)
+
+
+class _BoundedThreadingHTTPServer6(_BoundedThreadingHTTPServer):
+    """The same capped server, for the IPv6 loopback (::1)."""
+
+    address_family = socket.AF_INET6
+
 
 def make_server(host: str = "127.0.0.1", port: int = 8000):
     """Build the local web UI server (port 0 picks a free port).
@@ -7434,7 +7634,17 @@ def make_server(host: str = "127.0.0.1", port: int = 8000):
         raise ValueError(
             "serve hanya boleh di localhost: host harus 127.0.0.1, "
             "localhost, atau ::1")
-    return _BoundedThreadingHTTPServer((host, port), _UIHandler)
+    cls = (_BoundedThreadingHTTPServer6 if host == "::1"
+           else _BoundedThreadingHTTPServer)
+    try:
+        return cls((host, port), _UIHandler)
+    except OSError as e:
+        # A machine without IPv6 cannot bind ::1 at all: say so
+        # plainly (exit 1, no traceback) instead of leaking the
+        # socket.gaierror.
+        if host == "::1":
+            raise ValueError("IPv6 tidak didukung di mesin ini") from e
+        raise
 
 
 def serve_main(argv=None) -> int:

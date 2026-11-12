@@ -23,7 +23,7 @@ Out: Penelitian ini mengukur suhu ruangan. Penelitian ini menganalisis
 
 ## The file
 
-`academic_tools.py` (v1.23.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100, or a whole folder of chapters at once), style rewrite suggestions (before/after, applied only with `--apply`, including mechanical Indonesian spelling fixes), a local library of past analyses and references (one SQLite file, no account), an internal duplication check against your own saved drafts, an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.23.1) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100, or a whole folder of chapters at once), style rewrite suggestions (before/after, applied only with `--apply`, including mechanical Indonesian spelling fixes), a local library of past analyses and references (one SQLite file, no account), an internal duplication check against your own saved drafts, an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -36,7 +36,7 @@ python3 academic_tools.py serve           # web UI at http://127.0.0.1:8000/
 
 ```
   ╭──────────────────────────────────────────────────────────────╮
-  │ Academic Tools                                       v1.23.0 │
+  │ Academic Tools                                       v1.23.1 │
   │ ──────────────────────────────────────────────────────────── │
   │ Satu file. Semua alat. Tanpa referensi palsu.                │
   │ Jargon Buster  ·  Citation Weaver  ·  Prompt Skripsi         │
@@ -132,7 +132,7 @@ Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key sin
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.23.0)
+academic_tools.py            # everything (v1.23.1)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -140,7 +140,7 @@ skills/research/             # four skills: the three tools + a quality-check sk
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 294 tests, stdlib unittest only
+tests/                       # 295 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -159,7 +159,7 @@ The `skills/research/` folders hold the same tools as agent skills: the three to
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 294 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 295 tests, no dependencies
 ```
 
 ## License

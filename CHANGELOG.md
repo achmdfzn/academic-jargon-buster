@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.23.1 — 2026-11-12
+
+- Fix Windows CI (red since v1.18.0): the two score-card tests asserted Unicode bars (`█`/`░`), but on a Windows console stdout is cp1252, so the code correctly renders the designed ASCII fallback (`#`/`-`) and the tests failed. The tests now run `format_analyze` under a StringIO stdout (no encoding → Unicode path, deterministic on every platform), and a new test pins the ASCII fallback on a cp1252 stdout. No behavior change — `CLI_VERSION` and `QUALITY_VERSION` unchanged, no skill change, no gateway restart.
+- 1 new test. Full suite 295/295.
+
 ## 1.23.0 — 2026-11-12
 
 - Folder upload in the web UI: the Analisis Kualitas tab gains an "Analisis se-folder" section — pick a whole folder (webkitdirectory) or several files at once, and the same recap table as `analyze <folder>` comes back. Same rules as the CLI: only top-level .txt/.md files are analyzed, in name order; files in subfolders and other extensions are listed under "Dilewati" instead of failing the run; a file that cannot be decoded as UTF-8 is recorded with its error and the rest still run. New endpoint `POST /api/analyze-folder` (multipart/form-data, 10 MB body cap, honest 400/413), with a hand-written stdlib parser — `cgi` is gone in Python 3.13. Bibliography and language come from the tab's own selectors; verify / duplicates / save checkboxes work the same as the single-text form, so `--save --duplicates` flags sentences repeated across chapters. `analyze_folder` was refactored to share its per-file pass (`_analyze_one_file`) with the upload path; the CLI is unchanged. `QUALITY_VERSION` 1.2.5 → 1.2.6 (the quality-check skill documents the upload).

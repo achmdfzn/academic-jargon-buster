@@ -102,7 +102,16 @@ class TestAnalyzeTextQuality(unittest.TestCase):
         refs = tools.load_references(SAMPLE_REFS)
         out = tools.analyze_text_quality(TEXT, references=refs,
                                          verify_dois=False)
-        text = tools.format_analyze(out, lang="id")
+        # format_analyze reads sys.stdout.encoding to pick Unicode or
+        # ASCII bars; a StringIO has no encoding, so the Unicode path
+        # is asserted deterministically on every platform (on a real
+        # cp1252 console the ASCII path runs instead — see the test
+        # below). Without this redirect the test fails on Windows CI,
+        # where stdout is cp1252.
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            text = tools.format_analyze(out, lang="id")
+            en = tools.format_analyze(out, lang="en")
         self.assertIn("Skor kualitas: 100/100", text)
         self.assertIn("█" * 20, text)
         self.assertIn("Jargon     " + "█" * 20 + " 25/25", text)
@@ -110,8 +119,17 @@ class TestAnalyzeTextQuality(unittest.TestCase):
         self.assertIn("Sitasi:", text)
         self.assertIn("Gaya: 25/25", text)
         self.assertIn("Rekomendasi:", text)
-        en = tools.format_analyze(out, lang="en")
         self.assertIn("Quality score: 100/100", en)
+
+    def test_format_analyze_ascii_bars_on_cp1252(self):
+        """On a cp1252 console (Windows) the score card falls back
+        to ASCII bars instead of Unicode blocks."""
+        from unittest.mock import Mock
+        out = tools.analyze_text_quality(TEXT, verify_dois=False)
+        with patch.object(sys, "stdout", Mock(encoding="cp1252")):
+            text = tools.format_analyze(out, lang="id")
+        self.assertIn("#" * 20, text)
+        self.assertNotIn("█", text)
 
 
 class TestCheckStyle(unittest.TestCase):
@@ -162,7 +180,11 @@ class TestCheckStyle(unittest.TestCase):
 
     def test_format_analyze_shows_style(self):
         out = tools.analyze_text_quality(STIFF_TEXT, verify_dois=False)
-        text = tools.format_analyze(out, lang="id")
+        # Same stdout-encoding redirect as above: without it this
+        # test fails on Windows CI (cp1252 → ASCII bars).
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            text = tools.format_analyze(out, lang="id")
         self.assertIn("Gaya: 0/25", text)
         self.assertIn("Gaya       " + "░" * 20 + "  0/25", text)
         self.assertIn("verba ringan", text)

@@ -34,7 +34,14 @@ _BOUNDARY = "----audit4boundary"
 
 
 def _recv_all(s, timeout=3.0):
-    """Read until EOF (True) or timeout (False)."""
+    """Read until EOF (True) or timeout (False).
+
+    On Windows a peer that closes with unread data RSTs the
+    connection, so recv raises ConnectionResetError /
+    ConnectionAbortedError instead of returning b"" — treat
+    that as EOF too (the server did close; the client just
+    observes it as an abort).
+    """
     s.settimeout(timeout)
     out = b""
     try:
@@ -45,6 +52,8 @@ def _recv_all(s, timeout=3.0):
             out += chunk
     except socket.timeout:
         return out, False
+    except (ConnectionResetError, ConnectionAbortedError):
+        return out, True
 
 
 def _read_response(s, timeout=5.0):
@@ -390,10 +399,16 @@ class TestAudit4Http09(_ServerCase):
     """T-6: HTTP/0.9 responses (N-4) and a malformed header line."""
 
     def test_http09_request_gets_bare_body_then_close(self):
-        # N-4: the stdlib sends no status line or headers at all
-        # for HTTP/0.9 — the safe alternative is to close the
-        # connection right after the bare body, never leave it
-        # open for a header-less exchange.
+        # N-4: an HTTP/0.9-style request line must get exactly one
+        # 400 and the connection must close right after, never be
+        # left open for a header-less exchange. What the 400 looks
+        # like depends on the stdlib: Python <=3.12 sends only the
+        # bare body for HTTP/0.9, 3.13 sends a full response
+        # (status line + headers + body). Either is fine as long
+        # as it is exactly one 400, carries the security headers
+        # when headers are present, and the connection closes.
+        body = (b"<!DOCTYPE HTML><html><head><title>400</title></head>"
+                b"<body><h1>400</h1></body></html>")
         for raw in (b"EVIL\r\nInjected-Header: pwned\r\n\r\n",
                     b"GET\r\n"):
             s = socket.create_connection((self.host, self.port),
@@ -402,11 +417,15 @@ class TestAudit4Http09(_ServerCase):
                 s.sendall(raw)
                 data, eof = _recv_all(s)
                 self.assertTrue(eof, raw)
-                self.assertNotIn(b"HTTP/1.1", data, raw)
-                self.assertEqual(
-                    data,
-                    b"<!DOCTYPE HTML><html><head><title>400</title></head>"
-                    b"<body><h1>400</h1></body></html>", raw)
+                self.assertIn(body, data, raw)
+                self.assertEqual(data.count(body), 1, raw)
+                if data.startswith(b"HTTP/"):
+                    self.assertIn(b"400", data.split(b"\r\n", 1)[0],
+                                  raw)
+                    for hdr in (b"Content-Security-Policy:",
+                                b"X-Content-Type-Options: nosniff",
+                                b"X-Frame-Options: DENY"):
+                        self.assertIn(hdr, data, raw)
             finally:
                 s.close()
 
@@ -704,8 +723,16 @@ def _run_node(script, check_only=False):
         path = f.name
     try:
         cmd = ["node", "--check", path] if check_only else ["node", path]
-        return subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=30)
+        # Bytes mode + explicit UTF-8 decode: text=True decodes
+        # with the locale encoding, which is cp1252 on Windows
+        # and corrupts the non-ASCII the page renders (the em
+        # dash in "0.0/100 — Sangat sulit" becomes mojibake and
+        # the render assertions stop matching). Node always
+        # writes UTF-8 here, so decode it as UTF-8 everywhere.
+        proc = subprocess.run(cmd, capture_output=True, timeout=30)
+        proc.stdout = proc.stdout.decode("utf-8")
+        proc.stderr = proc.stderr.decode("utf-8")
+        return proc
     finally:
         os.unlink(path)
 

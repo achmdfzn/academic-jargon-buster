@@ -77,8 +77,15 @@ def _render_analyze_html(res, lang, test_case):
         f.write(js)
         path = f.name
     try:
+        # Bytes mode + explicit UTF-8 decode (see _run_node in
+        # test_audit4_server.py): text=True decodes with the
+        # locale encoding, which is cp1252 on Windows and turns
+        # the em dash in the Readability card into mojibake, so
+        # the card regex stops matching. Node writes UTF-8.
         proc = subprocess.run(["node", path], capture_output=True,
-                              text=True, timeout=30)
+                              timeout=30)
+        proc.stdout = proc.stdout.decode("utf-8")
+        proc.stderr = proc.stderr.decode("utf-8")
     finally:
         os.unlink(path)
     test_case.assertEqual(proc.returncode, 0, proc.stderr)
@@ -249,7 +256,7 @@ class TestReadabilityRenderNode(unittest.TestCase):
         try:
             proc = subprocess.run(["node", "--check", path],
                                   capture_output=True, text=True,
-                                  timeout=30)
+                                  encoding="utf-8", timeout=30)
         finally:
             os.unlink(path)
         self.assertEqual(proc.returncode, 0, proc.stderr)

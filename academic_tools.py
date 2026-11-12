@@ -98,12 +98,12 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.19.0"
+__version__ = "1.20.0"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.2"
-CLI_VERSION = "1.12.0"
+QUALITY_VERSION = "1.2.3"
+CLI_VERSION = "1.13.0"
 
 # ======================================================================
 # Jargon Buster
@@ -1719,6 +1719,43 @@ def _fixed_sentence(text: str, sug: dict) -> str | None:
     return sug["context"]
 
 
+# Fused words that EYD writes separate (or hyphenated). Only
+# high-confidence entries: each fused form is always wrong, so the
+# fix is mechanical. NOT in the table on purpose: "dimana" (its fix
+# depends on the sentence — see the yang_mana guidance) and fused
+# "di"+verb forms ("ditulis", "dibaca"), which are correct.
+_TYPO_TABLE = {
+    "disini": "di sini", "disana": "di sana", "disitu": "di situ",
+    "kesini": "ke sini", "kesana": "ke sana", "kesitu": "ke situ",
+    "kemana": "ke mana", "darimana": "dari mana",
+    "diantara": "di antara", "diatas": "di atas", "dibawah": "di bawah",
+    "didepan": "di depan", "dibelakang": "di belakang",
+    "didalam": "di dalam", "diluar": "di luar",
+    "disamping": "di samping", "disekitar": "di sekitar",
+    "ditengah": "di tengah",
+    "terimakasih": "terima kasih", "tanggungjawab": "tanggung jawab",
+    "kerjasama": "kerja sama", "masingmasing": "masing-masing",
+    "olehkarena": "oleh karena",
+    "dirumah": "di rumah", "disekolah": "di sekolah",
+    "dikantor": "di kantor", "dipasar": "di pasar",
+    "dikampus": "di kampus", "dikelas": "di kelas",
+    "dikota": "di kota",
+    "kerumah": "ke rumah", "kesekolah": "ke sekolah",
+    "kekantor": "ke kantor", "kepasar": "ke pasar",
+    "kekampus": "ke kampus", "kekelas": "ke kelas",
+    "kekota": "ke kota",
+    "didalamnya": "di dalamnya", "dirumahnya": "di rumahnya",
+    "kerjasamanya": "kerja samanya",
+    "tanggungjawabnya": "tanggung jawabnya",
+}
+
+# Word boundaries so "kerjasama" never matches inside "kerjasamanya"
+# (that has its own entry) and "didalam" never matches "didalamnya".
+_TYPO_RE = re.compile(
+    r"\b(" + "|".join(sorted(_TYPO_TABLE, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE)
+
+
 _SUGGEST_NOTES = {
     "id": {
         "nominalization": "Pakai kata kerja langsung.",
@@ -1726,6 +1763,7 @@ _SUGGEST_NOTES = {
         "passive": "Pakai bentuk aktif bila pelakunya jelas.",
         "yang_mana": "Tulis ulang tanpa kalke; pisah jadi dua kalimat bila perlu.",
         "rhythm": "Variasikan panjang kalimat: pecah yang panjang, gabung yang pendek.",
+        "typo": "Ejaan: kata yang seharusnya dipisah (atau berstrip) ditulis menyatu.",
     },
     "en": {
         "nominalization": "Use the verb directly.",
@@ -1733,6 +1771,7 @@ _SUGGEST_NOTES = {
         "passive": "Use the active form when the actor is clear.",
         "yang_mana": "Rewrite without the calque; split into two sentences if needed.",
         "rhythm": "Vary sentence length: split long ones, join short ones.",
+        "typo": "Spelling: words that should be separate (or hyphenated) were written joined.",
     },
 }
 
@@ -1876,6 +1915,20 @@ def suggest_style_fixes(text: str, lang: str = "id",
             "end": longest[1],
         })
 
+    # 6. Typos: fused words that EYD writes separate (or hyphenated).
+    # Mechanical — the table only holds always-wrong forms.
+    for m in _TYPO_RE.finditer(text):
+        suggestions.append({
+            "pattern": "typo",
+            "original": m.group(0),
+            "replacement": _TYPO_TABLE[m.group(0).lower()],
+            "context": _context_sentence(spans, m.start()),
+            "fixed": None,
+            "note": notes["typo"],
+            "start": m.start(),
+            "end": m.end(),
+        })
+
     suggestions.sort(key=lambda s: s["start"])
     for sug in suggestions:
         sug["fixed"] = _fixed_sentence(text, sug)
@@ -1894,6 +1947,7 @@ _SUGGEST_STRINGS = {
             "passive": "Verba pasif",
             "yang_mana": "'yang mana'/'dimana'",
             "rhythm": "Ritme kalimat",
+            "typo": "Ejaan",
         },
         "before": "Sebelum",
         "after": "Sesudah",
@@ -1908,6 +1962,7 @@ _SUGGEST_STRINGS = {
             "passive": "Passive verbs",
             "yang_mana": "'yang mana'/'dimana'",
             "rhythm": "Sentence rhythm",
+            "typo": "Spelling",
         },
         "before": "Before",
         "after": "After",
@@ -5156,7 +5211,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     if (sg && sg.suggestions && sg.suggestions.length) {
       var labels = {nominalization: "Verba ringan", connectors: "Konektor",
         passive: "Verba pasif", yang_mana: "'yang mana'/'dimana'",
-        rhythm: "Ritme kalimat"};
+        rhythm: "Ritme kalimat", typo: "Ejaan"};
       h += '<div class="card"><h2>Saran rewrite gaya <span class="meta">' + sg.count + "</span></h2>";
       sg.suggestions.forEach(function (s, i) {
         h += "<p><strong>" + (i + 1) + ". " + (labels[s.pattern] || s.pattern) + "</strong> — “" + esc(s.original.trim()) + "”";

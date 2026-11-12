@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
 description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
-version: 1.2.2
+version: 1.2.3
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -87,6 +87,7 @@ For each stiff pattern, Humanize proposes a concrete replacement and shows it be
 - **Light verbs become direct verbs** — "melakukan pengukuran terhadap" → "mengukur", "mengalami peningkatan sebesar 12%" → "naik 12%". The noun→verb table is written from Indonesian grammar; a trailing preposition that belongs to the frame (`terhadap`, `atas`, `antara`, `sebesar`, `kepada`) is dropped with it, while `untuk`, `dengan`, `dari`, `dalam` are kept because they change the meaning.
 - **Connectors are dropped** — "Selain itu, penelitian…" → "Penelitian…", with the next word re-capitalized.
 - **"yang mana" splits the sentence** — "…, yang mana hal ini mengurangi…" → "…. Hal ini mengurangi…".
+- **Spelling (Tata tulis) is fixed mechanically** — a curated table of fused words that EYD writes separate (or hyphenated): "disini" → "di sini", "didalam" → "di dalam", "terimakasih" → "terima kasih", "kerjasama" → "kerja sama", "masingmasing" → "masing-masing", plus "-nya" forms ("didalamnya" → "di dalamnya", "kerjasamanya" → "kerja samanya"). Only always-wrong forms are in the table; "dimana" stays guidance (its fix depends on the sentence) and fused "di"+verb forms ("ditulis", "dibaca") are correct and untouched. Word boundaries keep "kerjasama" from matching inside "kerjasamanya".
 - **Guidance instead of a made-up rewrite** for passive voice, `dimana`, flat rhythm, and light verbs with no known verb form. These need a human decision; no replacement is invented.
 
 Rules:

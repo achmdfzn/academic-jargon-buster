@@ -283,6 +283,17 @@ class TestServe(unittest.TestCase):
         self.assertIn("Penelitian ini menganalisis data yang diperoleh.",
                       res["fixed_text"])
 
+    def test_humanize_returns_typo_suggestions(self):
+        status, body = _request(self.base, "POST", "/api/humanize", {
+            "text": "Penelitian dilakukan disini dengan teliti.",
+            "lang": "id"})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        typos = [s for s in res["suggestions"]
+                 if s["pattern"] == "typo"]
+        self.assertEqual(len(typos), 1)
+        self.assertEqual(typos[0]["replacement"], "di sini")
+
     def test_humanize_without_apply_has_no_fixed_text(self):
         status, body = _request(self.base, "POST", "/api/humanize", {
             "text": "Penelitian ini melakukan pengukuran terhadap "

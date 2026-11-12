@@ -22,9 +22,9 @@ import academic_cli
 import academic_tools as tools
 from academic_tools import (
     analyze_main, export_references, format_analysis_detail,
-    format_history, format_references, get_analysis, import_references,
-    library_main, list_analyses, list_references, save_analysis,
-    search_references,
+    format_history, format_library_stats, format_references, get_analysis,
+    import_references, library_main, library_stats, list_analyses,
+    list_references, save_analysis, search_references,
 )
 
 TEXT = ("Penelitian ini melakukan pengukuran terhadap kepuasan pengguna "
@@ -283,6 +283,75 @@ class LibraryTestCase(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("pustaka rusak", err.getvalue())
         self.assertNotIn("Traceback", err.getvalue())
+
+
+class TestLibraryStats(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = os.path.join(self.tmp.name, "library.db")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _save(self, text, title=None):
+        result = tools.analyze_text_quality(
+            text, SAMPLE_REFS, lang="id", verify_dois=False)
+        return save_analysis(text, result, SAMPLE_REFS, title=title,
+                             db=self.db), result
+
+    def test_empty_library(self):
+        stats = library_stats(db=self.db)
+        self.assertEqual(stats, {"runs": 0, "average_score": None,
+                                 "best": None, "trend": [],
+                                 "most_cited": []})
+        self.assertIn("Belum ada riwayat", format_library_stats(stats))
+
+    def test_stats_with_runs(self):
+        _, r1 = self._save(TEXT, "Bab 1")  # 100, cites devlin2019
+        _, r2 = self._save(
+            "Penelitian ini memakai skala likert [cite:brooke1996].",
+            "Bab 2")  # cites brooke1996
+        _, r3 = self._save(TEXT)  # 100, cites devlin2019
+        _, r4 = self._save(
+            "Penelitian ini memakai skala likert [cite:tidakada].",
+            "Bab 4")  # missing citation, lower score
+        scores = [r["quality_score"] for r in (r1, r2, r3, r4)]
+        stats = library_stats(db=self.db)
+        self.assertEqual(stats["runs"], 4)
+        self.assertEqual(stats["average_score"], round(sum(scores) / 4, 1))
+        self.assertEqual(stats["best"]["quality_score"], max(scores))
+        self.assertEqual(stats["best"]["id"], 1)  # earliest of the top runs
+        self.assertEqual(
+            [t["id"] for t in stats["trend"]], [1, 2, 3, 4])  # oldest first
+        self.assertEqual(
+            [(c["key"], c["count"]) for c in stats["most_cited"]],
+            [("devlin2019", 2), ("brooke1996", 1)])
+        text = format_library_stats(stats)
+        self.assertIn("Statistik pustaka", text)
+        self.assertIn("4 analisis tersimpan", text)
+        self.assertIn(str(stats["average_score"]), text)
+        self.assertIn("devlin2019", text)
+
+    def test_library_main_stats(self):
+        self._save(TEXT, "Bab 1")
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = library_main(["--stats", "--db", self.db])
+        self.assertEqual(code, 0)
+        self.assertIn("Statistik pustaka", buf.getvalue())
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = library_main(["--stats", "--db", self.db, "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(buf.getvalue())["runs"], 1)
+
+    def test_menu_library_stats(self):
+        self._save(TEXT, "Bab 1")
+        with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": self.db}):
+            code, out = run_cli(["6", "7", "", "0", "0"])
+        self.assertEqual(code, 0)
+        self.assertIn("Statistik pustaka", out)
+        self.assertIn("1 analisis tersimpan", out)
 
 
 if __name__ == "__main__":

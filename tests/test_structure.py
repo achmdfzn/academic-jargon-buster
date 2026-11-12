@@ -84,7 +84,8 @@ class TestCoreStaysOneFile(unittest.TestCase):
                      "open_library", "library_main",
                      "find_duplicates", "format_duplicates",
                      "duplicates_main", "analyze_folder",
-                     "format_folder_result"):
+                     "format_folder_result", "library_stats",
+                     "format_library_stats"):
             self.assertTrue(hasattr(academic_cli, name), name)
             self.assertIn(name, academic_cli.__all__)
         self.assertIn("jargon_main", jargon_buster.__all__)

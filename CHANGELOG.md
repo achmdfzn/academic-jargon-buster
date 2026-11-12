@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.22.0 — 2026-11-12
+
+- Library statistics: `library --stats` prints the story of the saved runs — how many, the average score, the best run, a score trend (every run oldest first, with a bar per run), and the most-cited references (top 5 by how many saved runs cite them). Also in the interactive menu (Pustaka, option 7) and as a Statistik card at the top of the web UI's Pustaka tab, loaded together with the history and bibliography (`GET /api/library/stats`). Empty library prints an honest "run analyze --save first" instead of zeros. `CLI_VERSION` 1.14.0 → 1.15.0; `QUALITY_VERSION` 1.2.4 → 1.2.5 (the quality-check skill documents the statistics).
+- 6 new tests (core + CLI + menu + web UI). Full suite 285/285.
+
 ## 1.21.0 — 2026-11-12
 
 - `analyze` now takes a folder: `analyze skripsi/` analyzes every top-level `.txt`/`.md` file in name order and prints a recap table (file, score, jargon, citations, DOI, style, duplicates) plus the average; `--json` prints the full per-file results. `--refs`, `--no-verify`, `--save` (each run recorded with the file name as its title), `--duplicates`, and `--db` all work; `--suggest` and `--title` are rejected for folders. With `--save --duplicates`, files analyzed earlier in the same run are already in the library, so a sentence repeated in a later chapter is flagged. A file that cannot be read (bad encoding, permissions) is recorded with its error and the rest still run; exit 1 when any file errors, has a missing citation, or a missing DOI. The interactive menu's Analisis Kualitas offers "Baca folder" as a third choice (and asks once whether to save all runs). The web UI has no folder upload yet — that needs multipart handling and stays a follow-up. `CLI_VERSION` 1.13.0 → 1.14.0; `QUALITY_VERSION` 1.2.3 → 1.2.4 (the quality-check skill documents the folder mode).

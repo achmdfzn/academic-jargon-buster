@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
 description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
-version: 1.2.4
+version: 1.2.5
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -106,6 +106,7 @@ One local SQLite file, no account, no cloud: `~/.academic-tools/library.db` by d
 python3 academic_tools.py analyze naskah.txt --refs my-refs.json --save --title "Bab 1"
 python3 academic_tools.py library --history
 python3 academic_tools.py library --show 3
+python3 academic_tools.py library --stats
 python3 academic_tools.py library --refs --search "deep learning"
 python3 academic_tools.py library --import my-refs.json
 python3 academic_tools.py library --export library-refs.json
@@ -113,6 +114,7 @@ python3 academic_tools.py library --export library-refs.json
 
 - **`analyze --save`** records the run (title, date, score 0–100, style, jargon count, missing citations, DOI counts, suggestions, the text and its hash). Every cited reference is upserted into the personal bibliography, so the bibliography grows from real use.
 - **`library --history`** lists past runs, newest first. **`--show <id>`** prints one run in full, including the text.
+- **Library statistics (`library --stats`)** — runs, average score, best run, a score trend (every run oldest first, one bar per run), and the top 5 most-cited references (by how many saved runs cite them). Empty library prints an honest "run `analyze --save` first" instead of zeros. In the interactive menu, this is option 7 in Pustaka.
 - **`library --refs`** lists the personal bibliography; **`--search <query>`** matches key, title, authors, or DOI.
 - **`library --import <refs.json>`** upserts a bibliography file (reports added vs updated); **`--export <out.json>`** writes the whole bibliography back out as `refs.json` for use with `cite` / `analyze --refs`.
 - **Duplication check (`duplicates`)** — `python3 academic_tools.py duplicates naskah.txt` (or `--text "..."`) compares each sentence of at least 6 words against every sentence of every saved run, plus against the other sentences of the text itself. A match is a normalized similarity of 0.8 or more (`--threshold` changes it, 0–1); only the best match per sentence is reported, with the source run (id, title, date) or "naskah ini" for a repeat inside the text. The text itself is never matched against its own saved copy. Exit 1 when duplicates are found, 0 when clean. In the interactive menu, this is option 6 in Pustaka; in the web UI, the Analisis Kualitas tab has a "Cek duplikasi dengan pustaka" checkbox.
@@ -126,7 +128,7 @@ python3 academic_tools.py serve            # http://127.0.0.1:8000/
 python3 academic_tools.py serve --port 8000
 ```
 
-Localhost only, standard library `http.server`, no external resources (no CDN, no webfonts, no analytics). The Analisis Kualitas tab has "Saran rewrite gaya" and "Simpan ke pustaka" checkboxes; a saved run shows its library id, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. The Pustaka tab lists saved runs — click one for the full detail, including the text — and searches the personal bibliography. JSON API: `/api/analyze`, `/api/jargon`, `/api/cite`, `/api/prompts`, `/api/prompts/fill`, `/api/humanize` (`apply: true` returns `fixed_text`), plus GET `/api/library/history`, `/api/library/analysis?id=<n>`, `/api/library/refs?search=<q>` (each with `?limit=` up to 100; a missing analysis id is a 404). Request bodies are capped at 1 MB; errors are honest JSON 400 / 404 / 413 / 500 (413 when the body is over the cap).
+Localhost only, standard library `http.server`, no external resources (no CDN, no webfonts, no analytics). The Analisis Kualitas tab has "Saran rewrite gaya" and "Simpan ke pustaka" checkboxes; a saved run shows its library id, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. The Pustaka tab opens with a Statistik card — runs, average score, best run, a score trend with a bar per run, and the most-cited references — then lists saved runs — click one for the full detail, including the text — and searches the personal bibliography. JSON API: `/api/analyze`, `/api/jargon`, `/api/cite`, `/api/prompts`, `/api/prompts/fill`, `/api/humanize` (`apply: true` returns `fixed_text`), plus GET `/api/library/history`, `/api/library/analysis?id=<n>`, `/api/library/refs?search=<q>`, `/api/library/stats` (each with `?limit=` up to 100; a missing analysis id is a 404). Request bodies are capped at 1 MB; errors are honest JSON 400 / 404 / 413 / 500 (413 when the body is over the cap).
 
 ## Rules (non-negotiable)
 

@@ -98,12 +98,12 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.21.0"
+__version__ = "1.22.0"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.4"
-CLI_VERSION = "1.14.0"
+QUALITY_VERSION = "1.2.5"
+CLI_VERSION = "1.15.0"
 
 # ======================================================================
 # Jargon Buster
@@ -3332,6 +3332,97 @@ def format_references(rows: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def library_stats(db=None, *, top_refs: int = 5) -> dict:
+    """Statistics over the saved library: score trend + most-cited refs.
+
+    Returns {"runs", "average_score", "best", "trend", "most_cited"}.
+    "trend" is every run oldest first ({id, title, date, quality_score});
+    "most_cited" is the top `top_refs` references by how many saved
+    runs cite them ({key, title, count}). Empty library: runs 0,
+    average_score None, best None, trend [], most_cited [].
+    """
+    conn = open_library(db)
+    try:
+        rows = conn.execute(
+            "SELECT id, title, created_at, quality_score FROM analyses "
+            "ORDER BY id ASC").fetchall()
+        cited = conn.execute(
+            "SELECT ar.ref_key, COUNT(*) AS n FROM analysis_references ar "
+            "GROUP BY ar.ref_key ORDER BY n DESC, ar.ref_key ASC "
+            "LIMIT ?", (top_refs,)).fetchall()
+        titles = {r["key"]: r["title"] for r in conn.execute(
+            "SELECT key, title FROM library_references").fetchall()}
+    finally:
+        conn.close()
+    scores = [r["quality_score"] for r in rows]
+    best = None
+    if rows:
+        top = max(rows, key=lambda r: (r["quality_score"], -r["id"]))
+        best = {"id": top["id"], "title": top["title"],
+                "quality_score": top["quality_score"]}
+    return {
+        "runs": len(rows),
+        "average_score": (round(sum(scores) / len(scores), 1)
+                          if scores else None),
+        "best": best,
+        "trend": [{"id": r["id"], "title": r["title"],
+                   "date": r["created_at"][:10],
+                   "quality_score": r["quality_score"]} for r in rows],
+        "most_cited": [{"key": c["ref_key"],
+                        "title": titles.get(c["ref_key"]),
+                        "count": c["n"]} for c in cited],
+    }
+
+
+_LIBRARY_STATS_STRINGS = {
+    "id": {
+        "heading": "Statistik pustaka",
+        "runs": "analisis tersimpan",
+        "average": "Rata-rata skor",
+        "best": "Skor terbaik",
+        "trend": "Tren skor",
+        "most_cited": "Referensi paling sering dikutip",
+        "none": "Belum ada riwayat analisis — jalankan analyze --save dulu.",
+        "times": "kali",
+    },
+    "en": {
+        "heading": "Library statistics",
+        "runs": "saved analyses",
+        "average": "Average score",
+        "best": "Best score",
+        "trend": "Score trend",
+        "most_cited": "Most cited references",
+        "none": "No analysis history yet — run analyze --save first.",
+        "times": "times",
+    },
+}
+
+
+def format_library_stats(stats: dict, lang: str = "id") -> str:
+    """Render a library_stats() result as readable text."""
+    s = _LIBRARY_STATS_STRINGS.get(lang, _LIBRARY_STATS_STRINGS["id"])
+    if not stats["runs"]:
+        return s["none"] + "\n"
+    lines = [s["heading"],
+             f"{stats['runs']} {s['runs']}",
+             f"{s['average']}: {stats['average_score']}/100"]
+    if stats["best"]:
+        lines.append(f"{s['best']}: {stats['best']['title']} "
+                     f"({stats['best']['quality_score']}/100)")
+    lines.append(f"{s['trend']}:")
+    for t in stats["trend"]:
+        lines.append(f"  {t['date']} {t['title']} — "
+                     f"{_bar(t['quality_score'], 100, width=10)} "
+                     f"{t['quality_score']}/100")
+    if stats["most_cited"]:
+        lines.append(f"{s['most_cited']}:")
+        for c in stats["most_cited"]:
+            label = c["title"] or c["key"]
+            lines.append(f"  - {c['key']}: {label} "
+                         f"({c['count']} {s['times']})")
+    return "\n".join(lines) + "\n"
+
+
 def library_main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description="Analysis history and personal bibliography in one "
@@ -3341,6 +3432,9 @@ def library_main(argv=None) -> int:
                    "(default: ~/.academic-tools/library.db)")
     p.add_argument("--history", action="store_true",
                    help="list past analyze runs, newest first")
+    p.add_argument("--stats", action="store_true",
+                   help="show library statistics: score trend and "
+                        "most-cited references")
     p.add_argument("--show", type=int, metavar="ID",
                    help="show one past run in full")
     p.add_argument("--refs", action="store_true",
@@ -3365,6 +3459,13 @@ def library_main(argv=None) -> int:
 
 
 def _library_run(args, parser) -> int:
+    if args.stats:
+        stats = library_stats(db=args.db)
+        if args.json:
+            sys.stdout.write(json.dumps(stats, ensure_ascii=False, indent=2) + "\n")
+        else:
+            sys.stdout.write(format_library_stats(stats))
+        return 0
     if args.history:
         rows = list_analyses(db=args.db, limit=args.limit)
         if args.json:
@@ -4214,6 +4315,7 @@ STRINGS = {
         "import_refs": "Impor bibliografi dari JSON",
         "export_refs": "Ekspor bibliografi ke JSON",
         "duplicates": "Cek duplikasi",
+        "stats": "Statistik pustaka",
         "analysis_id": "Nomor analisis (#)",
         "analysis_missing": "Tidak ada analisis",
         "search_query": "Kata kunci (judul/penulis/DOI)",
@@ -4290,6 +4392,7 @@ STRINGS = {
         "import_refs": "Import a bibliography JSON",
         "export_refs": "Export the bibliography to JSON",
         "duplicates": "Check duplication",
+        "stats": "Library statistics",
         "analysis_id": "Analysis number (#)",
         "analysis_missing": "No such analysis",
         "search_query": "Keyword (title/author/DOI)",
@@ -4743,8 +4846,9 @@ class CLI:
             print(f"4. {self.t['import_refs']}")
             print(f"5. {self.t['export_refs']}")
             print(f"6. {self.t['duplicates']}")
+            print(f"7. {self.t['stats']}")
             print(f"0. {self.t['back']}")
-            choice = self.ask_choice(self.t["choice"], 6)
+            choice = self.ask_choice(self.t["choice"], 7)
             if choice == -1:
                 continue
             if choice == 1:
@@ -4791,6 +4895,9 @@ class CLI:
                         print(str(e))
                     else:
                         print(f"\n{format_duplicates(result, lang=self.lang)}")
+                self.pause()
+            elif choice == 7:
+                print(f"\n{format_library_stats(library_stats(), lang=self.lang)}")
                 self.pause()
             elif choice == 0 or choice is None:
                 return
@@ -5060,6 +5167,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   .score .of { color: var(--muted); }
   .score .bar { flex: 1 1 160px; height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; min-width: 120px; }
   .score .bar span { display: block; height: 100%; background: var(--accent); }
+  .trend-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .trend-row .trend-label { flex: 0 0 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trend-row .bar { flex: 1; height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; }
+  .trend-row .bar span { display: block; height: 100%; background: var(--accent); }
+  .trend-row .num { font-variant-numeric: tabular-nums; min-width: 28px; text-align: right; }
   .flag { color: var(--warn); font-weight: 600; }
   pre {
     white-space: pre-wrap; word-wrap: break-word; font: inherit;
@@ -5210,6 +5322,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <span class="status" id="library-status"></span>
       </div>
       <div class="error" id="library-error"></div>
+      <div class="result" id="library-stats"></div>
       <div class="result" id="library-history"></div>
       <div class="result" id="library-detail"></div>
       <label for="library-search">Cari referensi <span class="hint">— judul, penulis, kunci, atau DOI</span></label>
@@ -5324,6 +5437,8 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     clearError("library-error");
     $("library-status").textContent = "Memuat…";
     try {
+      var stats = await get("/api/library/stats");
+      renderStats(stats.stats);
       var hist = await get("/api/library/history?limit=20");
       renderHistory(hist.analyses);
       var refs = await get("/api/library/refs?limit=20");
@@ -5333,6 +5448,27 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     } finally {
       $("library-status").textContent = "";
     }
+  }
+  function renderStats(st) {
+    if (!st.runs) {
+      $("library-stats").innerHTML = '<div class="card"><h2>Statistik</h2><p>Belum ada riwayat analisis — jalankan analyze --save dulu.</p></div>';
+      return;
+    }
+    var h = '<div class="card"><h2>Statistik</h2><p>' + st.runs + ' analisis tersimpan · Rata-rata skor ' + st.average_score + '/100';
+    if (st.best) h += ' · Terbaik: ' + esc(st.best.title) + ' (' + st.best.quality_score + '/100)';
+    h += '</p><h3>Tren skor</h3>';
+    st.trend.forEach(function (t) {
+      h += '<div class="trend-row"><span class="trend-label">' + esc(t.title) + '</span><div class="bar"><span style="width:' + t.quality_score + '%"></span></div><span class="num">' + t.quality_score + '</span></div>';
+    });
+    if (st.most_cited.length) {
+      h += '<h3>Referensi paling sering dikutip</h3><ul>';
+      st.most_cited.forEach(function (c) {
+        h += '<li><strong>' + esc(c.key) + '</strong> — ' + esc(c.title || c.key) + ' (' + c.count + ' kali)</li>';
+      });
+      h += '</ul>';
+    }
+    h += '</div>';
+    $("library-stats").innerHTML = h;
   }
   $("library-refresh").addEventListener("click", loadLibrary);
   $("library-search-btn").addEventListener("click", async function () {
@@ -5777,6 +5913,8 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json(200, self._library_analysis(query))
             elif path == "/api/library/refs":
                 self._send_json(200, self._library_refs(query))
+            elif path == "/api/library/stats":
+                self._send_json(200, self._library_stats())
             else:
                 self._send_json(404, {"error": "tidak ditemukan"})
         except ValueError as e:
@@ -5818,6 +5956,9 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         else:
             rows = list_references(limit=limit)
         return {"references": rows}
+
+    def _library_stats(self) -> dict:
+        return {"stats": library_stats()}
 
     def do_POST(self):
         try:

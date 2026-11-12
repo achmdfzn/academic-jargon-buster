@@ -62,6 +62,10 @@ class TestServe(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("Academic Tools", body)
         self.assertIn(f"v{tools.__version__}", body)
+        # The Pustaka tab renders the statistics card.
+        self.assertIn('id="library-stats"', body)
+        self.assertIn("renderStats", body)
+        self.assertIn("/api/library/stats", body)
         # The page is self-contained: no CDN, webfonts, or analytics.
         self.assertNotIn("https://", body)
         self.assertNotIn("<link", body)
@@ -132,6 +136,35 @@ class TestServe(unittest.TestCase):
             "text": TEXT, "refs": "sample", "verify": False})
         self.assertEqual(status, 200)
         self.assertNotIn("library_id", json.loads(body))
+
+    def test_library_stats_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
+                status, body = _request(self.base, "POST", "/api/analyze", {
+                    "text": TEXT, "refs": "sample", "verify": False,
+                    "save": True})
+                self.assertEqual(status, 200)
+                status, body = _request(self.base, "GET",
+                                        "/api/library/stats")
+                self.assertEqual(status, 200)
+                stats = json.loads(body)["stats"]
+                self.assertEqual(stats["runs"], 1)
+                self.assertEqual(stats["average_score"], 100)
+                self.assertEqual(stats["best"]["quality_score"], 100)
+                self.assertEqual(len(stats["trend"]), 1)
+                self.assertEqual(
+                    [(c["key"], c["count"]) for c in stats["most_cited"]],
+                    [("devlin2019", 1)])
+
+    def test_library_stats_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
+                status, body = _request(self.base, "GET",
+                                        "/api/library/stats")
+                self.assertEqual(status, 200)
+                self.assertEqual(json.loads(body)["stats"]["runs"], 0)
 
     def test_home_page_has_save_checkbox(self):
         status, body = _request(self.base, "GET", "/")

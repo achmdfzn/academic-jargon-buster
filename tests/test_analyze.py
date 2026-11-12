@@ -104,6 +104,8 @@ class TestAnalyzeTextQuality(unittest.TestCase):
                                          verify_dois=False)
         text = tools.format_analyze(out, lang="id")
         self.assertIn("Skor kualitas: 100/100", text)
+        self.assertIn("█" * 20, text)
+        self.assertIn("Jargon     " + "█" * 20 + " 25/25", text)
         self.assertIn("purposive sampling", text)
         self.assertIn("Sitasi:", text)
         self.assertIn("Gaya: 25/25", text)
@@ -162,6 +164,7 @@ class TestCheckStyle(unittest.TestCase):
         out = tools.analyze_text_quality(STIFF_TEXT, verify_dois=False)
         text = tools.format_analyze(out, lang="id")
         self.assertIn("Gaya: 0/25", text)
+        self.assertIn("Gaya       " + "░" * 20 + "  0/25", text)
         self.assertIn("verba ringan", text)
 
 

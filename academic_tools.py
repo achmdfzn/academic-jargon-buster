@@ -97,12 +97,12 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.17.1"
+__version__ = "1.18.0"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
 QUALITY_VERSION = "1.2.1"
-CLI_VERSION = "1.10.0"
+CLI_VERSION = "1.11.0"
 
 # ======================================================================
 # Jargon Buster
@@ -2293,10 +2293,49 @@ _ANALYZE_STRINGS = {
 }
 
 
+_SCORE_PART_LABELS = {
+    "id": ("Jargon", "Sitasi", "DOI", "Gaya"),
+    "en": ("Jargon", "Citations", "DOI", "Style"),
+}
+
+
+def _score_parts(result: dict) -> list:
+    """The four 25-point components behind quality_score.
+
+    Mirrors the scoring in analyze_text_quality(): jargon is always
+    25 (every term found is explained by construction), citations
+    lose points for missing entries, DOI for failed verifications.
+    """
+    parts = [25.0]
+    cit = result["citations"]
+    if cit is None:
+        parts.append(25.0)
+    else:
+        cited, missing = len(cit["cited"]), len(cit["missing"])
+        parts.append(25.0 if missing == 0 else
+                     25 * (1 - missing / max(1, missing + cited)))
+    dv = result.get("doi_verification", {})
+    checkable = [v for v in dv.values() if v.get("doi")]
+    if checkable:
+        ok = sum(1 for v in checkable if v.get("verdict") == "ok")
+        parts.append(25 * ok / len(checkable))
+    else:
+        parts.append(25.0)
+    parts.append(float(result["style"]["style_score"]))
+    return parts
+
+
 def format_analyze(result: dict, lang: str = "id") -> str:
     """Render an analyze_text_quality() result as readable text."""
     s = _ANALYZE_STRINGS.get(lang, _ANALYZE_STRINGS["id"])
-    lines = [s["heading"], "", f"{s['score']}: {result['quality_score']}/100"]
+    lines = [s["heading"], "",
+             _bold(f"{s['score']}: {result['quality_score']}/100"),
+             _green(_bar(result["quality_score"], 100))]
+    labels = _SCORE_PART_LABELS.get(lang, _SCORE_PART_LABELS["id"])
+    for label, value in zip(labels, _score_parts(result)):
+        lines.append(f"{label:<10} {_green(_bar(value, 25))} "
+                     f"{round(value):>2}/25")
+    lines.append("")
     jargon = result["jargon"]
     if jargon:
         lines.append(f"{s['jargon']}: {len(jargon)}")
@@ -3685,9 +3724,10 @@ DEFAULT_REFS = os.path.join(
 STRINGS = {
     "id": {
         "banner": "Academic Tools",
-        "tagline": "Jargon Buster  |  Citation Weaver  |  Prompt Skripsi",
-        "banner_hint": "id  |  ketik angka, Enter untuk memilih",
-        "menu_title": "Pilih alat:",
+        "motto": "Satu file. Semua alat. Tanpa referensi palsu.",
+        "tagline": "Jargon Buster  ·  Citation Weaver  ·  Prompt Skripsi",
+        "banner_hint": "id  ·  ketik angka, Enter untuk memilih",
+        "menu_title": "Daftar isi:",
         "jargon": "Jargon Buster — terjemahkan istilah akademik",
         "cite": "Citation Weaver — sisipkan sitasi ke naskah",
         "prompts": "Prompt Skripsi — template prompt untuk tiap bab",
@@ -3756,9 +3796,10 @@ STRINGS = {
     },
     "en": {
         "banner": "Academic Tools",
-        "tagline": "Jargon Buster  |  Citation Weaver  |  Thesis Prompts",
-        "banner_hint": "en  |  type a number, Enter to choose",
-        "menu_title": "Choose a tool:",
+        "motto": "One file. Every tool. No invented references.",
+        "tagline": "Jargon Buster  ·  Citation Weaver  ·  Thesis Prompts",
+        "banner_hint": "en  ·  type a number, Enter to choose",
+        "menu_title": "Contents:",
         "jargon": "Jargon Buster — translate academic jargon",
         "cite": "Citation Weaver — weave citations into text",
         "prompts": "Thesis Prompts — ready-made prompts for each chapter",
@@ -3831,29 +3872,112 @@ STRINGS = {
 BANNER_MIN_WIDTH = 60
 
 
-def format_banner(lang: str) -> str:
-    """Boxed banner for the interactive menu; width follows the text.
+def _unicode_ok() -> bool:
+    """True when stdout can encode the box-drawing and block glyphs.
 
-    ASCII only: the menu still renders when stdout is piped and the
-    console encoding is not UTF-8 (cp1252, cp437).
+    UTF-8 and cp437/cp850 can; cp1252 cannot. A StringIO (tests,
+    pipes) has no encoding, which means plain str: treat it as capable.
+    """
+    enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        "╭╮╰╯─│·█░".encode(enc)
+    except (UnicodeEncodeError, LookupError):
+        return False
+    return True
+
+
+def _colors_enabled() -> bool:
+    """Color only on a real terminal, unless forced off or on.
+
+    NO_COLOR disables, ACADEMIC_COLOR=1 forces (used to preview the
+    colored UI when stdout is piped), TERM=dumb disables.
+    """
+    if os.environ.get("NO_COLOR") is not None:
+        return False
+    if os.environ.get("ACADEMIC_COLOR") == "1":
+        return True
+    if os.environ.get("TERM") == "dumb":
+        return False
+    try:
+        return bool(sys.stdout.isatty())
+    except Exception:
+        return False
+
+
+def _paint(text: str, code: str) -> str:
+    if not _colors_enabled():
+        return text
+    return f"\x1b[{code}m{text}\x1b[0m"
+
+
+def _bold(text: str) -> str:
+    return _paint(text, "1")
+
+
+def _green(text: str) -> str:
+    return _paint(text, "32")
+
+
+def _bar(value: float, maximum: float, width: int = 20) -> str:
+    """A text bar: filled blocks for value/maximum, empty for the rest."""
+    filled = max(0, min(width, round(value / maximum * width)))
+    if _unicode_ok():
+        return "█" * filled + "░" * (width - filled)
+    return "#" * filled + "-" * (width - filled)
+
+
+def _menu_line(number: str, name: str, desc: str = "",
+               desc_col: int = 64) -> str:
+    """One menu row with dot leaders: '  1  Jargon Buster ... desc'."""
+    left = f"  {number}  {name} "
+    if not desc:
+        return left.rstrip()
+    dots = max(2, desc_col - len(left) - len(desc))
+    return left + "." * dots + " " + desc
+
+
+def _section_header(name: str, width: int = 58) -> str:
+    """A rule with the section name embedded: '── Jargon Buster ──...'."""
+    if _unicode_ok():
+        head = f"── {name} "
+        return _bold(head + "─" * max(2, width - len(head)))
+    head = f"-- {name.replace(' — ', ' - ')} "
+    return head + "-" * max(2, width - len(head))
+
+
+def format_banner(lang: str) -> str:
+    """Cover-page banner for the interactive menu; width follows the text.
+
+    A rounded box when stdout can encode it, plain ASCII otherwise
+    (old Windows consoles). Colors only on a real terminal.
     """
     t = STRINGS[lang]
     title = t["banner"]
     version = f"v{__version__}"
+    motto = t["motto"]
     tagline = t["tagline"]
     hint = t["banner_hint"]
     width = max(BANNER_MIN_WIDTH, len(title) + len(version) + 2,
-                len(tagline) + 2, len(hint) + 2)
+                len(motto) + 2, len(tagline) + 2, len(hint) + 2)
     heading = title + " " * (width - len(title) - len(version)) + version
-    heavy = "=" * (width + 2)
-    light = "-" * (width + 2)
+    if _unicode_ok():
+        top = "╭" + "─" * (width + 2) + "╮"
+        bot = "╰" + "─" * (width + 2) + "╯"
+        rule = _green("─" * width)
+        edge = "│"
+    else:
+        top = "+" + "=" * (width + 2) + "+"
+        bot = top
+        rule = "-" * width
+        edge = "|"
     return "\n".join([
-        f"  +{heavy}+",
-        f"  | {heading} |",
-        f"  +{light}+",
-        f"  | {tagline.ljust(width)} |",
-        f"  | {hint.ljust(width)} |",
-        f"  +{heavy}+",
+        f"  {top}",
+        f"  {edge} {_bold(heading)} {edge}",
+        f"  {edge} {rule} {edge}",
+        f"  {edge} {motto.ljust(width)} {edge}",
+        f"  {edge} {tagline.ljust(width)} {edge}",
+        f"  {edge} {hint.ljust(width)} {edge}",
+        f"  {bot}",
     ])
 
 
@@ -3937,14 +4061,13 @@ class CLI:
             print()
             print(format_banner(self.lang))
             print(self.t["menu_title"])
-            print(f"1. {self.t['jargon']}")
-            print(f"2. {self.t['cite']}")
-            print(f"3. {self.t['prompts']}")
-            print(f"4. {self.t['analyze']}")
-            print(f"5. {self.t['humanize']}")
-            print(f"6. {self.t['library']}")
-            print(f"7. {self.t['lang']}")
-            print(f"0. {self.t['exit']}")
+            for number, key in (("1", "jargon"), ("2", "cite"),
+                                ("3", "prompts"), ("4", "analyze"),
+                                ("5", "humanize"), ("6", "library")):
+                name, _, desc = self.t[key].partition(" — ")
+                print(_menu_line(number, name, desc))
+            print(_menu_line("7", self.t["lang"]))
+            print(_menu_line("0", self.t["exit"]))
             choice = self.ask_choice(self.t["choice"], 7)
             if choice == -1:
                 continue
@@ -3970,7 +4093,7 @@ class CLI:
 
     def jargon_menu(self):
         while True:
-            print(f"\n--- {self.t['jargon']} ---")
+            print(f"\n{_section_header(self.t['jargon'])}")
             print(f"1. {self.t['type_text'].split(' (')[0]} / {self.t['read_file']}")
             print(f"2. {self.t['list_terms']}")
             print(f"3. {self.t['add_terms']}")
@@ -4014,7 +4137,7 @@ class CLI:
 
     def cite_menu(self):
         while True:
-            print(f"\n--- {self.t['cite']} ---")
+            print(f"\n{_section_header(self.t['cite'])}")
             print(f"1. {self.t['type_text'].split(' (')[0]} / {self.t['read_file']}")
             print(f"2. {self.t['list_styles']}")
             print(f"3. {self.t['list_majors']}")
@@ -4092,7 +4215,7 @@ class CLI:
 
     def library_menu(self):
         while True:
-            print(f"\n--- {self.t['library']} ---")
+            print(f"\n{_section_header(self.t['library'])}")
             print(f"1. {self.t['history']}")
             print(f"2. {self.t['detail']}")
             print(f"3. {self.t['search_refs']}")
@@ -4244,7 +4367,7 @@ class CLI:
 
     def prompts_menu(self):
         while True:
-            print(f"\n--- {self.t['prompts']} ---")
+            print(f"\n{_section_header(self.t['prompts'])}")
             print(f"1. {self.t['fill_prompt']}")
             print(f"2. {self.t['list_prompts']}")
             print(f"0. {self.t['back']}")
@@ -5000,6 +5123,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 
 
 _MAX_BODY = 1_000_000  # 1 MB cap on API request bodies
+_DRAIN_CAP = 2_000_000  # most the server will read to discard an oversize body
 
 
 class RequestTooLargeError(ValueError):
@@ -5036,10 +5160,20 @@ def _load_ui_references(payload: dict) -> dict | None:
 def _read_json_body(handler) -> dict:
     length = int(handler.headers.get("Content-Length") or 0)
     if length > _MAX_BODY:
-        # Close the connection: with HTTP/1.1 keep-alive the unread
-        # body would be parsed as a new request line and log a
-        # spurious traceback.
-        handler.close_connection = True
+        if length <= _DRAIN_CAP:
+            # Read and discard the body so the client can still read
+            # the 413 and the connection stays usable on keep-alive.
+            remaining = length
+            while remaining > 0:
+                chunk = handler.rfile.read(min(65536, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        else:
+            # Absurd size: do not waste time draining it. Closing the
+            # connection keeps the unread bytes from being parsed as
+            # a new request line (which used to log a 414 traceback).
+            handler.close_connection = True
         raise RequestTooLargeError("badan permintaan terlalu besar (maks 1 MB)")
     raw = handler.rfile.read(length) if length else b"{}"
     try:

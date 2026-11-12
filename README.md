@@ -23,7 +23,7 @@ Out: Penelitian ini mengukur suhu ruangan. Penelitian ini menganalisis
 
 ## The file
 
-`academic_tools.py` (v1.17.1) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, applied only with `--apply`), a local library of past analyses and references (one SQLite file, no account), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.18.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, applied only with `--apply`), a local library of past analyses and references (one SQLite file, no account), an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -35,21 +35,22 @@ python3 academic_tools.py serve           # web UI at http://127.0.0.1:8000/
 ```
 
 ```
-  +==============================================================+
-  | Academic Tools                                       v1.17.1 |
-  +--------------------------------------------------------------+
-  | Jargon Buster  |  Citation Weaver  |  Prompt Skripsi         |
-  | id  |  ketik angka, Enter untuk memilih                      |
-  +==============================================================+
-Pilih alat:
-1. Jargon Buster — terjemahkan istilah akademik
-2. Citation Weaver — sisipkan sitasi ke naskah
-3. Prompt Skripsi — template prompt untuk tiap bab
-4. Analisis Kualitas — cek jargon, sitasi, dan DOI sekaligus
-5. Humanize — saran rewrite gaya (sebelum/sesudah)
-6. Pustaka — riwayat & bibliografi
-7. Ganti bahasa (id/en)
-0. Keluar
+  ╭──────────────────────────────────────────────────────────────╮
+  │ Academic Tools                                       v1.18.0 │
+  │ ──────────────────────────────────────────────────────────── │
+  │ Satu file. Semua alat. Tanpa referensi palsu.                │
+  │ Jargon Buster  ·  Citation Weaver  ·  Prompt Skripsi         │
+  │ id  ·  ketik angka, Enter untuk memilih                      │
+  ╰──────────────────────────────────────────────────────────────╯
+Daftar isi:
+  1  Jargon Buster ................. terjemahkan istilah akademik
+  2  Citation Weaver .................. sisipkan sitasi ke naskah
+  3  Prompt Skripsi .............. template prompt untuk tiap bab
+  4  Analisis Kualitas .... cek jargon, sitasi, dan DOI sekaligus
+  5  Humanize .............. saran rewrite gaya (sebelum/sesudah)
+  6  Pustaka .............................. riwayat & bibliografi
+  7  Ganti bahasa (id/en)
+  0  Keluar
 ```
 
 Pick a number, follow the prompts: type text or read a file, pick a field, a citation style or a major, fill a thesis prompt, and a language. For scripts, skip the menu: `python3 academic_tools.py jargon ...`, `... cite ...`, `... prompts ...`, `... analyze ...`, `... humanize ...`, or `... library ...`.
@@ -126,7 +127,7 @@ Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key sin
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.17.1)
+academic_tools.py            # everything (v1.18.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -134,7 +135,7 @@ skills/research/             # four skills: the three tools + a quality-check sk
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 240 tests, stdlib unittest only
+tests/                       # 242 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -153,7 +154,7 @@ The `skills/research/` folders hold the same tools as agent skills: the three to
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 240 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 242 tests, no dependencies
 ```
 
 ## License

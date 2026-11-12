@@ -5,6 +5,7 @@ unittest.mock.patch and capture stdout. No real terminal needed.
 """
 
 import io
+import os
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -37,11 +38,33 @@ class TestAcademicCli(unittest.TestCase):
         self.assertIn("Academic Tools", out)
         self.assertIn(f"v{tools.__version__}", out)
         self.assertIn(
-            "Jargon Buster  |  Citation Weaver  |  Prompt Skripsi", out
+            "Jargon Buster  ·  Citation Weaver  ·  Prompt Skripsi", out
         )
+        self.assertIn("Satu file. Semua alat.", out)
         self.assertTrue(
-            any(line.startswith("  +===") for line in out.splitlines())
+            any(line.startswith(("  ╭", "  +"))
+                for line in out.splitlines())
         )
+
+    def test_menu_uses_dot_leaders(self):
+        code, out = run_cli(["0"])
+        self.assertEqual(code, 0)
+        self.assertIn("Daftar isi:", out)
+        self.assertRegex(out, r"Jargon Buster \.+ terjemahkan")
+        self.assertRegex(out, r"Analisis Kualitas \.+ cek jargon")
+
+    def test_ascii_fallback_and_color(self):
+        import academic_tools as tools
+        with patch.object(tools, "_unicode_ok", return_value=False):
+            banner = tools.format_banner("id")
+            self.assertTrue(banner.splitlines()[0].startswith("  +==="))
+            self.assertNotIn("╭", banner)
+            self.assertIn("#", tools._bar(21, 25))
+        with patch.dict(os.environ, {"ACADEMIC_COLOR": "1"}):
+            self.assertIn("\x1b[1m", tools.format_banner("id"))
+        with patch.dict(os.environ, {"NO_COLOR": "1",
+                                     "ACADEMIC_COLOR": "1"}):
+            self.assertNotIn("\x1b[", tools.format_banner("id"))
 
     def test_english_banner_names_thesis_prompts(self):
         code, out = run_cli(["7", "0"])
@@ -105,7 +128,7 @@ class TestAcademicCli(unittest.TestCase):
     def test_switch_language_to_english(self):
         code, out = run_cli(["7", "0"])
         self.assertEqual(code, 0)
-        self.assertIn("Choose a tool", out)
+        self.assertIn("Contents", out)
         self.assertIn("Goodbye", out)
 
     def test_prompts_list_from_menu(self):

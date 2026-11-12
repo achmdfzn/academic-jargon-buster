@@ -19,4 +19,6 @@ __all__ = [
 ]
 
 if __name__ == "__main__":
-    raise SystemExit(readability_main())
+    # --version prints this shim's own version (READABILITY_VERSION),
+    # not the core __version__.
+    raise SystemExit(readability_main(version=__version__))

@@ -1,7 +1,7 @@
 ---
 name: academic-jargon-buster
 description: "Translate academic jargon to everyday language."
-version: 1.0.6
+version: 1.0.7
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]

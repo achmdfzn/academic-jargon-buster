@@ -1,8 +1,11 @@
 """Tests for the readability scorer (Flesch Reading Ease + FKGL),
 the `readability` subcommand, and its analyze / web UI integration.
 
-The syllable counter follows EYD: vowels a/e/i/o/u, diphthongs
-ai/au/oi only ("ei" is not a diphthong). The formulas are Flesch
+The syllable counter follows EYD edisi V: vowels a/e/i/o/u,
+diphthongs ai/au/ei/oi ("ei" IS a diphthong, so "survei" is 2),
+plus a curated whole-word exception list for pairs that straddle
+a syllable/morpheme boundary ("ma-in", "ke-in-dah-an"). English
+(lang="en") counts vowel-letter runs with a silent-final-e rule. The formulas are Flesch
 (1948), J. Appl. Psychol. 32(3), 221-233:
   RE   = 206.835 - 1.015 * (words/sentence) - 84.6 * (syllables/word)
   FKGL = 0.39 * (words/sentence) + 11.8 * (syllables/word) - 15.59
@@ -47,11 +50,12 @@ class TestCountSyllables(unittest.TestCase):
             with self.subTest(word=word):
                 self.assertEqual(tools._count_syllables(word), want)
 
-    def test_ei_is_not_a_diphthong(self):
-        # EYD diphthongs are ai/au/oi only: "survei" counts 3 (u, e, i),
-        # a documented heuristic limit, not a bug to patch with an
-        # exception list.
-        self.assertEqual(tools._count_syllables("survei"), 3)
+    def test_ei_is_a_diphthong(self):
+        # EYD edisi V has FOUR diphthongs, ai/au/ei/oi: "survei" is
+        # 2 (sur-vei), not 3. "keindahan" stays 4 (ke-in-dah-an):
+        # its "ei" straddles a morpheme boundary, so it is covered
+        # by the whole-word exception list, not by the diphthong.
+        self.assertEqual(tools._count_syllables("survei"), 2)
         self.assertEqual(tools._count_syllables("keindahan"), 4)
 
     def test_no_vowel_words_count_one(self):
@@ -291,9 +295,9 @@ class TestReadabilityCLI(unittest.TestCase):
         with redirect_stdout(buf):
             code = tools.main(["--version"])
         self.assertEqual(code, 0)
-        self.assertIn("readability 1.0.0", buf.getvalue())
-        self.assertIn("academic_tools.py 1.27.1", buf.getvalue())
-        self.assertIn("cli 1.18.0", buf.getvalue())
+        self.assertIn(f"readability {tools.READABILITY_VERSION}", buf.getvalue())
+        self.assertIn(f"academic_tools.py {tools.__version__}", buf.getvalue())
+        self.assertIn(f"cli {tools.CLI_VERSION}", buf.getvalue())
 
 
 class TestReadabilityShim(unittest.TestCase):

@@ -26,7 +26,7 @@ REFS = tools.load_references(
 class TestAcademicTools(unittest.TestCase):
     def test_one_file_holds_everything(self):
         self.assertRegex(tools.__version__, r"^\d+\.\d+\.\d+$")
-        self.assertEqual(len(tools.DICTIONARY), 72)
+        self.assertEqual(len(tools.DICTIONARY), 73)
         self.assertEqual(len(tools.STYLES), 6)
         self.assertEqual(len(tools.DISCIPLINES), 21)
         self.assertEqual(len(tools.PROMPTS), 18)

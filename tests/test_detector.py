@@ -491,8 +491,8 @@ class TestDetectMain(unittest.TestCase):
         with redirect_stdout(buf):
             code = tools.main(["--version"])
         self.assertEqual(code, 0)
-        self.assertIn("ai_detector 1.0.1", buf.getvalue())
-        self.assertIn("academic_tools.py 1.27.1", buf.getvalue())
+        self.assertIn(f"ai_detector {tools.DETECTOR_VERSION}", buf.getvalue())
+        self.assertIn(f"academic_tools.py {tools.__version__}", buf.getvalue())
 
 
 class TestDetectMenu(unittest.TestCase):

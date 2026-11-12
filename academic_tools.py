@@ -118,14 +118,14 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.27.1"
-JARGON_VERSION = "1.0.6"
-CITATION_VERSION = "1.5.3"
+__version__ = "1.27.2"
+JARGON_VERSION = "1.0.7"
+CITATION_VERSION = "1.5.4"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.12"
+QUALITY_VERSION = "1.2.13"
 DETECTOR_VERSION = "1.0.1"
-READABILITY_VERSION = "1.0.0"
-CLI_VERSION = "1.18.0"
+READABILITY_VERSION = "1.0.1"
+CLI_VERSION = "1.18.1"
 
 # ======================================================================
 # Jargon Buster
@@ -336,12 +336,13 @@ DICTIONARY = {
     # every quantitative thesis. Sources verified the same day (web):
     # Field 2018, Ghozali 2018. Indonesian aliases included where the
     # source text uses the Indonesian form. "variance" was left out
-    # on purpose: the matcher is substring-based, so it would also
-    # match inside "covariance" and explain the wrong concept. The
-    # same trade-off is accepted for "validity" (inside "invalidity")
-    # and "normality" (inside "abnormality"): word-boundary matching
-    # would fix those but would also stop plurals such as
-    # "correlations" from matching, so the substring matcher stays.
+    # on purpose: before the start-boundary rule (audit #4, H-7) the
+    # substring matcher would also match inside "covariance" and
+    # explain the wrong concept. The exclusion was kept as decided.
+    # The start-boundary rule now also stops "validity" inside
+    # "invalidity" and "normality" inside "abnormality", while no
+    # end-boundary rule is applied, so plurals such as
+    # "correlations" keep matching.
     "statistical significance": (
         "when a result is unlikely to have happened by chance alone, "
         "so the study treats it as a real effect",
@@ -525,6 +526,13 @@ DICTIONARY = {
         "research-methods",
         "Krueger & Casey 2014, 'Focus Groups' (5th ed.)",
     ),
+    "diskusi kelompok terfokus": (
+        "a guided group discussion with a small set of participants, "
+        "used to hear their views and how they react to each "
+        "other's opinions",
+        "research-methods",
+        "Krueger & Casey 2014, 'Focus Groups' (5th ed.)",
+    ),
     "uji validitas": (
         "the procedure for checking whether each item of a questionnaire "
         "really measures what it should, usually by correlating each "
@@ -535,7 +543,8 @@ DICTIONARY = {
     "uji reliabilitas": (
         "the procedure for checking whether an instrument gives "
         "consistent results, usually with Cronbach's alpha, a number "
-        "from 0 to 1 where higher means more consistent",
+        "that is typically between 0 and 1 but can be negative, "
+        "where higher means more consistent",
         "research-methods",
         "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
     ),
@@ -675,12 +684,30 @@ def update_dictionary(from_file: str, field: str | None = None):
     return sorted(added)
 
 
+# Characters allowed immediately before a dictionary match (H-7):
+# whitespace is checked with str.isspace(); these are the opening
+# brackets and quotes. Anything else before a match — a letter, a
+# digit, a hyphen — means the term sits inside a longer word.
+_MATCH_START_CHARS = "([{'\""
+
+
 def _iter_matches(text: str, field: str | None = None):
     """One dictionary match per occurrence, longest term first.
 
     Terms are tried longest-first, so 'stochastic gradient descent'
     claims its span before 'gradient descent' can. Case-insensitive;
     spans that overlap an already-claimed span are skipped.
+
+    A match must START at a word boundary: the character before it
+    is the start of the string, whitespace, or an opening bracket
+    or quote. That stops 't-test' matching inside 'contest-test'
+    and 'anova' inside 'Rekanova'. There is deliberately NO
+    end-boundary rule, so suffixed forms keep matching
+    ('validitasnya' -> 'validitas', 'correlations' -> 'correlation'):
+    a term followed by extra letters is therefore indistinguishable
+    from a term with a suffix, so 'anovanova' still matches once,
+    at position 0 — a known limitation, not a bug that can be fixed
+    without losing plurals and suffixed forms.
     """
     dictionary = load_dictionary()
     seen_spans = []
@@ -689,6 +716,10 @@ def _iter_matches(text: str, field: str | None = None):
         if field and term_field != field:
             continue
         for m in re.finditer(re.escape(term), text, flags=re.IGNORECASE):
+            if m.start() and not (
+                    text[m.start() - 1].isspace()
+                    or text[m.start() - 1] in _MATCH_START_CHARS):
+                continue
             span = (m.start(), m.end())
             if any(s < span[1] and span[0] < e for s, e in seen_spans):
                 continue
@@ -755,7 +786,7 @@ def to_csv(text: str, field: str | None = None) -> str:
     return buf.getvalue()
 
 
-def jargon_main(argv=None) -> int:
+def jargon_main(argv=None, *, version=None) -> int:
     p = argparse.ArgumentParser(description="Translate academic jargon to plain English.")
     p.add_argument("input", nargs="?", help="plain-text file to translate")
     p.add_argument("--text", help="translate this text instead of a file")
@@ -765,7 +796,8 @@ def jargon_main(argv=None) -> int:
     p.add_argument("--update-dictionary", action="store_true",
                    help="add terms from --from <json file> to dictionary.json")
     p.add_argument("--from", dest="from_file", help="JSON file of terms for --update-dictionary")
-    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    p.add_argument("--version", action="version",
+                   version=f"%(prog)s {version or __version__}")
     args = p.parse_args(argv)
 
     if args.list_terms:
@@ -789,6 +821,8 @@ def jargon_main(argv=None) -> int:
     if args.text:
         text = args.text
     elif args.input:
+        if not os.path.isfile(args.input):
+            raise ValueError(f"File tidak ditemukan: {args.input}")
         with open(args.input, encoding="utf-8") as f:
             text = f.read()
     else:
@@ -862,10 +896,10 @@ def _validate_references(data) -> dict:
     """Validate a parsed bibliography ({key: ref}) in place.
 
     Top level must be a dict; every value a dict; 'authors', when
-    present, must be a list of strings (a lone string is normalized
-    to [string]); 'title', when present, must be a string. Anything
-    else raises ValueError with a plain message — never a bare
-    KeyError/TypeError downstream. Returns the (normalized) dict.
+    present, must be a list or tuple of strings (a lone string is
+    normalized to [string]); 'title', when present, must be a string.
+    Anything else raises ValueError with a plain message — never a
+    bare KeyError/TypeError downstream. Returns the (normalized) dict.
     """
     if not isinstance(data, dict):
         raise ValueError(
@@ -881,13 +915,14 @@ def _validate_references(data) -> dict:
             authors = ref["authors"]
             if isinstance(authors, str):
                 ref["authors"] = [authors]
-            elif isinstance(authors, list):
+            elif isinstance(authors, (list, tuple)):
                 for a in authors:
                     if not isinstance(a, str):
                         raise ValueError(
                             f"bibliografi tidak valid: 'authors' "
                             f"referensi '{key}' harus berupa daftar "
                             "nama (string)")
+                ref["authors"] = list(authors)
             else:
                 raise ValueError(
                     f"bibliografi tidak valid: 'authors' referensi "
@@ -1534,9 +1569,12 @@ def _bibtex_pages(pages) -> str:
 
     Dashes are normalised first ('--', en dash, em dash all become
     a single '-'), like _ris_pages, so '189–194' becomes '189--194'
-    instead of passing the en dash through untouched.
+    instead of passing the en dash through untouched. Only the first
+    range is kept: '189–194, 200' becomes '189--194', the trailing
+    page after the comma is dropped.
     """
     p = _flat(pages).replace("pp. ", "").strip()
+    p = p.split(",")[0].strip()
     p = p.replace("--", "-").replace("–", "-").replace("—", "-")
     return p.replace("-", "--")
 
@@ -1636,8 +1674,11 @@ def _ris_pages(pages) -> tuple:
 
     Normalised like _bibtex_pages first: '--', en dash and em dash
     all become a single '-', so '189–194' and '189--194' split too.
+    Only the first range is kept: '189–194, 200' becomes
+    ('189', '194'), the trailing page after the comma is dropped.
     """
     p = _flat(pages).replace("pp. ", "").strip()
+    p = p.split(",")[0].strip()
     p = p.replace("--", "-").replace("–", "-").replace("—", "-")
     if "-" in p:
         start, _, end = p.partition("-")
@@ -1896,9 +1937,30 @@ _YANG_MANA_RE = re.compile(r"\byang mana\b|\bdimana\b", re.IGNORECASE)
 
 # Abbreviations whose period never ends a sentence. Protected with
 # a private-use placeholder before splitting, restored after.
+# "hal." is the Indonesian abbreviation for "halaman" (page).
 _ABBREVIATIONS = ("Dr.", "Prof.", "Drs.", "dkk.", "dst.", "dll.",
-                  "e.g.", "No.")
+                  "e.g.", "i.e.", "hal.", "No.")
 _ABBREV_PLACEHOLDER = "\ue000"
+# Every period inside an abbreviation is hidden, not just the last
+# one: "e.g." used to survive as "e.g<placeholder>", whose remaining
+# period still split the sentence. Matched at a word boundary so a
+# word that merely ends in the same letters ("perihal.") is not
+# protected by mistake. Longest first so "Drs." wins over "Dr.".
+_ABBREV_RE = re.compile(
+    r"\b(?:" + "|".join(
+        re.escape(a) for a in sorted(_ABBREVIATIONS, key=len, reverse=True)
+    ) + r")")
+# A lone capital letter followed by a period, e.g. "A." in
+# "Dr. A. Budi" — an initial, not a sentence end. Only protected
+# when another capitalised word follows, so a sentence that merely
+# ends in a lone capital ("Nilainya A.") still splits.
+_INITIAL_RE = re.compile(r"\b[A-Z]\.(?=\s+[A-Z])")
+# A sentence terminator: . ! ? (runs of them, e.g. "..."), plus an
+# optional closing quote or parenthesis, followed by whitespace or
+# the end of the text. Only terminators are scanned for — the
+# previous pattern also scanned "[^.!?]*" from every position,
+# which was quadratic on text without a terminator.
+_TERMINATOR_RE = re.compile(r"[.!?]+['\"”’)]?(?=\s|$)")
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -1906,11 +1968,27 @@ def _split_sentences(text: str) -> list[str]:
 
     A closing quote (or parenthesis) after the terminator belongs
     to the sentence that just ended, so "'Jangan!' Begitu ..." is
-    three sentences, not two.
+    three sentences, not two. Sentences come back without their
+    terminator but with any closing quote kept ("'Jangan!'"), a
+    trailing fragment without a terminator is kept as its own
+    sentence, and empty text gives [].
+
+    Abbreviations ("Dr.", "e.g.", "i.e.", "hal.", ...) and single
+    capital initials ("A." in "Dr. A. Budi") never split a
+    sentence. Linear time: only terminators are matched, then the
+    text is sliced between matches.
+
+    Limitation: a sentence that genuinely ends in a lone capital
+    letter is merged with the next one when the next sentence
+    starts with a capital, e.g. "Nilainya A. Ia senang." stays one
+    sentence — an initial and a sentence-final capital cannot be
+    told apart without a dictionary of names.
     """
     protected = text.strip()
-    for abbr in _ABBREVIATIONS:
-        protected = protected.replace(abbr, abbr[:-1] + _ABBREV_PLACEHOLDER)
+    protected = _ABBREV_RE.sub(
+        lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
+    protected = _INITIAL_RE.sub(
+        lambda m: m.group(0)[:-1] + _ABBREV_PLACEHOLDER, protected)
     # Scan for sentence ends instead of splitting: a closing quote
     # (or parenthesis) after the terminator belongs to the sentence
     # that just ended, so it must be kept, not consumed as a
@@ -1918,8 +1996,8 @@ def _split_sentences(text: str) -> list[str]:
     # as its own sentence.
     out: list[str] = []
     pos = 0
-    for m in re.finditer(r"[^.!?]*[.!?]+['\"”’)]?", protected):
-        piece = m.group(0).strip().rstrip(".!?")
+    for m in _TERMINATOR_RE.finditer(protected):
+        piece = protected[pos:m.end()].strip().rstrip(".!?")
         if piece:
             out.append(piece)
         pos = m.end()
@@ -2996,6 +3074,8 @@ def analyze_main(argv=None) -> int:
     if args.text is not None:
         text = args.text
     elif args.input:
+        if not os.path.isfile(args.input):
+            raise ValueError(f"File tidak ditemukan: {args.input}")
         with open(args.input, encoding="utf-8") as f:
             text = f.read()
     else:
@@ -3003,6 +3083,8 @@ def analyze_main(argv=None) -> int:
 
     references = None
     if args.refs:
+        if not os.path.isfile(args.refs):
+            raise ValueError(f"File tidak ditemukan: {args.refs}")
         references = load_references(args.refs)
     result = analyze_text_quality(text, references, lang=args.lang,
                                   verify_dois=not args.no_verify,
@@ -3314,18 +3396,78 @@ def _overlap_gate(words_a: set, words_b: set) -> bool:
     return _word_overlap(words_a, words_b) >= 0.5
 
 
+def _build_word_index(entries: list) -> dict:
+    """Inverted index over sentence word sets: word -> entry positions.
+
+    Each entry is a (normalized, raw, word set, run) tuple; a word
+    occurs at most once per entry because the third element is a
+    set, so every posting list holds each position once.
+    """
+    index: dict = {}
+    for pos, entry in enumerate(entries):
+        for word in entry[2]:
+            index.setdefault(word, []).append(pos)
+    return index
+
+
+def _gated_candidates(words: set, entries: list, index: dict,
+                      short_positions: list, min_pos: int = 0) -> list:
+    """Entry positions that pass the overlap gate, in entry order.
+
+    Exactly the pairs _overlap_gate would admit, found through the
+    inverted index instead of scanning every entry: a pair passes
+    only when the two word sets share at least half the words of
+    the shorter one, so a candidate must share at least one word
+    with the query — unless either side has fewer than 3 unique
+    words, in which case the gate always passes (see _overlap_gate)
+    and the entry is listed in short_positions. Positions come back
+    in entry order, so the best-match choice (first maximum wins)
+    is identical to the old nested loops.
+    """
+    if len(words) < 3:
+        return list(range(min_pos, len(entries)))
+    counts: dict = {}
+    for word in words:
+        for pos in index.get(word, ()):
+            if pos >= min_pos:
+                counts[pos] = counts.get(pos, 0) + 1
+    n = len(words)
+    gated = [pos for pos, shared in counts.items()
+             if 2 * shared >= min(n, len(entries[pos][2]))]
+    for pos in short_positions:
+        if pos >= min_pos and pos not in counts:
+            gated.append(pos)
+    gated.sort()
+    return gated
+
+
 def _is_own_run(run: dict, text_hash: str, legacy_hash: str) -> bool:
     """True when a saved run is the text's own copy.
 
     Primary: the stored text_hash column matches the canonical
     hash, or the v1.25.2 legacy hash (truncate-then-strip). Fallback:
     the stored text itself, hashed canonically, matches — for a run
-    saved with no hash, or by v1.25.1 with its full text.
+    saved with no hash, or by v1.25.1 with its full text. The
+    fallback also rescues runs saved by v1.27.1, whose stored hash
+    was taken after a second strip (see _canonical_text): with the
+    idempotent canonical form, hashing their stored text now gives
+    the same value as hashing the text being checked.
     """
     stored = run.get("text_hash")
     if stored in (text_hash, legacy_hash):
         return True
     return _stored_hash(run.get("text") or "") == text_hash
+
+
+# Work budget for find_duplicates (audit #4, N-15): the number of
+# difflib comparisons one call may perform. A normal check compares
+# a few hundred sentence pairs at most — the overlap gate rejects
+# the rest — so the budget is never reached and results are
+# unchanged; a pathological text (hundreds of sentences sharing one
+# small vocabulary) would otherwise spend minutes in difflib. Once
+# the budget is spent the call stops comparing and returns the
+# matches found so far.
+_MAX_DUPLICATE_COMPARISONS = 2000
 
 
 def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
@@ -3341,7 +3483,10 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
     (canonical hash, or the v1.25.2 legacy hash), so re-analyzing a
     saved run — however long — does not flag every sentence. A
     word-overlap pre-filter (half the words of the shorter sentence
-    shared) keeps the comparison fast.
+    shared) keeps the comparison fast: candidates are found through
+    an inverted word index instead of a full scan, and a work budget
+    (_MAX_DUPLICATE_COMPARISONS difflib comparisons per call) caps
+    pathological inputs at a few seconds.
 
     Returns {"duplicates": [...], "count": n, "checked": m} where m is
     the number of saved runs compared. Each duplicate carries sentence,
@@ -3373,22 +3518,41 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
                 continue
             norm = _normalize_sentence(sent)
             corpus.append((norm, sent, set(norm.split()), run))
+    corpus_index = _build_word_index(corpus)
+    corpus_short = [pos for pos, entry in enumerate(corpus)
+                    if len(entry[2]) < 3]
+    query_entries = [(norm, sent, words, None)
+                     for norm, sent, words
+                     in zip(normalized, sentences, word_sets)]
+    query_index = _build_word_index(query_entries)
+    query_short = [pos for pos, entry in enumerate(query_entries)
+                   if len(entry[2]) < 3]
     duplicates = []
+    spent = 0
     for i, (sent, norm, words) in enumerate(zip(sentences, normalized,
                                                 word_sets)):
+        if spent >= _MAX_DUPLICATE_COMPARISONS:
+            break
         best = None
-        for cand_norm, cand_sent, cand_words, run in corpus:
-            if not _overlap_gate(words, cand_words):
-                continue
+        for pos in _gated_candidates(words, corpus, corpus_index,
+                                     corpus_short):
+            if spent >= _MAX_DUPLICATE_COMPARISONS:
+                break
+            cand_norm, cand_sent, _cand_words, run = corpus[pos]
             sim = _sentence_similarity(norm, cand_norm)
+            spent += 1
             if sim >= threshold and (best is None or sim > best[0]):
                 best = (sim, cand_sent, run)
-        for j in range(i + 1, len(sentences)):
-            if not _overlap_gate(words, word_sets[j]):
-                continue
-            sim = _sentence_similarity(norm, normalized[j])
+        for pos in _gated_candidates(words, query_entries, query_index,
+                                     query_short, min_pos=i + 1):
+            if spent >= _MAX_DUPLICATE_COMPARISONS:
+                break
+            cand_norm, cand_sent = (query_entries[pos][0],
+                                    query_entries[pos][1])
+            sim = _sentence_similarity(norm, cand_norm)
+            spent += 1
             if sim >= threshold and (best is None or sim > best[0]):
-                best = (sim, sentences[j], None)
+                best = (sim, cand_sent, None)
         if best is not None:
             sim, match, run = best
             duplicates.append({
@@ -3460,6 +3624,8 @@ def duplicates_main(argv=None) -> int:
     if args.text:
         text = args.text
     elif args.input:
+        if not os.path.isfile(args.input):
+            raise ValueError(f"File tidak ditemukan: {args.input}")
         with open(args.input, encoding="utf-8") as f:
             text = f.read()
     else:
@@ -3503,6 +3669,8 @@ def humanize_main(argv=None) -> int:
     if args.text:
         text = args.text
     elif args.input:
+        if not os.path.isfile(args.input):
+            raise ValueError(f"File tidak ditemukan: {args.input}")
         with open(args.input, encoding="utf-8") as f:
             text = f.read()
     else:
@@ -3550,16 +3718,23 @@ def humanize_main(argv=None) -> int:
                              + (f"Saved to: {args.out}"
                                 if en else f"Tersimpan di: {args.out}") + "\n")
         elif args.input:
-            stem, ext = os.path.splitext(args.input)
-            out_path = f"{stem}.humanized{ext or '.txt'}"
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(fixed["text"])
-            sys.stdout.write(f"{report}\n"
-                             + (f"Saved to: {out_path}"
-                                if en else f"Tersimpan di: {out_path}") + "\n")
+            if n_applied:
+                stem, ext = os.path.splitext(args.input)
+                out_path = f"{stem}.humanized{ext or '.txt'}"
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(fixed["text"])
+                sys.stdout.write(f"{report}\n"
+                                 + (f"Saved to: {out_path}"
+                                    if en else f"Tersimpan di: {out_path}") + "\n")
+            else:
+                # Nothing applied: no .humanized file is written.
+                sys.stdout.write(f"{report}\n")
         elif not args.json:
             sys.stderr.write(f"{report}\n")
-            sys.stdout.write(fixed["text"])
+            out = fixed["text"]
+            if not out.endswith("\n"):
+                out += "\n"
+            sys.stdout.write(out)
     return 1 if result["count"] else 0
 
 
@@ -3931,7 +4106,7 @@ def format_detect(result: dict, lang: str = "id") -> str:
     return "\n".join(lines) + "\n"
 
 
-def detect_main(argv=None) -> int:
+def detect_main(argv=None, *, version=None) -> int:
     p = argparse.ArgumentParser(
         description="Check whether a text reads like AI writing — a pure "
                     "stdlib heuristic (sentence-length variation, template "
@@ -3945,7 +4120,8 @@ def detect_main(argv=None) -> int:
                    help="output language (default: id)")
     p.add_argument("--json", action="store_true",
                    help="print the raw result as JSON instead of readable text")
-    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    p.add_argument("--version", action="version",
+                   version=f"%(prog)s {version or __version__}")
     args = p.parse_args(argv)
 
     if args.text is not None:
@@ -4005,25 +4181,111 @@ _READABILITY_NOTE = {
 }
 
 _VOWELS = set("aeiou")
-_DIPHTHONGS = ("ai", "au", "oi")
+# EYD edisi V lists FOUR diphthongs: ai, au, ei, oi (Badan Bahasa,
+# 2022 — ejaan.kemdikdasmen.go.id/eyd/penggunaan-huruf/
+# gabungan-huruf-vokal/, verified 2026-11-13). The "ei" is the new
+# one: PUEBI (Permendikbud 50/2015) added it for loanwords such as
+# "survei", and EYD V kept all four. The old claim of only three
+# diphthongs was wrong.
+_DIPHTHONGS = ("ai", "au", "ei", "oi")
+
+# Whole words where a diphthong-looking vowel pair is NOT a
+# diphthong: the pair straddles a syllable or morpheme boundary
+# (EYD V: not every run of vowels is a diphthong — "ma-in",
+# "bu-ah" split between the vowels). The value is the pair(s) to
+# NOT subtract for that word. Matched on the WHOLE word only,
+# never as a substring: "main" is listed, "domain" is not, so a
+# word that merely contains a listed word keeps the plain rule.
+# Curated, not complete: this is lexical, not rule-based ("baik"
+# IS one syllable, "main" is two), so common academic words are
+# listed explicitly and anything unlisted falls back to the plain
+# diphthong rule. Counts checked against KBBI syllabification
+# (da-un, de-da-un-an, ber-a-ir, ma-in, sa-ins, ca-pa-i,
+# per-ba-i-ki, ke-ba-i-kan, ke-in-dah-an, ma-u-pun).
+_SYLLABLE_EXCEPTIONS = {
+    # "ai" splits across a boundary: ma-in, ca-pa-i, per-ba-i-ki.
+    "main": ("ai",),
+    "bermain": ("ai",),
+    "memainkan": ("ai",),
+    "permainan": ("ai",),
+    "pemain": ("ai",),
+    "mainan": ("ai",),
+    "sains": ("ai",),
+    "capai": ("ai",),
+    "mencapai": ("ai",),
+    "tercapai": ("ai",),
+    "capaian": ("ai",),
+    "pencapaian": ("ai",),
+    "perbaiki": ("ai",),
+    "diperbaiki": ("ai",),
+    "memperbaiki": ("ai",),
+    "terperbaiki": ("ai",),
+    "perbaikan": ("ai",),
+    "kebaikan": ("ai",),
+    # "au" splits: ma-u-pun, a-ta-u-pun, ka-la-u-pun, da-un.
+    # "bagaimanapun" keeps its real "ai" diphthong (ba-gai) and
+    # only loses the "au" (ma-na-pun).
+    "maupun": ("au",),
+    "ataupun": ("au",),
+    "kalaupun": ("au",),
+    "bagaimanapun": ("au",),
+    "daun": ("au",),
+    "dedaunan": ("au",),
+    # "ai" splits: a-ir.
+    "air": ("ai",),
+    "berair": ("ai",),
+    # "ei" splits: ke-in-dah-an (not sur-vei, where "ei" IS one).
+    "keindahan": ("ei",),
+}
 
 
-def _count_syllables(word: str) -> int:
-    """Syllables in one word, by EYD rules.
+def _count_syllables(word: str, lang: str = "id") -> int:
+    """Syllables in one word.
 
-    Count the vowels (a, e, i, o, u); each diphthong ai/au/oi counts
-    as one syllable, so one is subtracted per diphthong. Only ai, au,
-    and oi are diphthongs in EYD — "ei" is not, so "keindahan" is 4
-    syllables and "survei" counts as 3: a documented heuristic limit,
-    not a bug to patch with an exception list. A word with no vowel
-    (a number, an abbreviation) counts as 1. Non-letters at the ends
-    of the word are stripped first; the word is lowercased.
+    Indonesian (lang="id", the default): count the vowels
+    (a, e, i, o, u); each diphthong counts as one syllable, so one
+    is subtracted per diphthong. EYD edisi V has four diphthongs —
+    ai, au, ei, oi — so "survei" is 2 (sur-vei) and "baik" is 1.
+    But not every run of vowels is a diphthong: where the pair
+    straddles a syllable/morpheme boundary ("ma-in", "ba-i-ki",
+    "ke-in-dah-an") it counts as two. That is lexical, so the
+    common words where it happens are listed explicitly in
+    _SYLLABLE_EXCEPTIONS (whole-word match only; the list is
+    curated, not complete — anything unlisted falls back to the
+    plain diphthong rule).
+
+    English (lang="en"): count runs of vowel letters (a, e, i, o,
+    u, y — "y" counts, so "happy" and "study" are 2), then
+    subtract 1 for a silent final "e" ("make" is 1). Known limit:
+    a final "-le" after a consonant is a syllable of its own
+    ("table", "syllable" undercount by 1); the plain rule does
+    not special-case it.
+
+    A word with no vowel (a number, an abbreviation) counts as 1.
+    Non-letters at the ends of the word are stripped first; the
+    word is lowercased.
     """
     w = re.sub(r"^[^a-z]+|[^a-z]+$", "", word.lower())
+    if lang == "en":
+        groups = 0
+        in_group = False
+        for ch in w:
+            if ch in _VOWELS or ch == "y":
+                if not in_group:
+                    groups += 1
+                    in_group = True
+            else:
+                in_group = False
+        if groups == 0:
+            return 1
+        if w.endswith("e") and groups > 1:
+            groups -= 1
+        return max(1, groups)
     vowels = sum(1 for ch in w if ch in _VOWELS)
     if vowels == 0:
         return 1
-    diphthongs = sum(w.count(d) for d in _DIPHTHONGS)
+    skip = _SYLLABLE_EXCEPTIONS.get(w, ())
+    diphthongs = sum(w.count(d) for d in _DIPHTHONGS if d not in skip)
     return max(1, vowels - diphthongs)
 
 
@@ -4037,9 +4299,14 @@ def readability_score(text: str, lang: str = "id") -> dict:
     label for the RE (90+ Very easy, 80+ Easy, 70+ Fairly easy, 60+
     Standard, 50+ Fairly difficult, 30+ Difficult, below 30 Very
     difficult). Words come from text.split(), sentences from
-    _split_sentences (so abbreviations do not split a sentence).
+    _split_sentences (so abbreviations do not split a sentence);
+    syllables come from _count_syllables with the same lang, so
+    lang="en" counts English vowel runs instead of EYD diphthongs.
     Raises ValueError("teks kosong") for an empty or whitespace-only
-    text, like every other tool in this file. No minimum word count:
+    text, like every other tool in this file — and for a text with
+    no real word at all (no token containing a letter: "...",
+    "!!!", "123 456" all raise the same error, instead of scoring
+    a perfect 100). No minimum word count:
     the formulas are pure arithmetic, so even one sentence scores.
     Every result carries the honesty note (see _READABILITY_NOTE).
     """
@@ -4047,10 +4314,14 @@ def readability_score(text: str, lang: str = "id") -> dict:
         raise ValueError("teks kosong")
     lang = lang if lang in ("id", "en") else "id"
     words = text.split()
+    if not any(any(ch.isalpha() for ch in w) for w in words):
+        # Punctuation and digits alone are not a text: without this
+        # a "..." scores RE 100.0 / FKGL 0.0, "Sangat mudah".
+        raise ValueError("teks kosong")
     sentences = _split_sentences(text)
     n_words = len(words)
     n_sentences = len(sentences) if sentences else 1
-    total_syllables = sum(_count_syllables(w) for w in words)
+    total_syllables = sum(_count_syllables(w, lang) for w in words)
     avg_words = n_words / n_sentences
     avg_syllables = total_syllables / n_words if n_words else 0.0
     ease = 206.835 - 1.015 * avg_words - 84.6 * avg_syllables
@@ -4114,7 +4385,7 @@ def format_readability(result: dict, lang: str = "id") -> str:
     return "\n".join(lines) + "\n"
 
 
-def readability_main(argv=None) -> int:
+def readability_main(argv=None, *, version=None) -> int:
     p = argparse.ArgumentParser(
         description="Flesch Reading Ease and Flesch-Kincaid Grade Level "
                     "for a text — pure formulas (Flesch 1948), no "
@@ -4127,7 +4398,8 @@ def readability_main(argv=None) -> int:
                    help="output language (default: id)")
     p.add_argument("--json", action="store_true",
                    help="print the raw result as JSON instead of readable text")
-    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    p.add_argument("--version", action="version",
+                   version=f"%(prog)s {version or __version__}")
     args = p.parse_args(argv)
 
     if args.text is not None:
@@ -4324,18 +4596,28 @@ _MAX_STORED_TEXT = 100_000
 
 
 def _canonical_text(text: str) -> str:
-    """The stored form of a manuscript: stripped, then capped.
+    """The stored form of a manuscript: stripped, capped, re-stripped.
 
     One canonical form, used everywhere a text is stored or hashed:
-    strip first, then truncate. The order matters — truncate-then-
-    strip and strip-then-truncate hash differently whenever the
-    100_000th character lands on whitespace.
+    strip first, then truncate to _MAX_STORED_TEXT, then strip any
+    trailing whitespace the cut itself exposed. The final rstrip is
+    what makes the form idempotent: applying _canonical_text twice
+    is a no-op, so a stored text re-hashed later always yields the
+    hash it was saved with. Without it, a cut landing on a space
+    left the stored text ending in whitespace that a second
+    canonicalisation stripped away, and sha256(stored_text) no
+    longer equalled text_hash (audit #4, B-2).
     """
-    return text.strip()[:_MAX_STORED_TEXT]
+    return text.strip()[:_MAX_STORED_TEXT].rstrip()
 
 
 def _stored_hash(text: str) -> str:
-    """SHA-256 of the canonical stored form of a text."""
+    """SHA-256 of the canonical stored form of a text.
+
+    _canonical_text is idempotent, so hashing a text that is
+    already in stored form gives the hash of those exact bytes —
+    the same value save_analysis stores for it.
+    """
     return hashlib.sha256(
         _canonical_text(text).encode("utf-8")).hexdigest()
 
@@ -4364,8 +4646,10 @@ def save_analysis(text: str, result: dict,
     A reference that cannot be serialized to JSON raises ValueError
     here, before anything is written — never a bare TypeError from
     deep inside the upsert. Only the canonical form of the text is
-    stored (see _canonical_text: stripped, then capped at 100_000
-    characters), and its hash is the canonical hash.
+    stored (see _canonical_text: stripped, capped at 100_000
+    characters, then re-stripped), and the stored hash is the
+    SHA-256 of exactly those stored bytes — never a re-canonicalised
+    hash — so sha256(stored_text) == text_hash always holds.
     """
     text = _canonical_text(text)
     if references is not None:
@@ -4401,7 +4685,11 @@ def save_analysis(text: str, result: dict,
              sum(1 for v in with_doi if v.get("verdict") == "ok"),
              len(with_doi), result["style"]["style_score"],
              result.get("suggestions", {}).get("count", 0),
-             _stored_hash(text), text))
+             # Hash of the stored bytes themselves (text is already
+             # canonical here): never canonicalise again, or a cut
+             # landing on whitespace would hash a shorter string
+             # than the one stored (audit #4, B-2).
+             hashlib.sha256(text.encode("utf-8")).hexdigest(), text))
         analysis_id = cur.lastrowid
         if references:
             # Every reference enters the personal bibliography, not
@@ -4772,7 +5060,7 @@ def _library_run(args, parser) -> int:
     return 0
 
 
-def cite_main(argv=None) -> int:
+def cite_main(argv=None, *, version=None) -> int:
     p = argparse.ArgumentParser(description="Weave citations into narrative text.")
     p.add_argument("input", nargs="?", help="plain-text file with [cite:key] markers")
     p.add_argument("--text", help="weave this text instead of a file")
@@ -4800,7 +5088,8 @@ def cite_main(argv=None) -> int:
                    help="with --audit: also verify each cited reference's DOI/arXiv/URL resolves")
     p.add_argument("--verify", action="store_true",
                    help="verify every reference DOI against Crossref and OpenAlex")
-    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    p.add_argument("--version", action="version",
+                   version=f"%(prog)s {version or __version__}")
     args = p.parse_args(argv)
 
     if args.list_styles:
@@ -5509,7 +5798,7 @@ def fill_prompt(prompt_id: str, values: dict, lang: str = "id") -> str:
     return template.format(**values)
 
 
-def prompts_main(argv=None) -> int:
+def prompts_main(argv=None, *, version=None) -> int:
     p = argparse.ArgumentParser(
         description="Thesis prompts: ready-made prompts for each thesis chapter.")
     p.add_argument("prompt_id", nargs="?", help="prompt id (see --list)")
@@ -5519,7 +5808,8 @@ def prompts_main(argv=None) -> int:
                    help="template language (default: id)")
     p.add_argument("--set", dest="set_values", action="append", default=[],
                    help="fill a placeholder: --set judul='...' (repeatable)")
-    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    p.add_argument("--version", action="version",
+                   version=f"%(prog)s {version or __version__}")
     args = p.parse_args(argv)
 
     if args.list or not args.prompt_id:
@@ -7066,9 +7356,10 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     if (res.readability) {
       var r = res.readability;
       h += '<div class="card"><h2>' + (lang === "en" ? "Readability" : "Keterbacaan") + '</h2><p>'
-        + 'Flesch Reading Ease ' + num(r.flesch_reading_ease, 100) + '/100 — ' + esc(r.band)
-        + '<br>Flesch-Kincaid Grade Level ' + num(r.flesch_kincaid_grade, 100)
-        + '<br>' + (lang === "en" ? "Average " : "Rata-rata ") + num(r.avg_words_per_sentence, 1000) + (lang === "en" ? " words/sentence, " : " kata/kalimat, ") + num(r.avg_syllables_per_word, 100) + (lang === "en" ? " syllables/word" : " suku kata/kata")
+        + 'Flesch Reading Ease ' + num(r.flesch_reading_ease, 100).toFixed(1) + '/100 — ' + esc(r.band)
+        + '<br>Flesch-Kincaid Grade Level ' + num(r.flesch_kincaid_grade)
+        + '<br>' + (lang === "en" ? "Average " : "Rata-rata ") + num(r.avg_words_per_sentence) + (lang === "en" ? " words/sentence, " : " kata/kalimat, ") + num(r.avg_syllables_per_word, 100) + (lang === "en" ? " syllables/word" : " suku kata/kata")
+        + ' (' + num(r.words) + (lang === "en" ? " words, " : " kata, ") + num(r.sentences) + (lang === "en" ? " sentences, " : " kalimat, ") + num(r.total_syllables) + (lang === "en" ? " syllables)" : " suku kata)")
         + '</p><p>' + esc(r.note) + '</p></div>';
     }
     if (res.library_id) {
@@ -7472,13 +7763,30 @@ def _read_body(handler, max_body: int, drain_cap: int,
 
     A missing Content-Length means an empty body. A present one must
     be plain digits within the cap; anything else is a generic 400
-    ("ukuran body tidak valid"), never a leaked int() traceback."""
-    raw_length = handler.headers.get("Content-Length")
-    if raw_length is None:
+    ("ukuran body tidak valid"), never a leaked int() traceback.
+    Duplicate Content-Length headers with different values are also
+    a 400 (RFC 7230 §3.3.2) — trusting the first one would leave
+    the rest of the body unread and desync keep-alive. Identical
+    duplicates are harmless and accepted.
+
+    Whenever the length cannot be trusted (invalid or conflicting),
+    the body cannot be drained, so the connection is closed instead
+    of leaving unread bytes to be parsed as a new request."""
+    get_all = getattr(handler.headers, "get_all", None)
+    if get_all is not None:
+        raw_lengths = get_all("Content-Length") or []
+    else:  # plain-dict headers (unit-test fakes): at most one value
+        single = handler.headers.get("Content-Length")
+        raw_lengths = [] if single is None else [single]
+    if not raw_lengths:
         length = 0
     else:
-        raw_length = raw_length.strip()
+        if len({v.strip() for v in raw_lengths}) > 1:
+            handler.close_connection = True
+            raise ValueError("ukuran body tidak valid")
+        raw_length = raw_lengths[0].strip()
         if not re.fullmatch(r"\d+", raw_length):
+            handler.close_connection = True
             raise ValueError("ukuran body tidak valid")
         length = int(raw_length)
     if length > max_body:
@@ -7518,14 +7826,20 @@ def _multipart_param(disposition: str, param: str):
     pieces = []
     buf = []
     in_quotes = False
-    escaped = False
-    for ch in disposition:
-        if escaped:
-            buf.append(ch)
-            escaped = False
-        elif ch == "\\" and in_quotes:
-            escaped = True
-        elif ch == '"':
+    i = 0
+    n = len(disposition)
+    while i < n:
+        ch = disposition[i]
+        # Inside quotes a backslash only escapes " and \ (RFC 7578):
+        # "\n" is a literal backslash followed by n, not an escape,
+        # so "a\nb.txt" keeps its backslash instead of becoming
+        # "anb.txt".
+        if ch == "\\" and in_quotes and i + 1 < n \
+                and disposition[i + 1] in ('"', "\\"):
+            buf.append(disposition[i + 1])
+            i += 2
+            continue
+        if ch == '"':
             in_quotes = not in_quotes
             buf.append(ch)
         elif ch == ";" and not in_quotes:
@@ -7533,6 +7847,7 @@ def _multipart_param(disposition: str, param: str):
             buf = []
         else:
             buf.append(ch)
+        i += 1
     pieces.append("".join(buf))
     for piece in pieces:
         piece = piece.strip()
@@ -7601,7 +7916,15 @@ def _parse_multipart(body: bytes, boundary: bytes) -> list[dict]:
             i += 1
         headers = {}
         for raw in head_lines:
-            text = raw.decode("latin-1")
+            # Header bytes are usually ASCII, but a filename may be
+            # UTF-8: decode as UTF-8 first so "ünïcode-✓.txt" stays
+            # readable instead of mojibake-ing through latin-1.
+            # Anything that is not valid UTF-8 (e.g. a latin-1 byte)
+            # falls back to latin-1, which never fails.
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                text = raw.decode("latin-1")
             if ":" in text:
                 key, value = text.split(":", 1)
                 headers[key.strip().lower()] = value.strip()
@@ -7641,6 +7964,15 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         # hostile method token out of the raw status line. The
         # Content-Length matters: without it an HTTP/1.1 client
         # waits forever for the body to end.
+        # Close the connection after any error from the stdlib
+        # parse path: a failed request line leaves its header
+        # lines unread, and handle() would otherwise parse them
+        # as a brand-new (HTTP/0.9) request and send a second
+        # error body that desyncs keep-alive. This also covers
+        # HTTP/0.9 requests, whose responses carry no headers at
+        # all under the stdlib — closing is the safe alternative
+        # to sending a header-less response on a live connection.
+        self.close_connection = True
         safe = (message or "").replace("\r", " ").replace("\n", " ")
         body = ("<!DOCTYPE HTML><html><head><title>%d</title></head>"
                 "<body><h1>%d</h1></body></html>"
@@ -7720,6 +8052,13 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(e)})
         except KeyError as e:
             self._send_json(404, {"error": _error_message(e)})
+        except (TimeoutError, socket.timeout):
+            # A stalled read or a write to a client that stopped
+            # reading is not a server crash: send no misleading
+            # 500 — and the socket is unusable for further reads
+            # after a timeout, so close it. (Both names: on
+            # Python 3.9 socket.timeout is not TimeoutError yet.)
+            self.close_connection = True
         except Exception:
             self._send_json(500, {"error": "kesalahan server, coba lagi"})
 
@@ -7786,6 +8125,14 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(e)})
         except (LookupError, KeyError) as e:
             self._send_json(400, {"error": _error_message(e)})
+        except (TimeoutError, socket.timeout):
+            # A client that stalls mid-body is not a server crash:
+            # no misleading 500 — and the socket is unusable for
+            # further reads after a timeout, so close it instead
+            # of letting handle() re-parse the stream and log a
+            # traceback for the follow-up read. (Both names: on
+            # Python 3.9 socket.timeout is not TimeoutError yet.)
+            self.close_connection = True
         except Exception:
             self._send_json(500, {"error": "kesalahan server, coba lagi"})
 
@@ -7815,11 +8162,15 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         fields = {}
         files = []
         for part in parts:
-            if part["filename"] is not None:
+            if part["filename"]:
                 files.append(part)
-            else:
+            elif part["filename"] is None:
                 fields[part["name"]] = part["data"].decode("utf-8",
                                                            "replace")
+            # filename="" (an unchosen file input) is neither a
+            # file nor a field: ignore it, so an upload of only
+            # empty filenames is a 400 via the check below instead
+            # of a 200 with count 0.
         if not files:
             raise ValueError(
                 "tidak ada file yang diunggah — pilih folder dulu")
@@ -7866,7 +8217,11 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         folder_name = "unggahan"
         if len(firsts) == 1:
             only = firsts.pop()
-            if only:
+            # Never name the folder ".." (or "."): a filename like
+            # "../../etc/passwd.txt" is skipped as non-top-level,
+            # but its first component must not become the display
+            # name — fall back to "unggahan".
+            if only and only not in (".", ".."):
                 folder_name = only
         scores = [e["quality_score"] for e in entries
                   if e["quality_score"] is not None and not e.get("error")]
@@ -7964,9 +8319,13 @@ class _BoundedThreadingHTTPServer(http.server.ThreadingHTTPServer):
     an unbounded thread pool lets one client exhaust the process
     with slow parallel uploads. The semaphore is held for the whole
     request handling (process_request_thread), not just the spawn —
-    holding it only while spawning would bound nothing."""
+    holding it only while spawning would bound nothing. The cap is
+    per-instance, not a class attribute: two servers in one process
+    (the test suite does this) must not share one 8-slot pool."""
 
-    _slots = threading.BoundedSemaphore(8)
+    def __init__(self, *args, **kwargs):
+        self._slots = threading.BoundedSemaphore(8)
+        super().__init__(*args, **kwargs)
 
     def process_request_thread(self, request, client_address):
         with self._slots:
@@ -7975,11 +8334,15 @@ class _BoundedThreadingHTTPServer(http.server.ThreadingHTTPServer):
     def handle_error(self, request, client_address):
         # process_request_thread calls the SERVER's handle_error
         # (not the handler's): a client that aborts mid-request
-        # (broken pipe / reset) is not a server error — swallow it
-        # instead of logging a traceback to stderr. Anything else
-        # still goes to the default handler, traceback and all.
+        # (broken pipe / reset) — or stalls past the socket
+        # timeout — is not a server error. Swallow it instead of
+        # logging a traceback to stderr. Anything else still goes
+        # to the default handler, traceback and all. (Both timeout
+        # names: on Python 3.9 socket.timeout is not TimeoutError
+        # yet; on 3.10+ they are the same.)
         exc = sys.exc_info()[1]
-        if isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError,
+                            TimeoutError, socket.timeout)):
             return
         super().handle_error(request, client_address)
 
@@ -8024,16 +8387,21 @@ def serve_main(argv=None) -> int:
     args = p.parse_args(argv)
     server = make_server(args.host, args.port)
     host, port = server.server_address[:2]
-    print(f"Academic Tools v{__version__} — buka http://{host}:{port}/")
-    print("Berhenti dengan Ctrl-C. Hanya localhost; tidak ada data yang keluar dari komputer ini.")
+    # flush=True: as a service stdout is a pipe (block-buffered),
+    # so without it the banner sits in the buffer until the
+    # process stops and never shows in the service log.
+    print(f"Academic Tools v{__version__} — buka http://{host}:{port}/",
+          flush=True)
+    print("Berhenti dengan Ctrl-C. Hanya localhost; tidak ada data yang keluar dari komputer ini.",
+          flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nBerhenti.")
+        print("\nBerhenti.", flush=True)
     return 0
 
 
-def main(argv=None) -> int:
+def main(argv=None, *, version=None) -> int:
     """Entry point. No args -> interactive menu; jargon/cite/prompts -> passthrough."""
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in ("jargon", "cite", "prompts", "analyze",
@@ -8070,6 +8438,12 @@ def main(argv=None) -> int:
         print(__doc__)
         return 0
     if argv and argv[0] in ("-v", "--version"):
+        if version is not None:
+            # Invoked as a shim (python3 academic_cli.py --version):
+            # print just this component's version, matching the
+            # shim's __version__ (CLI_VERSION) — not the full list.
+            print(f"{os.path.basename(sys.argv[0])} {version}")
+            return 0
         print(f"academic_tools.py {__version__} "
               f"(cli {CLI_VERSION}; jargon_buster {JARGON_VERSION}; "
               f"citation_weaver {CITATION_VERSION}; "

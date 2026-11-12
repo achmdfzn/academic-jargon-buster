@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
 description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
-version: 1.2.12
+version: 1.2.13
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -74,7 +74,7 @@ Flesch Reading Ease + Flesch-Kincaid Grade Level (Flesch 1948, J. Appl. Psychol.
 
 - **Formulas:** RE = 206.835 − 1.015 × (words/sentence) − 84.6 × (syllables/word), clamped to 0–100; FKGL = 0.39 × (words/sentence) + 11.8 × (syllables/word) − 15.59, clamped to a minimum of 0. Both rounded to 1 decimal.
 - **Bands (standard Flesch, on the RE):** 90+ Very easy, 80+ Easy, 70+ Fairly easy, 60+ Standard, 50+ Fairly difficult, 30+ Difficult, below 30 Very difficult.
-- **Syllables are counted by EYD rules** (vowels a/e/i/o/u; diphthongs ai/au/oi only — "ei" is not one, so "survei" counts 3; a word with no vowel counts 1). The counter is tuned for Indonesian; English is best-effort.
+- **Syllables are counted by EYD rules** (vowels a/e/i/o/u; diphthongs ai/au/ei/oi per EYD edisi V, so "survei" counts 2; a curated whole-word exception list covers pairs that straddle a syllable boundary, e.g. "ma-in", "ke-in-dah-an"; a word with no vowel counts 1). The counter is tuned for Indonesian; English counts vowel-letter runs with a silent-final-e rule.
 - **Honesty note, always attached:** the Flesch formulas were calibrated for English, so on Indonesian text the score is an indication, not a verdict — Indonesian academic prose usually lands lower because Indonesian words average more syllables, and that is expected, not a bug. FKGL uses the United States grade scale.
 - **Exit code is 0** unless the input itself is bad (missing file, empty text — `teks kosong`, exit 1). No menu option: readability lives inside Analisis Kualitas (menu 1) and its own subcommand.
 

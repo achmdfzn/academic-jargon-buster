@@ -25,4 +25,6 @@ __all__ = [
 ]
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # --version prints this shim's own version (PROMPTS_VERSION),
+    # not the core __version__.
+    raise SystemExit(main(version=__version__))

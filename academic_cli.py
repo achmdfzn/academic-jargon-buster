@@ -67,4 +67,6 @@ __all__ = [
 ]
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # --version prints this shim's own version (CLI_VERSION),
+    # not the full component list.
+    raise SystemExit(main(version=__version__))

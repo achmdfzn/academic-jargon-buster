@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
 description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
-version: 1.2.3
+version: 1.2.4
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -56,6 +56,7 @@ Four components, 25 points each, one score 0–100:
 - **`--no-verify`** skips DOI verification even when `--refs` is given.
 - **`--suggest`** adds the Humanize rewrite suggestions to the same pass.
 - **`--duplicates`** also checks every sentence against the saved runs in the library and reports near-duplicates (same or nearly the same sentence in an earlier draft, or repeated inside the text itself). The JSON result then carries `duplicates`. Duplicates never change the score and never change the exit code — they are a warning to read, not a failure.
+- **A folder instead of a file** — `analyze <folder>` analyzes every top-level `.txt`/`.md` file in the folder, in name order, and prints a recap table (file, score, jargon, citations, DOI, style, duplicates) plus the average. `--refs`, `--no-verify`, `--save` (each run recorded with the file name as its title), `--duplicates`, `--db`, and `--json` all work; `--suggest` and `--title` are rejected for folders. With `--save --duplicates`, files analyzed earlier in the same run are already in the library, so a sentence repeated in a later chapter is flagged. A file that cannot be read is recorded with its error and the rest still run. In the interactive menu, Analisis Kualitas offers "Baca folder" as a third choice; the web UI has no folder upload yet.
 - **`--save`** records the run in the library (`--title` labels it, `--db` picks another database). The JSON result then carries `library_id`.
 - **`--json`** prints the raw result (`jargon`, `citations`, `doi_verification`, `style`, `quality_score`, `recommendations`, `suggestions`, `duplicates` when `--duplicates` was passed).
 - **Exit code is 1** when a citation is missing or a DOI is not found in either source, 0 otherwise. In the interactive menu, this is option 4, Analisis Kualitas.

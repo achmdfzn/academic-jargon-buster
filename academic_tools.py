@@ -98,12 +98,12 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.20.0"
+__version__ = "1.21.0"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.3"
-CLI_VERSION = "1.13.0"
+QUALITY_VERSION = "1.2.4"
+CLI_VERSION = "1.14.0"
 
 # ======================================================================
 # Jargon Buster
@@ -2492,9 +2492,11 @@ def format_analyze(result: dict, lang: str = "id") -> str:
 
 def analyze_main(argv=None) -> int:
     p = argparse.ArgumentParser(
-        description="Check an academic text: jargon, citations, DOI "
-                    "verification, and style in one pass.")
-    p.add_argument("input", nargs="?", help="plain-text file to analyze")
+        description="Check an academic text — or every .txt/.md file in a "
+                    "folder: jargon, citations, DOI verification, and style "
+                    "in one pass.")
+    p.add_argument("input", nargs="?", help="plain-text file (or a folder of "
+                   ".txt/.md files) to analyze")
     p.add_argument("--text", help="analyze this text instead of a file")
     p.add_argument("--refs", help="bibliography JSON file (optional; without "
                    "it, citation audit and DOI checks are skipped)")
@@ -2518,6 +2520,15 @@ def analyze_main(argv=None) -> int:
                    help="print the raw result as JSON instead of readable text")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = p.parse_args(argv)
+
+    if args.input and os.path.isdir(args.input):
+        if args.suggest:
+            p.error("--suggest tidak didukung untuk folder")
+        if args.title:
+            p.error("--title tidak didukung untuk folder")
+        if args.text:
+            p.error("--text tidak bisa dipakai bersama folder")
+        return _analyze_folder_main(args)
 
     if args.text:
         text = args.text
@@ -2558,6 +2569,183 @@ def analyze_main(argv=None) -> int:
                   for v in result["doi_verification"].values())
     missing = result["citations"]["missing"] if result["citations"] else []
     return 1 if missing or bad_doi else 0
+
+
+_FOLDER_EXTENSIONS = (".txt", ".md")
+
+
+def analyze_folder(folder: str, references=None, *, lang: str = "id",
+                   verify_dois: bool = True, duplicates: bool = False,
+                   save: bool = False, db=None) -> dict:
+    """Analyze every top-level .txt/.md file in `folder`, in name order.
+
+    Each file is one analyze_text_quality() pass. With `duplicates`,
+    each file is also checked against the library — and, when `save`
+    is on, files analyzed earlier in this same run are already in the
+    library, so a sentence repeated in a later chapter is flagged.
+    With `save`, each run is recorded in the library with the file
+    name as its title.
+
+    Returns {"folder", "files": [...], "count": n, "average": float|None}.
+    A file entry carries file, text, result (the full analyze pass),
+    quality_score, jargon_count, citations_cited, citations_missing,
+    doi_ok, doi_total, doi_missing, style_score, duplicates (count, or
+    None when not checked), library_id (or None), and error (None when
+    the file was read and analyzed). A file that cannot be read (bad
+    encoding, permissions) is recorded with its error and the rest
+    still run.
+    """
+    names = sorted(n for n in os.listdir(folder)
+                   if n.lower().endswith(_FOLDER_EXTENSIONS)
+                   and os.path.isfile(os.path.join(folder, n)))
+    entries = []
+    for name in names:
+        path = os.path.join(folder, name)
+        entry = {"file": name, "text": None, "result": None,
+                 "quality_score": None, "jargon_count": 0,
+                 "citations_cited": 0, "citations_missing": [],
+                 "doi_ok": 0, "doi_total": 0, "doi_missing": 0,
+                 "style_score": None, "duplicates": None,
+                 "library_id": None, "error": None}
+        try:
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+        except (OSError, UnicodeDecodeError) as e:
+            entry["error"] = str(e)
+            entries.append(entry)
+            continue
+        entry["text"] = text
+        result = analyze_text_quality(text, references, lang=lang,
+                                      verify_dois=verify_dois)
+        entry["result"] = result
+        entry["quality_score"] = result["quality_score"]
+        entry["jargon_count"] = len(result["jargon"])
+        if result["citations"]:
+            entry["citations_cited"] = len(result["citations"]["cited"])
+            entry["citations_missing"] = result["citations"]["missing"]
+        doi = result["doi_verification"]
+        entry["doi_total"] = sum(1 for v in doi.values() if v.get("doi"))
+        entry["doi_ok"] = sum(1 for v in doi.values()
+                              if v.get("verdict") == "ok")
+        entry["doi_missing"] = sum(1 for v in doi.values()
+                                   if v.get("verdict") == "missing")
+        entry["style_score"] = result["style"]["style_score"]
+        if duplicates:
+            try:
+                entry["duplicates"] = find_duplicates(text, db=db)["count"]
+            except ValueError as e:
+                entry["error"] = str(e)
+                entries.append(entry)
+                continue
+        if save:
+            try:
+                entry["library_id"] = save_analysis(
+                    text, result, references, title=name, db=db)
+            except ValueError as e:
+                entry["error"] = str(e)
+        entries.append(entry)
+    scores = [e["quality_score"] for e in entries
+              if e["quality_score"] is not None]
+    average = round(sum(scores) / len(scores), 1) if scores else None
+    return {"folder": folder, "files": entries, "count": len(entries),
+            "average": average}
+
+
+_FOLDER_STRINGS = {
+    "id": {
+        "heading": "Analisis folder",
+        "files": "file",
+        "average": "Rata-rata",
+        "none": "Tidak ada file .txt atau .md di folder ini.",
+        "columns": ("File", "Skor", "Jargon", "Sitasi", "DOI", "Gaya",
+                    "Duplikat"),
+        "cited": "{n} dikutip",
+        "missing": "{n} hilang",
+        "dash": "-",
+        "failed": "Gagal",
+    },
+    "en": {
+        "heading": "Folder analysis",
+        "files": "files",
+        "average": "Average",
+        "none": "No .txt or .md files in this folder.",
+        "columns": ("File", "Score", "Jargon", "Citations", "DOI", "Style",
+                    "Duplicates"),
+        "cited": "{n} cited",
+        "missing": "{n} missing",
+        "dash": "-",
+        "failed": "Failed",
+    },
+}
+
+
+def format_folder_result(result: dict, lang: str = "id") -> str:
+    """Render an analyze_folder() result as a recap table."""
+    s = _FOLDER_STRINGS.get(lang, _FOLDER_STRINGS["id"])
+    files = result["files"]
+    if not files:
+        return s["none"] + "\n"
+    rows = []
+    for e in files:
+        if e["error"]:
+            rows.append((e["file"], s["dash"], s["dash"], s["dash"],
+                         s["dash"], s["dash"], s["dash"]))
+            continue
+        if e["citations_missing"]:
+            cites = s["missing"].format(n=len(e["citations_missing"]))
+        elif e["citations_cited"]:
+            cites = s["cited"].format(n=e["citations_cited"])
+        else:
+            cites = s["dash"]
+        doi = (f"{e['doi_ok']}/{e['doi_total']}" if e["doi_total"]
+               else s["dash"])
+        dups = (str(e["duplicates"]) if e["duplicates"] is not None
+                else s["dash"])
+        rows.append((e["file"], str(e["quality_score"]),
+                     str(e["jargon_count"]), cites, doi,
+                     str(e["style_score"]), dups))
+    cols = list(zip(s["columns"], *rows))
+    widths = [max(len(c) for c in col) for col in cols]
+    lines = [f"{s['heading']}: {result['folder']} "
+             f"({result['count']} {s['files']})"]
+    header = "  ".join(h.ljust(w) for h, w in zip(s["columns"], widths))
+    lines.append(header)
+    lines.append("  ".join("-" * w for w in widths))
+    for row in rows:
+        lines.append("  ".join(
+            c.ljust(w) if i == 0 else c.rjust(w)
+            for i, (c, w) in enumerate(zip(row, widths))))
+    if result["average"] is not None:
+        lines.append(f"{s['average']}: {result['average']}")
+    for e in files:
+        if e["error"]:
+            lines.append(f"{s['failed']}: {e['file']} — {e['error']}")
+    return "\n".join(lines) + "\n"
+
+
+def _analyze_folder_main(args) -> int:
+    references = None
+    if args.refs:
+        references = load_references(args.refs)
+    result = analyze_folder(
+        args.input, references, lang=args.lang,
+        verify_dois=not args.no_verify, duplicates=args.duplicates,
+        save=args.save, db=args.db)
+    if not result["files"]:
+        print(f"Tidak ada file .txt atau .md di {args.input}",
+              file=sys.stderr)
+        return 1
+    if args.json:
+        sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2)
+                         + "\n")
+    else:
+        sys.stdout.write(format_folder_result(result, lang=args.lang))
+        if args.save:
+            saved = [e for e in result["files"] if e["library_id"]]
+            sys.stdout.write(f"Tersimpan di pustaka: {len(saved)} file\n")
+    failed = any(e["error"] or e["citations_missing"] or e["doi_missing"]
+                 for e in result["files"])
+    return 1 if failed else 0
 
 
 # ======================================================================
@@ -4044,8 +4232,11 @@ STRINGS = {
         "goodbye": "Sampai jumpa!",
         "type_text": "Ketik teks (baris kosong = selesai):",
         "read_file": "Baca dari file",
+        "read_folder": "Baca folder (.txt/.md)",
         "file_path": "Path file",
         "file_missing": "File tidak ditemukan:",
+        "folder_path": "Path folder",
+        "folder_missing": "Folder tidak ditemukan:",
         "field": "Bidang (kosong = semua bidang)",
         "format": "Format output: 1 = Markdown, 2 = CSV",
         "list_terms": "Lihat kamus",
@@ -4117,8 +4308,11 @@ STRINGS = {
         "goodbye": "Goodbye!",
         "type_text": "Type text (empty line = done):",
         "read_file": "Read from file",
+        "read_folder": "Read a folder (.txt/.md)",
         "file_path": "File path",
         "file_missing": "File not found:",
+        "folder_path": "Folder path",
+        "folder_missing": "Folder not found:",
         "field": "Field (empty = all fields)",
         "format": "Output format: 1 = Markdown, 2 = CSV",
         "list_terms": "List dictionary terms",
@@ -4311,12 +4505,18 @@ class CLI:
         except (EOFError, KeyboardInterrupt):
             print()
 
-    def read_text(self) -> str | None:
-        """Choice: type multi-line text, or read from a file."""
+    def read_text(self, folder: bool = False) -> str | tuple | None:
+        """Choice: type multi-line text, read from a file (or a folder).
+
+        With folder=True a third choice appears; picking it returns
+        ("folder", path) instead of text.
+        """
         print(f"  1. {self.t['type_text'].split(' (')[0]}")
         print(f"  2. {self.t['read_file']}")
+        if folder:
+            print(f"  3. {self.t['read_folder']}")
         print(f"  0. {self.t['back']}")
-        choice = self.ask_choice(self.t["choice"], 2)
+        choice = self.ask_choice(self.t["choice"], 3 if folder else 2)
         if choice == 1:
             print(self.t["type_text"])
             lines = []
@@ -4338,6 +4538,14 @@ class CLI:
                 return None
             with open(path, encoding="utf-8") as f:
                 return f.read()
+        if choice == 3 and folder:
+            path = self.ask(self.t["folder_path"])
+            if not path:
+                return None
+            if not os.path.isdir(path):
+                print(f"{self.t['folder_missing']} {path}")
+                return None
+            return ("folder", path)
         return None
 
     # -- main menu ------------------------------------------------------
@@ -4483,9 +4691,13 @@ class CLI:
         self.pause()
 
     def analyze_menu(self):
-        text = self.read_text()
-        if not text:
+        got = self.read_text(folder=True)
+        if not got:
             return
+        if isinstance(got, tuple):
+            self.analyze_folder_menu(got[1])
+            return
+        text = got
         refs_path = self.ask(self.t["refs"], DEFAULT_REFS)
         if not os.path.isfile(refs_path):
             print(f"{self.t['refs_missing']} {refs_path}")
@@ -4497,6 +4709,29 @@ class CLI:
         if save.strip().lower() in ("y", "ya", "yes"):
             analysis_id = save_analysis(text, result, refs)
             print(f"{self.t['saved_analysis']}: #{analysis_id}")
+        self.pause()
+
+    def analyze_folder_menu(self, folder: str):
+        refs_path = self.ask(self.t["refs"], DEFAULT_REFS)
+        if not os.path.isfile(refs_path):
+            print(f"{self.t['refs_missing']} {refs_path}")
+            return
+        refs = load_references(refs_path)
+        result = analyze_folder(folder, refs, lang=self.lang)
+        print(f"\n{format_folder_result(result, lang=self.lang)}")
+        if not result["files"]:
+            self.pause()
+            return
+        save = self.ask(self.t["save_analysis"])
+        if save.strip().lower() in ("y", "ya", "yes"):
+            saved = 0
+            for e in result["files"]:
+                if e["result"] is None or e["error"]:
+                    continue
+                save_analysis(e["text"], e["result"], refs,
+                              title=e["file"])
+                saved += 1
+            print(f"{self.t['saved_analysis']}: {saved} file")
         self.pause()
 
     def library_menu(self):

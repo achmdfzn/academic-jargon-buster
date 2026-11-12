@@ -8,6 +8,7 @@ command keeps working: python3 academic_cli.py
 from academic_tools import (
     CLI,
     CLI_VERSION as __version__,
+    analyze_folder,
     analyze_main,
     analyze_text_quality,
     apply_suggestions,
@@ -18,6 +19,7 @@ from academic_tools import (
     format_analyze,
     format_banner,
     format_duplicates,
+    format_folder_result,
     format_suggestions,
     get_analysis,
     humanize_main,
@@ -34,6 +36,7 @@ from academic_tools import (
 
 __all__ = [
     "CLI",
+    "analyze_folder",
     "analyze_main",
     "analyze_text_quality",
     "apply_suggestions",
@@ -44,6 +47,7 @@ __all__ = [
     "format_analyze",
     "format_banner",
     "format_duplicates",
+    "format_folder_result",
     "format_suggestions",
     "get_analysis",
     "humanize_main",

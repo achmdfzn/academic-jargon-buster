@@ -23,7 +23,7 @@ Out: Penelitian ini mengukur suhu ruangan. Penelitian ini menganalisis
 
 ## The file
 
-`academic_tools.py` (v1.20.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100), style rewrite suggestions (before/after, applied only with `--apply`, including mechanical Indonesian spelling fixes), a local library of past analyses and references (one SQLite file, no account), an internal duplication check against your own saved drafts, an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.21.0) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100, or a whole folder of chapters at once), style rewrite suggestions (before/after, applied only with `--apply`, including mechanical Indonesian spelling fixes), a local library of past analyses and references (one SQLite file, no account), an internal duplication check against your own saved drafts, an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -36,7 +36,7 @@ python3 academic_tools.py serve           # web UI at http://127.0.0.1:8000/
 
 ```
   ╭──────────────────────────────────────────────────────────────╮
-  │ Academic Tools                                       v1.20.0 │
+  │ Academic Tools                                       v1.21.0 │
   │ ──────────────────────────────────────────────────────────── │
   │ Satu file. Semua alat. Tanpa referensi palsu.                │
   │ Jargon Buster  ·  Citation Weaver  ·  Prompt Skripsi         │
@@ -62,7 +62,7 @@ Pick a number, follow the prompts: type text or read a file, pick a field, a cit
 | **Jargon Buster** | Finds jargon in your text and explains each term in plain language, with its source. 52 terms — physics, machine learning, usability, software engineering, research methods, statistics — including Indonesian aliases. |
 | **Citation Weaver** | Turns `[cite:key]` markers into in-text citations plus a bibliography. 6 styles (APA, MLA, Chicago, IEEE, Harvard, Vancouver), 21 majors with a recommended style each. Look up real references by DOI or title from Crossref/OpenAlex instead of typing bibliography JSON by hand. Export the bibliography to BibTeX (`.bib`) for LaTeX/Overleaf. Audit a manuscript's citations — find markers with no bibliography entry, entries never cited, and (optionally) dead DOI/arXiv links. Verify reference DOIs across Crossref and OpenAlex: a DOI found in either source is real; "not found" requires both to answer 404. |
 | **Prompt Skripsi** | 18 ready-made prompt templates for thesis writing — roadmap, abstract, preface, problem statement, Bab 1–5, defense prep, publication. Every template has an Indonesian and an English version (`--lang en`). Pick one, fill in your title, theory, and method, paste the result into ChatGPT, Grok, Claude, Gemini, or Perplexity. |
-| **Quality Check** | One pass over a manuscript: jargon found and explained, citations audited (missing / never used), DOIs verified, and stiff Indonesian prose flagged (light verbs, stacked connectors, passive pile-ups, calqued relatives, flat sentence rhythm) — one quality score 0–100 with recommendations. A style report, not a rewrite and not a detector dodge. Exits 1 when a citation is missing or a DOI is not found. Add `--suggest` for rewrite suggestions in the same pass, `--save` to record the run in the library, `--duplicates` to check sentences against your own saved drafts. |
+| **Quality Check** | One pass over a manuscript: jargon found and explained, citations audited (missing / never used), DOIs verified, and stiff Indonesian prose flagged (light verbs, stacked connectors, passive pile-ups, calqued relatives, flat sentence rhythm) — one quality score 0–100 with recommendations. A style report, not a rewrite and not a detector dodge. Exits 1 when a citation is missing or a DOI is not found. Add `--suggest` for rewrite suggestions in the same pass, `--save` to record the run in the library, `--duplicates` to check sentences against your own saved drafts. Or pass a folder instead of a file: `analyze folder/` analyzes every top-level `.txt`/`.md` file and prints a recap table plus the average; `--save` records each run with the file name as its title, and `--save --duplicates` also flags sentences repeated across chapters. |
 | **Humanize** | Style rewrite suggestions, shown before/after per pattern: light verbs become direct verbs ("melakukan pengukuran terhadap" → "mengukur"), connectors are dropped, "yang mana" splits the sentence. Spelling is fixed mechanically too — a curated table of fused words EYD writes separate ("disini" → "di sini", "didalam" → "di dalam", "terimakasih" → "terima kasih", "kerjasama" → "kerja sama", "masingmasing" → "masing-masing"). Passive voice, "dimana", flat rhythm, and unknown light verbs get guidance instead of a made-up rewrite. Nothing is changed unless you pass `--apply`: then the mechanical suggestions are written to `<file>.humanized.txt` (or `--out`, or `--in-place` with a `.bak` backup), guidance-only ones are left for the author, and overlapping spans are skipped. Exits 1 when it has suggestions. |
 | **Library** | Analysis history and a personal bibliography in one local SQLite file (`~/.academic-tools/library.db`, no account, no cloud). `analyze --save` records a run — score, style, missing citations, DOI counts, suggestions, the text and its hash — and every cited reference is added to the bibliography. `library --history` lists past runs, `--show <id>` prints one in full, `--refs` / `--search` browse the bibliography, `--import` / `--export` move a `refs.json` in and out. |
 | **Duplication Check** | `duplicates naskah.txt` compares every sentence of at least 6 words against every sentence of your own saved runs in the library, plus against the other sentences of the text itself. A match is a normalized similarity of 0.8 or more (`--threshold` changes it); only the best match per sentence is reported, with the source run (id, title, date) or "naskah ini" for a repeat inside the text. The text itself is never matched against its own saved copy, so re-analyzing a saved run does not flag every sentence. Duplicates never change the score and never change the exit code of `analyze` — they are a warning to read, not a failure. `duplicates` itself exits 1 when it finds any. Also in the Pustaka menu (option 6) and as a checkbox on the Analisis Kualitas tab of the web UI. |
@@ -118,6 +118,7 @@ python3 academic_tools.py humanize naskah.txt --apply
 python3 academic_tools.py humanize naskah.txt --apply --in-place
 python3 academic_tools.py analyze naskah.txt --refs my-refs.json --save --title "Bab 1"
 python3 academic_tools.py analyze naskah.txt --refs my-refs.json --duplicates
+python3 academic_tools.py analyze skripsi/ --refs my-refs.json --save --duplicates
 python3 academic_tools.py duplicates naskah.txt
 python3 academic_tools.py duplicates --text "..." --threshold 0.7
 python3 academic_tools.py library --history
@@ -131,7 +132,7 @@ Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key sin
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.20.0)
+academic_tools.py            # everything (v1.21.0)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -139,7 +140,7 @@ skills/research/             # four skills: the three tools + a quality-check sk
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 267 tests, stdlib unittest only
+tests/                       # 279 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -158,7 +159,7 @@ The `skills/research/` folders hold the same tools as agent skills: the three to
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 267 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 279 tests, no dependencies
 ```
 
 ## License

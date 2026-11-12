@@ -26,7 +26,7 @@ REFS = tools.load_references(
 class TestAcademicTools(unittest.TestCase):
     def test_one_file_holds_everything(self):
         self.assertRegex(tools.__version__, r"^\d+\.\d+\.\d+$")
-        self.assertEqual(len(tools.DICTIONARY), 52)
+        self.assertEqual(len(tools.DICTIONARY), 72)
         self.assertEqual(len(tools.STYLES), 6)
         self.assertEqual(len(tools.DISCIPLINES), 21)
         self.assertEqual(len(tools.PROMPTS), 18)
@@ -50,6 +50,16 @@ class TestAcademicTools(unittest.TestCase):
             "thematic analysis": "Braun & Clarke 2006",
             "operational definition": "Creswell & Creswell 2018",
             "literature review": "Boote & Beile 2005",
+            # Added 2026-11-13 (9 more methods terms).
+            "data saturation": "Glaser & Strauss 1967",
+            "saturasi data": "Glaser & Strauss 1967",
+            "case study": "Yin 2018",
+            "studi kasus": "Yin 2018",
+            "phenomenology": "Moustakas 1994",
+            "fenomenologi": "Moustakas 1994",
+            "focus group discussion": "Krueger & Casey 2014",
+            "uji validitas": "Creswell & Creswell 2018",
+            "uji reliabilitas": "Creswell & Creswell 2018",
         }
         for term, source in expected.items():
             self.assertIn(term, tools.DICTIONARY, f"missing term: {term}")

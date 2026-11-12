@@ -53,7 +53,7 @@ class TestJargonDetection(unittest.TestCase):
         self.assertEqual(find_terms("The cat sat on the mat."), [])
 
     def test_statistics_terms_detected_with_sources(self):
-        # 10 statistics concepts (English + Indonesian), v1.16.1.
+        # 31 statistics terms (English + Indonesian), v1.16.1 + 2026-11-13.
         field_terms = {
             "statistical significance": "Field 2018",
             "signifikansi statistik": "Field 2018",
@@ -75,6 +75,18 @@ class TestJargonDetection(unittest.TestCase):
             "multikolinearitas": "Ghozali 2018",
             "autocorrelation": "Ghozali 2018",
             "autokorelasi": "Ghozali 2018",
+            # Added 2026-11-13 (11 more statistics terms).
+            "t-test": "Field 2018",
+            "anova": "Field 2018",
+            "analisis varians": "Field 2018",
+            "chi-square test": "Field 2018",
+            "uji chi-square": "Field 2018",
+            "coefficient of determination": "Field 2018",
+            "koefisien determinasi": "Field 2018",
+            "uji normalitas": "Ghozali 2018",
+            "uji homogenitas": "Ghozali 2018",
+            "descriptive statistics": "Field 2018",
+            "statistik deskriptif": "Field 2018",
         }
         stats = {t["term"] for t in list_terms(field="statistics")}
         self.assertEqual(stats, set(field_terms))
@@ -101,10 +113,74 @@ class TestJargonDetection(unittest.TestCase):
             "autokorelasi."
         )
         found = {t["term"] for t in find_terms(text)}
-        for term in ("normalitas", "korelasi", "signifikansi statistik",
+        # "Uji normalitas" claims the span now (longest-first), so the
+        # bare "normalitas" entry must not double-flag it.
+        for term in ("uji normalitas", "korelasi", "signifikansi statistik",
                      "nilai-p", "regresi", "multikolinearitas",
                      "autokorelasi"):
             self.assertIn(term, found, term)
+
+    def test_new_methods_terms_detected(self):
+        # Added 2026-11-13: 9 research-methods terms.
+        text = (
+            "The case study used phenomenology and a focus group "
+            "discussion until data saturation was reached."
+        )
+        found = {t["term"] for t in find_terms(text)}
+        for term in ("case study", "phenomenology",
+                     "focus group discussion", "data saturation"):
+            self.assertIn(term, found, term)
+        text_id = (
+            "Penelitian ini memakai studi kasus dengan pendekatan "
+            "fenomenologi. Data dikumpulkan lewat focus group discussion "
+            "sampai mencapai saturasi data. Instrumen diuji dengan uji "
+            "validitas dan uji reliabilitas."
+        )
+        found_id = {t["term"] for t in find_terms(text_id)}
+        for term in ("studi kasus", "fenomenologi",
+                     "focus group discussion", "saturasi data",
+                     "uji validitas", "uji reliabilitas"):
+            self.assertIn(term, found_id, term)
+        # Sources are the real books, not invented.
+        sources = {t["term"]: t["source"] for t in find_terms(text_id)}
+        self.assertIn("Yin 2018", sources["studi kasus"])
+        self.assertIn("Moustakas 1994", sources["fenomenologi"])
+        self.assertIn("Glaser & Strauss 1967", sources["saturasi data"])
+        self.assertIn("Krueger & Casey 2014",
+                      sources["focus group discussion"])
+        self.assertIn("Creswell & Creswell 2018", sources["uji validitas"])
+        self.assertIn("Creswell & Creswell 2018", sources["uji reliabilitas"])
+
+    def test_procedure_phrase_wins_over_bare_concept(self):
+        # Longest-first matching: "uji validitas" claims the span, the
+        # bare "validitas" entry must not double-flag it (same pattern
+        # as "null hypothesis" over "hypothesis").
+        for text, winner in (
+            ("Uji validitas instrumen dilakukan sebelum pengumpulan data.",
+             "uji validitas"),
+            ("Uji reliabilitas memakai Cronbach's alpha.",
+             "uji reliabilitas"),
+            ("Uji normalitas menunjukkan data berdistribusi normal.",
+             "uji normalitas"),
+        ):
+            terms = find_terms(text)
+            self.assertEqual(len(terms), 1, text)
+            self.assertEqual(terms[0]["term"], winner, text)
+
+    def test_deliberate_exclusions_do_not_false_match(self):
+        # "uji t" is deliberately NOT in the dictionary: the substring
+        # matcher would also match inside "uji terhadap" and explain
+        # the wrong concept. "sample" is out for the same reason
+        # ("example" contains "sample").
+        terms = {t["term"] for t in list_terms()}
+        self.assertNotIn("uji t", terms)
+        self.assertNotIn("sample", terms)
+        found = {t["term"] for t in find_terms(
+            "Uji terhadap hipotesis dilakukan setelah pengumpulan data.")}
+        self.assertNotIn("t-test", found)
+        found = {t["term"] for t in find_terms(
+            "For example, the data shows a clear pattern.")}
+        self.assertNotIn("sample", found)
 
     def test_annotated_markdown_contains_translation(self):
         out = to_annotated_markdown(

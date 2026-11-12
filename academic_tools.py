@@ -12,7 +12,7 @@ interactive menu CLI (Claude-CLI style) on top of all three.
     python3 academic_tools.py detect ...        # straight to AI Detector
 
 Jargon Buster: find known jargon in plain text and explain each term
-in plain language, with provenance. 52 terms, fields from physics to
+in plain language, with provenance. 72 terms, fields from physics to
 usability to software engineering, plus Indonesian aliases.
 
     python3 academic_tools.py jargon demos/jargon-buster/test_paper.txt
@@ -118,8 +118,8 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.27.0"
-JARGON_VERSION = "1.0.5"
+__version__ = "1.27.1"
+JARGON_VERSION = "1.0.6"
 CITATION_VERSION = "1.5.3"
 PROMPTS_VERSION = "1.1.0"
 QUALITY_VERSION = "1.2.12"
@@ -471,6 +471,147 @@ DICTIONARY = {
         "over time or order, instead of being independent",
         "statistics",
         "Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed.)",
+    ),
+    # Added 2026-11-13: 20 more terms (9 research-methods, 11 statistics)
+    # students meet in almost every thesis. Sources verified the same
+    # day (web): Glaser & Strauss 1967, Yin 2018, Moustakas 1994,
+    # Krueger & Casey 2014, Creswell & Creswell 2018, Field 2018,
+    # Ghozali 2018; Cronbach 1951 was verified too (named in the uji
+    # reliabilitas explanation). Indonesian aliases included where the
+    # source text uses the Indonesian form. "uji t" was left out on
+    # purpose: the substring matcher would also match inside "uji
+    # terhadap" and explain the wrong concept; "sample" was left out
+    # for the same reason ("example" contains "sample").
+    "data saturation": (
+        "the point in qualitative research where new interviews stop "
+        "adding new ideas, so the researcher stops collecting data",
+        "research-methods",
+        "Glaser & Strauss 1967, 'The Discovery of Grounded Theory'",
+    ),
+    "saturasi data": (
+        "the point in qualitative research where new interviews stop "
+        "adding new ideas, so the researcher stops collecting data",
+        "research-methods",
+        "Glaser & Strauss 1967, 'The Discovery of Grounded Theory'",
+    ),
+    "case study": (
+        "an in-depth study of one case — a person, group, or event — "
+        "in its real-life setting, using several kinds of evidence",
+        "research-methods",
+        "Yin 2018, 'Case Study Research and Applications' (6th ed.)",
+    ),
+    "studi kasus": (
+        "an in-depth study of one case — a person, group, or event — "
+        "in its real-life setting, using several kinds of evidence",
+        "research-methods",
+        "Yin 2018, 'Case Study Research and Applications' (6th ed.)",
+    ),
+    "phenomenology": (
+        "a qualitative approach that studies how people experience a "
+        "phenomenon, to describe what that experience is like for them",
+        "research-methods",
+        "Moustakas 1994, 'Phenomenological Research Methods'",
+    ),
+    "fenomenologi": (
+        "a qualitative approach that studies how people experience a "
+        "phenomenon, to describe what that experience is like for them",
+        "research-methods",
+        "Moustakas 1994, 'Phenomenological Research Methods'",
+    ),
+    "focus group discussion": (
+        "a guided group discussion with a small set of participants, "
+        "used to hear their views and how they react to each "
+        "other's opinions",
+        "research-methods",
+        "Krueger & Casey 2014, 'Focus Groups' (5th ed.)",
+    ),
+    "uji validitas": (
+        "the procedure for checking whether each item of a questionnaire "
+        "really measures what it should, usually by correlating each "
+        "item score with the total score",
+        "research-methods",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+    ),
+    "uji reliabilitas": (
+        "the procedure for checking whether an instrument gives "
+        "consistent results, usually with Cronbach's alpha, a number "
+        "from 0 to 1 where higher means more consistent",
+        "research-methods",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+    ),
+    "t-test": (
+        "a test for whether the averages of two groups are really "
+        "different, or whether one average differs from a known value",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "anova": (
+        "a test for whether the averages of three or more groups are "
+        "really different from each other",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "analisis varians": (
+        "a test for whether the averages of three or more groups are "
+        "really different from each other",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "chi-square test": (
+        "a test for whether two categorical variables are related, by "
+        "comparing the counts actually observed with the counts "
+        "expected if there were no relation",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "uji chi-square": (
+        "a test for whether two categorical variables are related, by "
+        "comparing the counts actually observed with the counts "
+        "expected if there were no relation",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "coefficient of determination": (
+        "a number from 0 to 1, usually written R-squared, that says "
+        "how much of the variation in an outcome a regression model "
+        "explains",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "koefisien determinasi": (
+        "a number from 0 to 1, usually written R-squared, that says "
+        "how much of the variation in an outcome a regression model "
+        "explains",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "uji normalitas": (
+        "the procedure for checking whether data follows the "
+        "bell-shaped normal distribution, usually with the "
+        "Kolmogorov-Smirnov or Shapiro-Wilk test",
+        "statistics",
+        "Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed.)",
+    ),
+    "uji homogenitas": (
+        "the procedure for checking whether several groups have similar "
+        "variances, usually with Levene's test, before comparing "
+        "their averages",
+        "statistics",
+        "Ghozali 2018, 'Aplikasi Analisis Multivariate Dengan Program IBM SPSS 25' (9th ed.)",
+    ),
+    "descriptive statistics": (
+        "numbers that describe a dataset as it is — averages, spreads, "
+        "and frequencies — without testing hypotheses or generalizing "
+        "beyond it",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
+    ),
+    "statistik deskriptif": (
+        "numbers that describe a dataset as it is — averages, spreads, "
+        "and frequencies — without testing hypotheses or generalizing "
+        "beyond it",
+        "statistics",
+        "Field 2018, 'Discovering Statistics Using IBM SPSS Statistics' (5th ed.)",
     ),
 }
 

@@ -292,7 +292,7 @@ class TestReadabilityCLI(unittest.TestCase):
             code = tools.main(["--version"])
         self.assertEqual(code, 0)
         self.assertIn("readability 1.0.0", buf.getvalue())
-        self.assertIn("academic_tools.py 1.27.0", buf.getvalue())
+        self.assertIn("academic_tools.py 1.27.1", buf.getvalue())
         self.assertIn("cli 1.18.0", buf.getvalue())
 
 

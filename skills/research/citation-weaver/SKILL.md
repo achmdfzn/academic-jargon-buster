@@ -1,7 +1,7 @@
 ---
 name: citation-weaver
 description: "Weave citations into narrative text automatically."
-version: 1.4.0
+version: 1.5.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -88,6 +88,18 @@ python3 academic_tools.py cite --refs my-refs.json --export-bibtex --out my-refs
 ```
 
 Entry types follow the stored `type`: `article` → `@article`, `book` → `@book`, `conference` → `@inproceedings`, `chapter` → `@incollection`, anything else → `@misc`. arXiv IDs become `eprint` + `archivePrefix`. Chapter page ranges split out of the venue into `pages = {189--194}`. LaTeX special characters (`& % $ # _ { } ~ ^ \`) are escaped. Only fields actually present are exported — a missing title simply means no title field, never an invented one. A sample export of the bundled bibliography lives in `demos/citation-weaver/references.bib`.
+
+## RIS export (v1.5.0)
+
+The same bibliography as a `.ris` file, ready to import into Mendeley, Zotero, or Word:
+
+```bash
+python3 academic_tools.py cite --refs my-refs.json --export-ris --out my-refs.ris
+# or print to stdout: omit --out
+# or in the interactive menu: Citation Weaver option 8
+```
+
+Record types follow the stored `type`: `article` → `JOUR`, `book` → `BOOK`, `conference` → `CONF`, `chapter` → `CHAP`, anything else → `GEN`. The bibliography key is kept as the `ID` line so the record can be traced back. Authors become one `AU` line each, the venue becomes `JO` (journal), `PB` (publisher), `T2` (proceedings / book title), or `N1` (note) depending on the type, and chapter page ranges split out of the venue into `SP` / `EP`. DOIs become `DO`, URLs become `UR`, arXiv IDs become an `https://arxiv.org/abs/…` URL line. Only fields actually present are exported — never an invented one. A sample export of the bundled bibliography lives in `demos/citation-weaver/references.ris`.
 
 ## Citation audit (v1.3.0)
 

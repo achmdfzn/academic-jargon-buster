@@ -98,12 +98,12 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.23.1"
+__version__ = "1.24.0"
 JARGON_VERSION = "1.0.5"
-CITATION_VERSION = "1.4.0"
+CITATION_VERSION = "1.5.0"
 PROMPTS_VERSION = "1.1.0"
 QUALITY_VERSION = "1.2.6"
-CLI_VERSION = "1.15.0"
+CLI_VERSION = "1.16.0"
 
 # ======================================================================
 # Jargon Buster
@@ -1324,6 +1324,84 @@ def _bibtex_entry(key: str, ref: dict) -> str:
 def export_bibtex(references: dict) -> str:
     """Export a bibliography dict {key: ref} to BibTeX text, sorted by key."""
     return "\n\n".join(_bibtex_entry(k, references[k]) for k in sorted(references)) + "\n"
+
+
+# ======================================================================
+# RIS export
+# ======================================================================
+# Mirror of the BibTeX export, for Mendeley / Zotero / Word users: turn
+# a bibliography JSON file into a .ris file. Record types follow the
+# stored "type": article -> JOUR, book -> BOOK, conference -> CONF,
+# chapter -> CHAP, anything else -> GEN. The bibliography key is kept
+# as the ID line so the record can be traced back. Only fields actually
+# present are exported — nothing is invented, and a missing title
+# simply means no title line. arXiv IDs become an arXiv URL line.
+_RIS_TYPES = {
+    "article": "JOUR",
+    "book": "BOOK",
+    "conference": "CONF",
+    "chapter": "CHAP",
+}
+
+
+def _ris_pages(pages) -> tuple:
+    """Split a pages value into (start, end); '189-194' -> ('189', '194')."""
+    p = str(pages).replace("pp. ", "").strip()
+    if "-" in p:
+        start, _, end = p.partition("-")
+        return start.strip(), end.strip()
+    return p, ""
+
+
+def _ris_entry(key: str, ref: dict) -> str:
+    entry_type = _RIS_TYPES.get(ref.get("type", ""), "GEN")
+    lines = [f"TY  - {entry_type}", f"ID  - {key}"]
+    authors = ref.get("authors") or []
+    for a in authors:
+        lines.append(f"AU  - {a}")
+    if ref.get("title"):
+        lines.append(f"TI  - {ref['title']}")
+    venue = ref.get("venue", "")
+    pages = ref.get("pages", "")
+    if entry_type == "CHAP" and ", pp. " in venue:
+        venue, _, pp = venue.partition(", pp. ")
+        pages = pages or pp
+    if entry_type == "JOUR":
+        if venue:
+            lines.append(f"JO  - {venue}")
+    elif entry_type == "BOOK":
+        if venue:
+            lines.append(f"PB  - {venue}")
+    elif entry_type in ("CONF", "CHAP"):
+        if venue:
+            lines.append(f"T2  - {venue}")
+    elif venue:
+        lines.append(f"N1  - {venue}")
+    if ref.get("volume"):
+        lines.append(f"VL  - {ref['volume']}")
+    if ref.get("issue"):
+        lines.append(f"IS  - {ref['issue']}")
+    if pages:
+        start, end = _ris_pages(pages)
+        if start:
+            lines.append(f"SP  - {start}")
+        if end:
+            lines.append(f"EP  - {end}")
+    if ref.get("year"):
+        lines.append(f"PY  - {ref['year']}")
+    if ref.get("doi"):
+        lines.append(f"DO  - {ref['doi']}")
+    if ref.get("url"):
+        lines.append(f"UR  - {ref['url']}")
+    if ref.get("arxiv"):
+        lines.append(f"UR  - https://arxiv.org/abs/{ref['arxiv']}")
+    lines.append("ER  - ")
+    return "\n".join(lines)
+
+
+def export_ris(references: dict) -> str:
+    """Export a bibliography dict {key: ref} to RIS text, sorted by key."""
+    return "\n\n".join(_ris_entry(k, references[k]) for k in sorted(references)) + "\n"
 
 
 # ======================================================================
@@ -3549,8 +3627,10 @@ def cite_main(argv=None) -> int:
                    help="with --lookup: append the fetched reference to this bibliography file")
     p.add_argument("--export-bibtex", action="store_true",
                    help="export the bibliography to BibTeX (.bib) instead of weaving")
+    p.add_argument("--export-ris", action="store_true",
+                   help="export the bibliography to RIS (.ris) instead of weaving")
     p.add_argument("--out", metavar="FILE",
-                   help="with --export-bibtex: write the .bib file here (default: stdout)")
+                   help="with --export-bibtex/--export-ris: write the file here (default: stdout)")
     p.add_argument("--audit", action="store_true",
                    help="audit citations: report markers with no bibliography entry, "
                    "and entries never cited, instead of weaving")
@@ -3594,6 +3674,20 @@ def cite_main(argv=None) -> int:
             print(f"Wrote {len(references)} entries to {args.out}")
         else:
             sys.stdout.write(bib)
+        return 0
+
+    if args.export_ris:
+        if not args.refs:
+            p.error("--refs <bibliography.json> is required with --export-ris")
+            return 2
+        references = load_references(args.refs)
+        ris = export_ris(references)
+        if args.out:
+            with open(args.out, "w", encoding="utf-8") as f:
+                f.write(ris)
+            print(f"Wrote {len(references)} entries to {args.out}")
+        else:
+            sys.stdout.write(ris)
         return 0
 
     if args.audit:
@@ -4381,6 +4475,9 @@ STRINGS = {
         "bibtex": "Export bibliografi ke BibTeX (.bib)",
         "bibtex_out": "Simpan ke file .bib (kosong = tampilkan saja)",
         "bibtex_saved": "BibTeX tersimpan:",
+        "ris": "Export bibliografi ke RIS (.ris)",
+        "ris_out": "Simpan ke file .ris (kosong = tampilkan saja)",
+        "ris_saved": "RIS tersimpan:",
         "audit": "Audit sitasi (cek rujukan hilang/tak terpakai)",
         "audit_check_links": "Cek juga DOI/link masih hidup? (y = ya, kosong = tidak)",
         "verify": "Verifikasi DOI referensi (Crossref/OpenAlex)",
@@ -4458,6 +4555,9 @@ STRINGS = {
         "bibtex": "Export bibliography to BibTeX (.bib)",
         "bibtex_out": "Save to .bib file (empty = print only)",
         "bibtex_saved": "BibTeX saved:",
+        "ris": "Export bibliography to RIS (.ris)",
+        "ris_out": "Save to .ris file (empty = print only)",
+        "ris_saved": "RIS saved:",
         "audit": "Audit citations (check missing/unused references)",
         "audit_check_links": "Also check DOI/links are still alive? (y = yes, empty = no)",
         "verify": "Verify reference DOIs (Crossref/OpenAlex)",
@@ -4761,8 +4861,9 @@ class CLI:
             print(f"5. {self.t['bibtex']}")
             print(f"6. {self.t['audit']}")
             print(f"7. {self.t['verify']}")
+            print(f"8. {self.t['ris']}")
             print(f"0. {self.t['back']}")
-            choice = self.ask_choice(self.t["choice"], 7)
+            choice = self.ask_choice(self.t["choice"], 8)
             if choice == -1:
                 continue
             if choice == 1:
@@ -4783,6 +4884,8 @@ class CLI:
                 self.cite_audit()
             elif choice == 7:
                 self.cite_verify()
+            elif choice == 8:
+                self.cite_export_ris()
             elif choice == 0 or choice is None:
                 return
 
@@ -4956,6 +5059,22 @@ class CLI:
             print(f"{self.t['bibtex_saved']} {len(refs)} entries -> {out}")
         else:
             print(f"\n{bib}")
+        self.pause()
+
+    def cite_export_ris(self):
+        refs_path = self.ask(self.t["refs"], DEFAULT_REFS)
+        if not os.path.isfile(refs_path):
+            print(f"{self.t['refs_missing']} {refs_path}")
+            return
+        out = self.ask(self.t["ris_out"])
+        refs = load_references(refs_path)
+        ris = export_ris(refs)
+        if out:
+            with open(out, "w", encoding="utf-8") as f:
+                f.write(ris)
+            print(f"{self.t['ris_saved']} {len(refs)} entries -> {out}")
+        else:
+            print(f"\n{ris}")
         self.pause()
 
     def cite_lookup(self):

@@ -1,0 +1,104 @@
+TY  - CHAP
+ID  - brooke1996
+AU  - Brooke, John
+TI  - SUS: A 'quick and dirty' usability scale
+T2  - Usability Evaluation in Industry (Taylor & Francis)
+SP  - 189
+EP  - 194
+PY  - 1996
+ER  - 
+
+TY  - CONF
+ID  - brown2020
+AU  - Brown, Tom
+AU  - Mann, Benjamin
+AU  - Ryder, Nick
+AU  - Subbiah, Melanie
+AU  - Kaplan, Jared
+AU  - Dhariwal, Prafulla
+AU  - Neelakantan, Arvind
+AU  - Shyam, Pranav
+AU  - Sastry, Girish
+AU  - Askell, Amanda
+AU  - Agarwal, Sandhini
+AU  - Herbert-Voss, Ariel
+AU  - Krueger, Gretchen
+AU  - Henighan, Tom
+AU  - Child, Rewon
+AU  - Ramesh, Aditya
+AU  - Ziegler, Daniel
+AU  - Wu, Jeffrey
+AU  - Winter, Clemens
+AU  - Hesse, Chris
+AU  - Chen, Mark
+AU  - Sigler, Eric
+AU  - Litwin, Mateusz
+AU  - Gray, Scott
+AU  - Chess, Benjamin
+AU  - Clark, Jack
+AU  - Berner, Christopher
+AU  - McCandlish, Sam
+AU  - Radford, Alec
+AU  - Sutskever, Ilya
+AU  - Amodei, Dario
+TI  - Language Models are Few-Shot Learners
+T2  - Advances in Neural Information Processing Systems 33
+PY  - 2020
+UR  - https://arxiv.org/abs/2005.14165
+ER  - 
+
+TY  - CONF
+ID  - devlin2019
+AU  - Devlin, Jacob
+AU  - Chang, Ming-Wei
+AU  - Lee, Kenton
+AU  - Toutanova, Kristina
+TI  - BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding
+T2  - Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies
+PY  - 2019
+DO  - 10.18653/v1/N19-1423
+UR  - https://arxiv.org/abs/1810.04805
+ER  - 
+
+TY  - CONF
+ID  - ferraiolo1992
+AU  - Ferraiolo, David
+AU  - Kuhn, Richard
+TI  - Role-based access control
+T2  - Proceedings of the 15th National Computer Security Conference
+PY  - 1992
+ER  - 
+
+TY  - BOOK
+ID  - goodfellow2016
+AU  - Goodfellow, Ian
+AU  - Bengio, Yoshua
+AU  - Courville, Aaron
+TI  - Deep Learning
+PB  - MIT Press
+PY  - 2016
+ER  - 
+
+TY  - JOUR
+ID  - likert1932
+AU  - Likert, Rensis
+TI  - A technique for the measurement of attitudes
+JO  - Archives of Psychology, 22(140)
+PY  - 1932
+ER  - 
+
+TY  - CONF
+ID  - vaswani2017
+AU  - Vaswani, Ashish
+AU  - Shazeer, Noam
+AU  - Parmar, Niki
+AU  - Uszkoreit, Jakob
+AU  - Jones, Llion
+AU  - Gomez, Aidan N.
+AU  - Kaiser, Lukasz
+AU  - Polosukhin, Illia
+TI  - Attention Is All You Need
+T2  - Advances in Neural Information Processing Systems 30
+PY  - 2017
+UR  - https://arxiv.org/abs/1706.03762
+ER  - 

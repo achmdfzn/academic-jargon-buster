@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.24.0 — 2026-11-12
+
+- Citation Weaver can now export a bibliography to RIS: `cite --refs refs.json --export-ris [--out refs.ris]`, or menu Citation Weaver option 8. Record types follow the stored type (article → JOUR, book → BOOK, conference → CONF, chapter → CHAP, other → GEN); the bibliography key is kept as the `ID` line; authors become one `AU` line each; the venue becomes `JO` / `PB` / `T2` / `N1` by type; chapter page ranges split out of the venue into `SP` / `EP`; DOIs become `DO`, URLs `UR`, arXiv IDs an arXiv URL line; only fields actually present are exported — nothing is invented. Sample output in `demos/citation-weaver/references.ris`. 9 new tests; full suite 304/304. Citation Weaver skill v1.5.0.
+
 ## 1.23.1 — 2026-11-12
 
 - Fix Windows CI (red since v1.18.0): the two score-card tests asserted Unicode bars (`█`/`░`), but on a Windows console stdout is cp1252, so the code correctly renders the designed ASCII fallback (`#`/`-`) and the tests failed. The tests now run `format_analyze` under a StringIO stdout (no encoding → Unicode path, deterministic on every platform), and a new test pins the ASCII fallback on a cp1252 stdout. No behavior change — `CLI_VERSION` and `QUALITY_VERSION` unchanged, no skill change, no gateway restart.

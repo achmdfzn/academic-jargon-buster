@@ -12,7 +12,7 @@ import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -242,6 +242,30 @@ class LibraryTestCase(unittest.TestCase):
             code, out = run_cli(["4", "1", TEXT, "", "", "", "", "0"])
         self.assertEqual(code, 0)
         self.assertEqual(list_analyses(db=self.db), [])
+
+    def test_corrupt_db_history_is_clean_error(self):
+        corrupt = os.path.join(self.tmp.name, "corrupt.db")
+        with open(corrupt, "wb") as f:
+            f.write(b"bukan sqlite")
+        err = io.StringIO()
+        with redirect_stderr(err):
+            code = library_main(["--history", "--db", corrupt])
+        self.assertEqual(code, 1)
+        self.assertIn("pustaka rusak", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+
+    def test_corrupt_db_analyze_save_is_clean_error(self):
+        corrupt = os.path.join(self.tmp.name, "corrupt.db")
+        with open(corrupt, "wb") as f:
+            f.write(b"bukan sqlite")
+        err = io.StringIO()
+        with redirect_stderr(err):
+            code = analyze_main([
+                "--text", TEXT, "--refs", self.refs_path,
+                "--no-verify", "--save", "--db", corrupt])
+        self.assertEqual(code, 1)
+        self.assertIn("pustaka rusak", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
 
 
 if __name__ == "__main__":

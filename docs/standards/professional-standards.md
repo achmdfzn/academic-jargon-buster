@@ -24,7 +24,10 @@ cannot drift.
   `QUALITY_VERSION`, `CLI_VERSION`); each `SKILL.md` frontmatter repeats the matching tool version.
   `tests/test_structure.py` fails the suite when the two disagree.
 - **The core is one file.** `academic_tools.py` must keep working when copied
-  alone: no imports outside the standard library, no sibling-file dependencies.
+  alone: no imports outside the standard library, no sibling-file dependencies
+  for the CLI. (Exception: the web UI's "sample" bibliography loads
+  `demos/citation-weaver/references.json` next to the file; without it the
+  `serve` sample refs fail with a plain 400, everything else still works.)
   The root `jargon_buster.py`, `citation_weaver.py`, `skripsi_prompts.py`, and
   `academic_cli.py` are compatibility shims and stay importable.
 - **Never invent references.** An unknown `[cite:key]` is marked

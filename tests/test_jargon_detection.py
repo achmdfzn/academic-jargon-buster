@@ -145,7 +145,7 @@ class TestJargonDetection(unittest.TestCase):
 
     def test_new_terms_sus_and_usability(self):
         text = ("We evaluated usability with the System Usability Scale (SUS). "
-                "The usability score was 73.96.")
+                "The usability score was 82.5.")
         found = {t["term"] for t in find_terms(text)}
         self.assertIn("system usability scale", found)
         self.assertIn("usability", found)

@@ -85,8 +85,8 @@ class TestThesisPrompts(unittest.TestCase):
 
     def test_fill_new_prompts(self):
         out = tools.fill_prompt("abstrak", {
-            "judul": "Sistem Informasi Manajemen Karang Taruna",
-            "masalah": "pendataan anggota masih manual",
+            "judul": "Sistem Informasi Manajemen Perpustakaan Daerah",
+            "masalah": "pencarian koleksi masih manual",
             "metode": "waterfall",
             "hasil": "sistem berjalan baik",
             "kunci": "sistem informasi, manajemen, SUS",

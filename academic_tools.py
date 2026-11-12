@@ -97,11 +97,11 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.17.0"
+__version__ = "1.17.1"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.4.0"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.0"
+QUALITY_VERSION = "1.2.1"
 CLI_VERSION = "1.10.0"
 
 # ======================================================================
@@ -314,7 +314,11 @@ DICTIONARY = {
     # Field 2018, Ghozali 2018. Indonesian aliases included where the
     # source text uses the Indonesian form. "variance" was left out
     # on purpose: the matcher is substring-based, so it would also
-    # match inside "covariance" and explain the wrong concept.
+    # match inside "covariance" and explain the wrong concept. The
+    # same trade-off is accepted for "validity" (inside "invalidity")
+    # and "normality" (inside "abnormality"): word-boundary matching
+    # would fix those but would also stop plurals such as
+    # "correlations" from matching, so the substring matcher stays.
     "statistical significance": (
         "when a result is unlikely to have happened by chance alone, "
         "so the study treats it as a real effect",
@@ -2393,8 +2397,12 @@ def analyze_main(argv=None) -> int:
                                   verify_dois=not args.no_verify,
                                   suggest=args.suggest)
     if args.save:
-        result["library_id"] = save_analysis(
-            text, result, references, title=args.title, db=args.db)
+        try:
+            result["library_id"] = save_analysis(
+                text, result, references, title=args.title, db=args.db)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 1
     if args.json:
         sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     else:
@@ -2558,14 +2566,25 @@ def library_path(db: str | None = None) -> str:
 
 
 def open_library(db: str | None = None) -> sqlite3.Connection:
-    """Open (creating if needed) the library database."""
+    """Open (creating if needed) the library database.
+
+    A corrupt or unreadable file raises ValueError with a plain
+    message instead of leaking a sqlite3 traceback to the user.
+    """
     path = library_path(db)
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.executescript(_LIBRARY_SCHEMA)
+    conn = None
+    try:
+        conn = sqlite3.connect(path)
+        conn.row_factory = sqlite3.Row
+        conn.executescript(_LIBRARY_SCHEMA)
+    except sqlite3.Error:
+        if conn is not None:
+            conn.close()
+        raise ValueError(
+            f"pustaka rusak: {path} — hapus atau ganti file databasenya")
     return conn
 
 
@@ -2827,7 +2846,14 @@ def library_main(argv=None) -> int:
                    help="print the raw result as JSON instead of readable text")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = p.parse_args(argv)
+    try:
+        return _library_run(args, p)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 1
 
+
+def _library_run(args, parser) -> int:
     if args.history:
         rows = list_analyses(db=args.db, limit=args.limit)
         if args.json:
@@ -2871,7 +2897,7 @@ def library_main(argv=None) -> int:
             json.dump(refs, f, ensure_ascii=False, indent=2)
         print(f"Diekspor: {len(refs)} referensi -> {args.export_path}")
         return 0
-    p.print_help()
+    parser.print_help()
     return 0
 
 
@@ -4976,6 +5002,18 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
 _MAX_BODY = 1_000_000  # 1 MB cap on API request bodies
 
 
+class RequestTooLargeError(ValueError):
+    """Request body over the 1 MB cap (maps to HTTP 413)."""
+
+
+def _error_message(e: Exception) -> str:
+    """Plain message for an exception raised with one argument.
+
+    str(KeyError("x")) is "'x'" (repr), so take args[0] instead.
+    """
+    return str(e.args[0]) if e.args else str(e)
+
+
 def _load_ui_references(payload: dict) -> dict | None:
     """Resolve the UI's refs choice: 'sample' (default), 'none', or
     a pasted bibliography JSON string under 'refs_json'."""
@@ -4989,13 +5027,20 @@ def _load_ui_references(payload: dict) -> dict | None:
         return refs
     if payload.get("refs", "sample") == "none":
         return None
-    return load_references(DEFAULT_REFS)
+    try:
+        return load_references(DEFAULT_REFS)
+    except FileNotFoundError:
+        raise ValueError("contoh bibliografi tidak ditemukan di folder ini")
 
 
 def _read_json_body(handler) -> dict:
     length = int(handler.headers.get("Content-Length") or 0)
     if length > _MAX_BODY:
-        raise ValueError("badan permintaan terlalu besar (maks 1 MB)")
+        # Close the connection: with HTTP/1.1 keep-alive the unread
+        # body would be parsed as a new request line and log a
+        # spurious traceback.
+        handler.close_connection = True
+        raise RequestTooLargeError("badan permintaan terlalu besar (maks 1 MB)")
     raw = handler.rfile.read(length) if length else b"{}"
     try:
         body = json.loads(raw.decode("utf-8"))
@@ -5007,7 +5052,7 @@ def _read_json_body(handler) -> dict:
 
 
 class _UIHandler(http.server.BaseHTTPRequestHandler):
-    """Serves the embedded page plus a small JSON API for the four tools."""
+    """Serves the embedded page plus a small JSON API for the five tabs."""
 
     protocol_version = "HTTP/1.1"
 
@@ -5055,7 +5100,7 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         except ValueError as e:
             self._send_json(400, {"error": str(e)})
         except KeyError as e:
-            self._send_json(404, {"error": str(e)})
+            self._send_json(404, {"error": _error_message(e)})
         except Exception:
             self._send_json(500, {"error": "kesalahan server, coba lagi"})
 
@@ -5107,10 +5152,12 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json(200, self._fill_prompt(body))
             else:
                 self._send_json(404, {"error": "tidak ditemukan"})
+        except RequestTooLargeError as e:
+            self._send_json(413, {"error": str(e)})
         except ValueError as e:
             self._send_json(400, {"error": str(e)})
         except (LookupError, KeyError) as e:
-            self._send_json(400, {"error": str(e)})
+            self._send_json(400, {"error": _error_message(e)})
         except Exception:
             self._send_json(500, {"error": "kesalahan server, coba lagi"})
 
@@ -5233,6 +5280,9 @@ def main(argv=None) -> int:
         return 0
     try:
         return CLI().run()
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 1
     except (EOFError, KeyboardInterrupt):
         print()
         return 0

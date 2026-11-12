@@ -16,16 +16,16 @@ schedule does not block that.
 
 ## What each daily update does
 
-This schedule covers **all three** skills in this repo: Academic Jargon Buster, Citation Weaver (merged in 2026-11-11), and Skripsi Prompts (added 2026-11-11).
+This schedule covers **all four** skills in this repo: Academic Jargon Buster, Citation Weaver (merged in 2026-11-11), Skripsi Prompts (added 2026-11-11), and Academic Quality Check (added 2026-11-12, covering `analyze`, Humanize, the local web UI, and the library).
 
 1. **Run the tests** — `python3 -m unittest discover -s tests -v`. All tests must pass before any release (jargon + citation-weaver tests together).
-2. **Check the skills still match the repo** — `skills/research/academic-jargon-buster/SKILL.md` against the jargon code in `academic_tools.py`, `skills/research/citation-weaver/SKILL.md` against the citation code there, and `skills/research/skripsi-prompts/SKILL.md` against the `PROMPTS` templates, plus README and docs. Fix drift, don't let the spec and the code diverge.
+2. **Check the skills still match the repo** — `skills/research/academic-jargon-buster/SKILL.md` against the jargon code in `academic_tools.py`, `skills/research/citation-weaver/SKILL.md` against the citation code there, `skills/research/skripsi-prompts/SKILL.md` against the `PROMPTS` templates, and `skills/research/academic-quality-check/SKILL.md` against `analyze_text_quality`, `check_style`, the Humanize commands, the `serve` web UI and its `/api/library/*` endpoints, and the library commands, plus README and docs. Fix drift, don't let the spec and the code diverge.
 3. **Review the dictionary** — add new jargon terms that came up in real academic use or in GitHub issues, with a plain-English explanation, field, and source for each. No invented terms, no invented sources.
 4. **Version bump, only if something changed**
    - Dictionary additions / bug fixes → patch (1.0.0 → 1.0.1)
    - New output format or new input type → minor (1.0.0 → 1.1.0)
    - No changes → no release, just a note that the check passed.
-   - Bump the version in the skill frontmatter and in the matching constant in `academic_tools.py` (`JARGON_VERSION`, `CITATION_VERSION`, `PROMPTS_VERSION`) together, then run the suite and `tests/test_structure.py`.
+   - Bump the version in the skill frontmatter and in the matching constant in `academic_tools.py` (`JARGON_VERSION`, `CITATION_VERSION`, `PROMPTS_VERSION`, `QUALITY_VERSION`; `CLI_VERSION` when a CLI command or flag changes) together, then run the suite and `tests/test_structure.py`.
 5. **Push to GitHub** (`main` branch) and verify the files are live on the repo page.
 6. **Announce in Kantor IT — only when something changed** — Nona posts a short note in the group (🚀 Produk topic when its thread ID is known, otherwise General): what changed, the new version, and the repo link. If nothing changed that day, stay silent in the group (no daily spam) and just log that the check passed.
 

@@ -4,14 +4,18 @@ The server runs on an ephemeral localhost port in a thread; no
 external network is used (DOI verification stays off in these tests).
 """
 
+import http.client
+import io
 import json
 import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
 
@@ -164,6 +168,64 @@ class TestServe(unittest.TestCase):
                     self.base, "GET", "/api/library/refs?search=tidakada")
                 self.assertEqual(status, 200)
                 self.assertEqual(json.loads(body), {"references": []})
+
+    def test_library_analysis_missing_id_has_no_stray_quotes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
+                status, body = _request(
+                    self.base, "GET", "/api/library/analysis?id=99")
+            self.assertEqual(status, 404)
+            self.assertEqual(json.loads(body),
+                             {"error": "tidak ada analisis #99"})
+
+    def test_oversize_body_is_413_without_logged_traceback(self):
+        # Keep-alive on purpose: before the fix the unread body was
+        # parsed as a new request line and logged a 414 traceback.
+        host, port = self.server.server_address[:2]
+        err = io.StringIO()
+        conn = http.client.HTTPConnection(host, port, timeout=10)
+        payload = json.dumps({"text": "x" * (tools._MAX_BODY + 1)})
+        with redirect_stderr(err):
+            conn.request("POST", "/api/analyze", body=payload,
+                         headers={"Content-Type": "application/json",
+                                  "Connection": "keep-alive"})
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8")
+            # The handler logs after the response, so give it a moment.
+            time.sleep(0.5)
+        conn.close()
+        self.assertEqual(resp.status, 413)
+        self.assertIn("terlalu besar", json.loads(body)["error"])
+        self.assertNotIn("Traceback", err.getvalue())
+        # The server must still answer a normal request afterwards.
+        status, _ = _request(self.base, "GET", "/api/prompts")
+        self.assertEqual(status, 200)
+
+    def test_corrupt_db_via_api_is_clean_400(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "corrupt.db")
+            with open(db, "wb") as f:
+                f.write(b"bukan sqlite")
+            with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
+                status, body = _request(
+                    self.base, "GET", "/api/library/history")
+                self.assertEqual(status, 400)
+                self.assertIn("pustaka rusak", json.loads(body)["error"])
+                status, body = _request(
+                    self.base, "POST", "/api/analyze",
+                    {"text": TEXT, "refs": "none", "save": True})
+                self.assertEqual(status, 400)
+                self.assertIn("pustaka rusak", json.loads(body)["error"])
+
+    def test_missing_sample_refs_is_clean_400(self):
+        with patch.object(tools, "DEFAULT_REFS", "/tidak/ada/refs.json"):
+            status, body = _request(self.base, "POST", "/api/analyze", {
+                "text": TEXT, "refs": "sample", "verify": False})
+            self.assertEqual(status, 400)
+            self.assertEqual(
+                json.loads(body),
+                {"error": "contoh bibliografi tidak ditemukan di folder ini"})
 
     def test_library_analysis_errors(self):
         with tempfile.TemporaryDirectory() as tmp:

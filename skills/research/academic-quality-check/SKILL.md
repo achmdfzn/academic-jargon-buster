@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
 description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
-version: 1.2.0
+version: 1.2.1
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -122,7 +122,7 @@ python3 academic_tools.py serve            # http://127.0.0.1:8000/
 python3 academic_tools.py serve --port 8000
 ```
 
-Localhost only, standard library `http.server`, no external resources (no CDN, no webfonts, no analytics). The Analisis Kualitas tab has "Saran rewrite gaya" and "Simpan ke pustaka" checkboxes; a saved run shows its library id, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. The Pustaka tab lists saved runs — click one for the full detail, including the text — and searches the personal bibliography. JSON API: `/api/analyze`, `/api/jargon`, `/api/cite`, `/api/prompts`, `/api/prompts/fill`, `/api/humanize` (`apply: true` returns `fixed_text`), plus GET `/api/library/history`, `/api/library/analysis?id=<n>`, `/api/library/refs?search=<q>` (each with `?limit=` up to 100; a missing analysis id is a 404). Request bodies are capped at 1 MB; errors are honest JSON 400 / 404 / 500.
+Localhost only, standard library `http.server`, no external resources (no CDN, no webfonts, no analytics). The Analisis Kualitas tab has "Saran rewrite gaya" and "Simpan ke pustaka" checkboxes; a saved run shows its library id, and the suggestions card has a "Salin teks yang diperbaiki" button that copies the applied text. The Pustaka tab lists saved runs — click one for the full detail, including the text — and searches the personal bibliography. JSON API: `/api/analyze`, `/api/jargon`, `/api/cite`, `/api/prompts`, `/api/prompts/fill`, `/api/humanize` (`apply: true` returns `fixed_text`), plus GET `/api/library/history`, `/api/library/analysis?id=<n>`, `/api/library/refs?search=<q>` (each with `?limit=` up to 100; a missing analysis id is a 404). Request bodies are capped at 1 MB; errors are honest JSON 400 / 404 / 413 / 500 (413 when the body is over the cap).
 
 ## Rules (non-negotiable)
 

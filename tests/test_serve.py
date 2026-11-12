@@ -122,14 +122,78 @@ class TestServe(unittest.TestCase):
         self.assertEqual(res["style"]["style_score"], 25)
         self.assertEqual(res["citations"]["missing"], [])
 
+    def test_detect_ai_text(self):
+        text = ("Penelitian ini bertujuan untuk menganalisis pengaruh media sosial "
+                "terhadap prestasi belajar siswa. Penelitian ini juga mengkaji peran "
+                "motivasi belajar dalam proses pembelajaran di sekolah. Penelitian ini "
+                "mengukur durasi penggunaan media sosial harian melalui kuesioner "
+                "terstruktur. Penelitian ini menemukan bahwa penggunaan berlebihan "
+                "menurunkan prestasi belajar siswa secara signifikan. Selain itu, "
+                "motivasi belajar berperan sebagai faktor penting dalam keberhasilan "
+                "akademik siswa. Perlu dicatat bahwa media sosial memiliki dampak "
+                "yang signifikan terhadap perilaku belajar siswa. Dalam hal ini, guru "
+                "dan orang tua perlu mengawasi penggunaan media sosial anak.")
+        status, body = _request(self.base, "POST", "/api/detect",
+                                {"text": text})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertGreaterEqual(res["ai_score"], 70)
+        self.assertEqual(res["verdict"], "Kemungkinan besar AI")
+        self.assertEqual(set(res["signals"]),
+                         {"burstiness", "template_phrases",
+                          "lexical_diversity", "starter_repetition"})
+        self.assertIn("heuristik", res["note"])
+        scores = [s["score"] for s in res["sentences"]]
+        self.assertEqual(scores, sorted(scores, reverse=True))
+        self.assertTrue(any(s >= 70 for s in scores))
+
+    def test_detect_human_text(self):
+        text = ("Saya sampai di desa itu jam enam pagi, dan kabutnya masih tebal sekali. "
+                "Pak RT menyambut kami dengan kopi tubruk yang manisnya kebangetan, "
+                "terus ketawa waktu saya tanya soal sinyal. Saya catat itu, karena "
+                "kalimat seperti itulah yang menjelaskan kenapa warga lebih percaya "
+                "radio desa daripada grup WhatsApp. Tiga hari saya tinggal di sana, "
+                "dan baru di hari ketiga saya paham: teknologi yang bagus itu yang "
+                "tidak memaksa orang berubah.")
+        status, body = _request(self.base, "POST", "/api/detect",
+                                {"text": text})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertLess(res["ai_score"], 40)
+        self.assertEqual(res["verdict"], "Kemungkinan besar manusia")
+
+    def test_detect_short_text_is_too_short(self):
+        status, body = _request(self.base, "POST", "/api/detect",
+                                {"text": "Teks pendek."})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertIsNone(res["ai_score"])
+        self.assertEqual(res["verdict"], "Teks terlalu pendek")
+        self.assertIn("heuristik", res["note"])
+
+    def test_detect_empty_text_is_400(self):
+        status, body = _request(self.base, "POST", "/api/detect",
+                                {"text": "   "})
+        self.assertEqual(status, 400)
+        self.assertIn("teks kosong", body)
+
+    def test_detect_bad_lang_is_400(self):
+        status, body = _request(self.base, "POST", "/api/detect",
+                                {"text": "kata " * 40, "lang": "xx"})
+        self.assertEqual(status, 400)
+
     def test_home_is_a_dashboard_shell(self):
         status, body = _request(self.base, "GET", "/")
         self.assertEqual(status, 200)
-        # Sidebar navigation with the five real tools.
+        # Sidebar navigation with the six real tools.
         self.assertIn('class="shell"', body)
         self.assertIn('class="sidebar"', body)
-        for tab in ("analyze", "jargon", "cite", "prompts", "library"):
+        for tab in ("analyze", "jargon", "cite", "prompts", "library",
+                    "detect"):
             self.assertIn(f'data-tab="{tab}"', body)
+        self.assertIn('id="panel-detect"', body)
+        self.assertIn("renderDetect", body)
+        self.assertIn("/api/detect", body)
         # The score gauge and the stat tiles are rendered by the page.
         self.assertIn("scoreGauge", body)
         self.assertIn("gauge-arc", body)

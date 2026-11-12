@@ -1,7 +1,7 @@
 # Professional Operating Standards
 
-Operating standards for the four skills in this repo — academic-jargon-buster,
-citation-weaver, skripsi-prompts, academic-quality-check — and for the repo itself. Each `SKILL.md`
+Operating standards for the five skills in this repo — academic-jargon-buster,
+citation-weaver, skripsi-prompts, academic-quality-check, ai-detector — and for the repo itself. Each `SKILL.md`
 restates them for its own tool; this file is the single source so the copies
 cannot drift.
 

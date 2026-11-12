@@ -9,9 +9,10 @@ interactive menu CLI (Claude-CLI style) on top of all three.
     python3 academic_tools.py jargon ...       # straight to Jargon Buster
     python3 academic_tools.py cite ...         # straight to Citation Weaver
     python3 academic_tools.py prompts ...      # straight to Thesis Prompts
+    python3 academic_tools.py detect ...        # straight to AI Detector
 
 Jargon Buster: find known jargon in plain text and explain each term
-in plain language, with provenance. 32 terms, fields from physics to
+in plain language, with provenance. 52 terms, fields from physics to
 usability to software engineering, plus Indonesian aliases.
 
     python3 academic_tools.py jargon demos/jargon-buster/test_paper.txt
@@ -68,13 +69,21 @@ searches, imports, and exports references.
     python3 academic_tools.py library --history
     python3 academic_tools.py library --refs --search "deep learning"
 
-Local web UI: the same four tools in a browser page, served from
+AI Detector: a heuristic check whether a text reads like AI writing
+(sentence-length variation, template phrases, lexical diversity,
+repeated sentence starters). One AI score 0-100 with verdict bands —
+an indication, never proof, so it must never be used to accuse anyone.
+
+    python3 academic_tools.py detect naskah.txt
+    python3 academic_tools.py detect --text "..." --lang en --json
+
+Local web UI: the same six tools in a browser page, served from
 this file alone (stdlib http.server, no external resources).
 
     python3 academic_tools.py serve [--port 8000]   # then open http://127.0.0.1:8000/
 
 The old entry points (jargon_buster.py, citation_weaver.py,
-academic_cli.py) still exist as thin wrappers around this file, so
+academic_cli.py, ai_detector.py) still exist as thin wrappers around this file, so
 existing commands, demos, and imports keep working.
 """
 
@@ -99,12 +108,13 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.25.2"
+__version__ = "1.26.0"
 JARGON_VERSION = "1.0.5"
 CITATION_VERSION = "1.5.2"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.9"
-CLI_VERSION = "1.16.2"
+QUALITY_VERSION = "1.2.10"
+DETECTOR_VERSION = "1.0.0"
+CLI_VERSION = "1.17.0"
 
 # ======================================================================
 # Jargon Buster
@@ -3301,6 +3311,379 @@ def humanize_main(argv=None) -> int:
 
 
 # ======================================================================
+# AI Detector — heuristic check whether a text reads like AI writing
+# ======================================================================
+# A pure-stdlib heuristic, no language model and no API: four signals
+# that GPTZero-style detectors also lean on (sentence-length variation,
+# template phrases, lexical diversity, repeated sentence starters).
+# Each signal returns a 0-100 sub-score (100 = most AI-like); the
+# final score is the weighted mean of the applicable signals only.
+# The verdict bands are fixed, and the honesty note is always attached:
+# this is an indication, never proof — human text can be flagged and
+# AI text can pass, so the result must never be used to accuse anyone.
+# Calibration texts live in tests/test_detector.py (3 human-like, 3
+# AI-like, written from scratch): human-like scores stay under 40,
+# AI-like scores stay over 60.
+
+# Template phrases, curated from scratch for this repo — not copied
+# from any detector's list. Density, not presence, is what counts:
+# one "selain itu" in a human paragraph is normal; five per 100 words
+# is the AI pattern.
+_TEMPLATE_PHRASES = {
+    "id": (
+        "selain itu", "penting untuk dicatat", "perlu dicatat bahwa",
+        "secara keseluruhan", "dalam hal ini", "pada akhirnya",
+        "lebih lanjut", "sebagai kesimpulan", "dengan demikian",
+        "oleh karena itu", "dapat disimpulkan bahwa",
+        "hal ini menunjukkan bahwa", "perlu diperhatikan bahwa",
+        "tidak dapat dipungkiri", "sebagai tambahan", "di sisi lain",
+        "pada dasarnya", "dengan kata lain", "penting untuk diingat",
+        "perlu digarisbawahi",
+    ),
+    "en": (
+        "moreover", "in conclusion", "it is important to note",
+        "furthermore", "overall", "in summary", "it should be noted",
+        "in this regard", "as a result", "in other words",
+    ),
+}
+
+_DETECTOR_NOTE = {
+    "id": ("Deteksi ini heuristik murni (stdlib, tanpa model bahasa): "
+           "skor adalah indikasi, bukan bukti. Teks manusia bisa "
+           "ter-flag dan teks AI bisa lolos — jangan gunakan hasil ini "
+           "untuk menuduh."),
+    "en": ("This detector is a pure heuristic (stdlib, no language "
+           "model): the score is an indication, not proof. Human text "
+           "can be flagged and AI text can pass — do not use this "
+           "result to accuse anyone."),
+}
+
+_DETECTOR_VERDICTS = {
+    "id": {
+        "ai": "Kemungkinan besar AI",
+        "mixed": "Campuran / tidak pasti",
+        "human": "Kemungkinan besar manusia",
+        "short": "Teks terlalu pendek",
+    },
+    "en": {
+        "ai": "Likely AI",
+        "mixed": "Mixed / uncertain",
+        "human": "Likely human",
+        "short": "Text too short",
+    },
+}
+
+_DETECTOR_SIGNAL_LABELS = {
+    "id": {
+        "burstiness": "Variasi panjang kalimat",
+        "template_phrases": "Frasa template",
+        "lexical_diversity": "Keragaman kosakata",
+        "starter_repetition": "Pengulangan awalan kalimat",
+    },
+    "en": {
+        "burstiness": "Sentence-length variation",
+        "template_phrases": "Template phrases",
+        "lexical_diversity": "Lexical diversity",
+        "starter_repetition": "Repeated sentence starters",
+    },
+}
+
+_DETECT_STRINGS = {
+    "id": {
+        "heading": "Deteksi AI",
+        "score": "Skor AI",
+        "verdict": "Kesimpulan",
+        "signals": "Sinyal",
+        "top": "Kalimat paling mirip AI",
+        "top_none": "Tidak ada kalimat yang melewati ambang 70/100.",
+        "not_applicable": "tidak berlaku",
+        "burstiness_detail": "CV {cv}, rata-rata {mean} kata/kalimat",
+        "template_detail": "{count} frasa, {density}/100 kata",
+        "lexical_detail": "TTR {ttr}, {unique}/{total} kata unik",
+        "starter_detail": "'{starter}' x {count} ({share} kalimat)",
+    },
+    "en": {
+        "heading": "AI Detection",
+        "score": "AI score",
+        "verdict": "Verdict",
+        "signals": "Signals",
+        "top": "Most AI-like sentences",
+        "top_none": "No sentence passes the 70/100 threshold.",
+        "not_applicable": "not applicable",
+        "burstiness_detail": "CV {cv}, mean {mean} words/sentence",
+        "template_detail": "{count} phrases, {density}/100 words",
+        "lexical_detail": "TTR {ttr}, {unique}/{total} unique words",
+        "starter_detail": "'{starter}' x {count} ({share} of sentences)",
+    },
+}
+
+
+def _sentence_starters(sentences: list[str]) -> list[str]:
+    """First two words of each sentence (first word when shorter)."""
+    starters = []
+    for sentence in sentences:
+        words = sentence.split()
+        if words:
+            starters.append(" ".join(words[:2]).lower())
+    return starters
+
+
+def _detect_sentence_scores(sentences: list[str], counts: list[int],
+                            template_hits: list[int],
+                            modal_starter) -> list[dict]:
+    """Per-sentence AI-likeness (0-100), most AI-like first.
+
+    60% whether the sentence contains a template phrase (any hit
+    counts — one "Selain itu," already marks the sentence), 30%
+    closeness of its length to the mean sentence length, 10% whether
+    it opens with the text's most common starter. A template sentence
+    at the average length of a uniform text scores near 90; a short,
+    odd, template-free sentence scores near 0. Ties keep their
+    original order.
+    """
+    if not sentences:
+        return []
+    mean = sum(counts) / len(counts) if counts else 0
+    scored = []
+    for i, sentence in enumerate(sentences):
+        template_part = 1.0 if template_hits[i] >= 1 else 0.0
+        length_part = 0.0
+        if mean:
+            length_part = 1.0 - min(1.0, abs(counts[i] - mean) / mean)
+        starter_part = 0.0
+        if modal_starter is not None:
+            words = sentence.split()
+            starter = " ".join(words[:2]).lower() if words else ""
+            starter_part = 1.0 if starter == modal_starter else 0.0
+        score = round(100 * (0.6 * template_part + 0.3 * length_part
+                             + 0.1 * starter_part), 1)
+        scored.append({"sentence": sentence, "score": score})
+    scored.sort(key=lambda item: item["score"], reverse=True)
+    return scored
+
+
+def detect_ai(text: str, lang: str = "id") -> dict:
+    """Heuristic check whether a text reads like AI writing.
+
+    Four signals, each a 0-100 sub-score (100 = most AI-like):
+    - burstiness (weight 30): coefficient of variation of sentence
+      lengths in words — uniform sentences read like AI. Needs 3+
+      sentences; the sub-score is 100 at CV 0 and 0 at CV 0.55.
+    - template_phrases (weight 30): density of curated AI-typical
+      transition phrases per 100 words — 5 per 100 words scores 100.
+    - lexical_diversity (weight 20): type-token ratio — a repetitive
+      vocabulary reads like AI. 100 at TTR 0.42, 0 at TTR 0.72.
+      Needs 100+ words; TTR is meaningless on short texts.
+    - starter_repetition (weight 20): share of sentences sharing the
+      most common opening two words — 100 at a 0.50 share, 0 at 0.20.
+      Needs 6+ sentences.
+    The final ai_score (0-100) is the weighted mean of the applicable
+    signals only (weights renormalized). Verdict bands: >= 70 "likely
+    AI", 40-69 "mixed / uncertain", < 40 "likely human". Under 30
+    words the verdict is "too short" and ai_score is None — there is
+    not enough text to judge. An empty text raises ValueError, like
+    analyze_text_quality. The returned "note" is always present: this
+    is a stdlib heuristic with no language model, so the score is an
+    indication, not proof.
+    """
+    if not text or not text.strip():
+        raise ValueError("teks kosong")
+    lang = lang if lang in _TEMPLATE_PHRASES else "id"
+    note = _DETECTOR_NOTE[lang]
+    words = re.findall(r"\w+", text.lower(), flags=re.UNICODE)
+    n_words = len(words)
+    sentences = _split_sentences(text)
+    counts = [len(s.split()) for s in sentences]
+    if n_words < 30:
+        return {"ai_score": None,
+                "verdict": _DETECTOR_VERDICTS[lang]["short"],
+                "signals": {}, "sentences": [], "note": note}
+
+    signals: dict = {}
+
+    # 1. Burstiness — uniform sentence lengths read like AI.
+    if len(counts) >= 3:
+        mean = sum(counts) / len(counts)
+        if mean:
+            var = sum((c - mean) ** 2 for c in counts) / len(counts)
+            cv = var ** 0.5 / mean
+        else:
+            cv = 0.0
+        signals["burstiness"] = {
+            "score": round(max(0.0, min(100.0, 100 * (0.55 - cv) / 0.55)), 1),
+            "weight": 30, "applicable": True,
+            "cv": round(cv, 2), "mean_length": round(mean, 1),
+            "sentences": len(counts),
+        }
+    else:
+        signals["burstiness"] = {
+            "score": None, "weight": 30, "applicable": False,
+            "cv": None, "mean_length": None, "sentences": len(counts),
+        }
+
+    # 2. Template phrases — density per 100 words.
+    phrases = _TEMPLATE_PHRASES[lang]
+    low = text.lower()
+    found = {}
+    for phrase in phrases:
+        n = len(re.findall(r"\b" + re.escape(phrase) + r"\b", low))
+        if n:
+            found[phrase] = n
+    hits = sum(found.values())
+    density = hits / max(1, n_words) * 100
+    signals["template_phrases"] = {
+        "score": round(min(100.0, density * 20), 1),
+        "weight": 30, "applicable": True,
+        "count": hits, "density_per_100": round(density, 1),
+        "found": found,
+    }
+
+    # 3. Lexical diversity — type-token ratio. TTR is strongly
+    # length-dependent (short texts almost always score high), so
+    # the signal only applies at 100+ words.
+    if n_words >= 100:
+        unique = len(set(words))
+        ttr = unique / n_words
+        signals["lexical_diversity"] = {
+            "score": round(max(0.0, min(100.0, 100 * (0.72 - ttr) / 0.30)), 1),
+            "weight": 20, "applicable": True,
+            "ttr": round(ttr, 2), "unique": unique, "total": n_words,
+        }
+    else:
+        signals["lexical_diversity"] = {
+            "score": None, "weight": 20, "applicable": False,
+            "ttr": None, "unique": None, "total": n_words,
+        }
+
+    # 4. Starter repetition — share of the modal opening two words.
+    starters = _sentence_starters(sentences)
+    modal = None
+    if len(sentences) >= 6 and starters:
+        counts_by_starter: dict = {}
+        for starter in starters:
+            counts_by_starter[starter] = counts_by_starter.get(starter, 0) + 1
+        modal = max(counts_by_starter, key=counts_by_starter.get)
+        share = counts_by_starter[modal] / len(sentences)
+        signals["starter_repetition"] = {
+            "score": round(max(0.0, min(100.0, 100 * (share - 0.20) / 0.30)), 1),
+            "weight": 20, "applicable": True,
+            "share": round(share, 2), "starter": modal,
+            "count": counts_by_starter[modal],
+        }
+    else:
+        signals["starter_repetition"] = {
+            "score": None, "weight": 20, "applicable": False,
+            "share": None, "starter": None, "count": 0,
+        }
+
+    total = sum(s["score"] * s["weight"] for s in signals.values()
+                if s["applicable"])
+    weights = sum(s["weight"] for s in signals.values() if s["applicable"])
+    ai_score = round(total / weights, 1) if weights else 0.0
+    verdicts = _DETECTOR_VERDICTS[lang]
+    if ai_score >= 70:
+        verdict = verdicts["ai"]
+    elif ai_score >= 40:
+        verdict = verdicts["mixed"]
+    else:
+        verdict = verdicts["human"]
+
+    hits_per_sentence = []
+    for sentence in sentences:
+        slow = sentence.lower()
+        hits_per_sentence.append(sum(
+            len(re.findall(r"\b" + re.escape(p) + r"\b", slow))
+            for p in phrases))
+    sent_scores = _detect_sentence_scores(sentences, counts,
+                                           hits_per_sentence, modal)
+
+    return {"ai_score": ai_score, "verdict": verdict,
+            "signals": signals, "sentences": sent_scores, "note": note}
+
+
+def format_detect(result: dict, lang: str = "id") -> str:
+    """Render a detect_ai() result as readable text."""
+    s = _DETECT_STRINGS.get(lang, _DETECT_STRINGS["id"])
+    labels = _DETECTOR_SIGNAL_LABELS.get(lang, _DETECTOR_SIGNAL_LABELS["id"])
+    lines = [s["heading"], ""]
+    if result["ai_score"] is None:
+        lines.append(f"{s['verdict']}: {result['verdict']}")
+    else:
+        lines.append(_bold(f"{s['score']}: {result['ai_score']}/100"))
+        lines.append(_green(_bar(result["ai_score"], 100)))
+        lines.append(f"{s['verdict']}: {result['verdict']}")
+    lines.append("")
+    lines.append(f"{s['signals']}:")
+    for name, label in labels.items():
+        sig = result["signals"].get(name) or {}
+        if not sig.get("applicable"):
+            lines.append(f"  - {label}: {s['not_applicable']}")
+            continue
+        if name == "burstiness":
+            detail = s["burstiness_detail"].format(
+                cv=sig["cv"], mean=sig["mean_length"])
+        elif name == "template_phrases":
+            detail = s["template_detail"].format(
+                count=sig["count"], density=sig["density_per_100"])
+        elif name == "lexical_diversity":
+            detail = s["lexical_detail"].format(
+                ttr=sig["ttr"], unique=sig["unique"], total=sig["total"])
+        else:
+            detail = s["starter_detail"].format(
+                starter=sig["starter"], count=sig["count"],
+                share=f"{sig['share']:.0%}")
+        lines.append(f"  - {label}: {sig['score']}/100 ({detail})")
+    top = [x for x in result["sentences"] if x["score"] >= 70][:3]
+    lines.append("")
+    if top:
+        lines.append(f"{s['top']}:")
+        for item in top:
+            sent = item["sentence"]
+            if len(sent) > 90:
+                sent = sent[:90].rstrip() + "…"
+            lines.append(f"  - \"{sent}\" ({item['score']}/100)")
+    else:
+        lines.append(s["top_none"])
+    lines.append("")
+    lines.append(result["note"])
+    return "\n".join(lines) + "\n"
+
+
+def detect_main(argv=None) -> int:
+    p = argparse.ArgumentParser(
+        description="Check whether a text reads like AI writing — a pure "
+                    "stdlib heuristic (sentence-length variation, template "
+                    "phrases, lexical diversity, repeated sentence "
+                    "starters). Informative only: it always exits 0, "
+                    "unless the input itself is bad (missing file, empty "
+                    "text).")
+    p.add_argument("input", nargs="?", help="plain-text file to check")
+    p.add_argument("--text", help="check this text instead of a file")
+    p.add_argument("--lang", choices=["id", "en"], default="id",
+                   help="output language (default: id)")
+    p.add_argument("--json", action="store_true",
+                   help="print the raw result as JSON instead of readable text")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    args = p.parse_args(argv)
+
+    if args.text is not None:
+        text = args.text
+    elif args.input:
+        if not os.path.isfile(args.input):
+            raise ValueError(f"File tidak ditemukan: {args.input}")
+        with open(args.input, encoding="utf-8") as f:
+            text = f.read()
+    else:
+        p.error("give a file or --text")
+    result = detect_ai(text, lang=args.lang)
+    if args.json:
+        sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    else:
+        sys.stdout.write(format_detect(result, lang=args.lang))
+    return 0
+
+
+# ======================================================================
 # Library — analysis history + personal bibliography (stdlib sqlite3)
 # ======================================================================
 # One local file, no account, no cloud. `analyze --save` records a
@@ -4680,6 +5063,7 @@ STRINGS = {
         "analyze": "Analisis Kualitas — cek jargon, sitasi, dan DOI sekaligus",
         "humanize": "Humanize — saran rewrite gaya (sebelum/sesudah)",
         "library": "Pustaka — riwayat & bibliografi",
+        "detect": "Deteksi AI — cek apakah teks mirip tulisan AI",
         "save_analysis": "Simpan hasil ini ke pustaka? (y = ya, kosong = tidak)",
         "saved_analysis": "Tersimpan di pustaka",
         "history": "Lihat riwayat analisis",
@@ -4760,6 +5144,7 @@ STRINGS = {
         "analyze": "Quality Check — jargon, citations, and DOIs in one pass",
         "humanize": "Humanize — style rewrite suggestions (before/after)",
         "library": "Library — history & bibliography",
+        "detect": "AI Detector — check whether text reads like AI writing",
         "save_analysis": "Save this run to the library? (y = yes, empty = no)",
         "saved_analysis": "Saved to the library",
         "history": "List past analyses",
@@ -5039,12 +5424,13 @@ class CLI:
             print(self.t["menu_title"])
             for number, key in (("1", "jargon"), ("2", "cite"),
                                 ("3", "prompts"), ("4", "analyze"),
-                                ("5", "humanize"), ("6", "library")):
+                                ("5", "humanize"), ("6", "library"),
+                                ("7", "detect")):
                 name, _, desc = self.t[key].partition(" — ")
                 print(_menu_line(number, name, desc))
-            print(_menu_line("7", self.t["lang"]))
+            print(_menu_line("8", self.t["lang"]))
             print(_menu_line("0", self.t["exit"]))
-            choice = self.ask_choice(self.t["choice"], 7)
+            choice = self.ask_choice(self.t["choice"], 8)
             if choice == -1:
                 continue
             if choice == 1:
@@ -5060,10 +5446,37 @@ class CLI:
             elif choice == 6:
                 self.library_menu()
             elif choice == 7:
+                self.detect_menu()
+            elif choice == 8:
                 self.lang = "en" if self.lang == "id" else "id"
             elif choice == 0 or choice is None:
                 print(self.t["goodbye"])
                 return 0
+
+    # -- AI Detector --------------------------------------------------
+
+    def detect_menu(self):
+        while True:
+            print(f"\n{_section_header(self.t['detect'].partition(' — ')[0])}")
+            print(f"1. {self.t['type_text'].split(' (')[0]} / {self.t['read_file']}")
+            print(f"0. {self.t['back']}")
+            choice = self.ask_choice(self.t["choice"], 1)
+            if choice == -1:
+                continue
+            if choice == 1:
+                text = self.read_text()
+                if not text:
+                    continue
+                try:
+                    result = detect_ai(text, lang=self.lang)
+                except ValueError as e:
+                    print(str(e))
+                    self.pause()
+                    continue
+                print(f"\n{format_detect(result, lang=self.lang)}")
+                self.pause()
+            elif choice == 0 or choice is None:
+                return
 
     # -- Jargon Buster --------------------------------------------------
 
@@ -5446,7 +5859,7 @@ class CLI:
 
 
 # ======================================================================
-# Local web UI (serve) — the same four tools in a browser page
+# Local web UI (serve) — the same six tools in a browser page
 # ======================================================================
 # Design direction (our own brief, written for this page):
 # - A tool page, not a landing page: no hero, the work (paste text,
@@ -5638,7 +6051,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
   <aside class="sidebar">
     <div class="brand">
       <h1>Academic Tools <span class="ver">v__ACADEMIC_TOOLS_VERSION__</span></h1>
-      <p>Satu file Python untuk tulisan mahasiswa: terjemahkan jargon, sisipkan sitasi, cek kualitas naskah, isi template prompt skripsi, dan lihat riwayat di pustaka.</p>
+      <p>Satu file Python untuk tulisan mahasiswa: terjemahkan jargon, sisipkan sitasi, cek kualitas naskah, isi template prompt skripsi, deteksi tulisan AI, dan lihat riwayat di pustaka.</p>
     </div>
     <nav class="tabs" role="tablist" aria-label="Alat">
       <button role="tab" data-tab="analyze" aria-selected="true"><span class="nav-name">Analisis Kualitas</span><span class="nav-desc">Skor naskah dan apa yang diperbaiki</span></button>
@@ -5646,6 +6059,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       <button role="tab" data-tab="cite" aria-selected="false"><span class="nav-name">Citation Weaver</span><span class="nav-desc">Sisipkan sitasi ke naskah</span></button>
       <button role="tab" data-tab="prompts" aria-selected="false"><span class="nav-name">Prompt Skripsi</span><span class="nav-desc">Template prompt skripsi</span></button>
       <button role="tab" data-tab="library" aria-selected="false"><span class="nav-name">Pustaka</span><span class="nav-desc">Riwayat analisis dan referensi</span></button>
+      <button role="tab" data-tab="detect" aria-selected="false"><span class="nav-name">Deteksi AI</span><span class="nav-desc">Cek apakah teks mirip tulisan AI</span></button>
     </nav>
     <p class="local-note">Berjalan lokal di komputer Anda — halaman ini tidak mengirim data ke mana pun. Skor gaya hanya laporan: baca, lalu sunting sendiri. Referensi yang tidak ada di bibliografi tidak pernah dikarang.</p>
   </aside>
@@ -5806,6 +6220,26 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         <button class="primary" id="library-search-btn">Cari</button>
       </div>
       <div class="result" id="library-refs"></div>
+    </section>
+
+    <section class="panel" id="panel-detect" role="tabpanel" aria-label="Deteksi AI">
+      <label for="detect-text">Tempel teks <span class="hint">— minimal 30 kata</span></label>
+      <textarea id="detect-text" placeholder="Tempel teks di sini."></textarea>
+      <div class="row">
+        <div>
+          <label for="detect-lang">Bahasa teks</label>
+          <select id="detect-lang">
+            <option value="id">Indonesia</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="detect-btn">Periksa teks</button>
+        <span class="status" id="detect-status"></span>
+      </div>
+      <div class="error" id="detect-error"></div>
+      <div class="result" id="detect-result"></div>
     </section>
 
   </div>
@@ -6058,6 +6492,54 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       h += '</div>';
     }
     h += '</div></div>';
+    return h;
+  }
+
+  /* Pita skor AI: label dari angka, bukan karangan — ambang tetap.
+     Warnanya terbalik dari gauge kualitas: skor AI tinggi itu buruk. */
+  function detectBand(score, lang) {
+    if (score >= 70) return {color: "var(--bad)", label: lang === "en" ? "Likely AI" : "Kemungkinan besar AI"};
+    if (score >= 40) return {color: "var(--warn)", label: lang === "en" ? "Mixed / uncertain" : "Campuran / tidak pasti"};
+    return {color: "var(--accent)", label: lang === "en" ? "Likely human" : "Kemungkinan besar manusia"};
+  }
+
+  function renderDetect(res, lang) {
+    var h = "";
+    if (typeof res.ai_score !== "number") {
+      h += '<div class="card"><h2>Deteksi AI</h2><p>' + esc(res.verdict) + " — "
+        + (lang === "en" ? "at least 30 words are needed to judge." : "butuh minimal 30 kata untuk menilai.") + "</p></div>";
+    } else {
+      var band = detectBand(res.ai_score, lang);
+      h += '<div class="card gauge-card"><h2>Deteksi AI</h2>'
+        + '<p class="caption">' + (lang === "en" ? "Heuristic AI score 0–100 — an indication, not proof." : "Skor AI heuristik 0–100 — indikasi, bukan bukti.") + '</p>'
+        + '<div class="gauge-body"><div class="gauge-wrap">'
+        + '<svg class="gauge" viewBox="0 0 120 120" role="img" aria-label="Skor AI ' + num(res.ai_score, 100) + ' dari 100">'
+        + '<circle class="gauge-track" cx="60" cy="60" r="52"></circle>'
+        + '<circle class="gauge-arc" cx="60" cy="60" r="52" pathLength="100" stroke-dasharray="100" stroke-dashoffset="' + (100 - num(res.ai_score, 100)) + '" style="stroke:' + band.color + '"></circle>'
+        + '</svg><div class="gauge-center"><span class="gauge-num">' + num(res.ai_score, 100) + '</span><span class="gauge-of">/ 100</span><span class="gauge-band">' + band.label + '</span></div></div>';
+      var labels = lang === "en"
+        ? {burstiness: "Sentence-length variation", template_phrases: "Template phrases", lexical_diversity: "Lexical diversity", starter_repetition: "Repeated sentence starters"}
+        : {burstiness: "Variasi panjang kalimat", template_phrases: "Frasa template", lexical_diversity: "Keragaman kosakata", starter_repetition: "Pengulangan awalan kalimat"};
+      h += '<div class="parts">';
+      Object.keys(labels).forEach(function (k) {
+        var s = res.signals[k];
+        if (!s) return;
+        var v = s.applicable ? num(s.score, 100) : 0;
+        h += '<div class="part-row"><span class="part-label">' + labels[k] + '</span><div class="bar"><span style="width:' + v + '%"></span></div><span class="part-num">' + (s.applicable ? Math.round(v) + '/100' : '—') + '</span></div>';
+      });
+      h += '</div></div></div>';
+      var top = (res.sentences || []).filter(function (x) { return x.score >= 70; });
+      if (top.length) {
+        h += '<div class="card"><h2>Kalimat paling mirip AI <span class="meta">' + top.length + '</span></h2><ul>';
+        top.forEach(function (x) {
+          h += "<li>" + esc(x.sentence) + ' <span class="meta">' + num(x.score, 100) + "/100</span></li>";
+        });
+        h += "</ul></div>";
+      } else {
+        h += '<div class="card"><h2>Kalimat paling mirip AI</h2><p>Tidak ada kalimat yang melewati ambang 70/100.</p></div>';
+      }
+    }
+    h += '<div class="card"><p>' + esc(res.note) + '</p></div>';
     return h;
   }
 
@@ -6389,6 +6871,24 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     } catch (e) {
       $("prompt-status").textContent = "Tidak bisa menyalin otomatis — blok lalu salin manual.";
     }
+  });
+
+  $("detect-btn").addEventListener("click", async function () {
+    var btn = $("detect-btn");
+    clearError("detect-error");
+    $("detect-result").innerHTML = "";
+    var text = $("detect-text").value.trim();
+    if (!text) { showError("detect-error", "Tempel teks dulu."); return; }
+    btn.disabled = true;
+    $("detect-status").textContent = "Memeriksa…";
+    try {
+      var res = await post("/api/detect", {text: text, lang: $("detect-lang").value});
+      $("detect-result").innerHTML = renderDetect(res, $("detect-lang").value);
+      $("detect-status").textContent = "";
+    } catch (e) {
+      showError("detect-error", "Gagal: " + e.message);
+      $("detect-status").textContent = "";
+    } finally { btn.disabled = false; }
   });
 
   loadPrompts().catch(function (e) {
@@ -6725,6 +7225,8 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json(200, self._cite(body))
             elif path == "/api/prompts/fill":
                 self._send_json(200, self._fill_prompt(body))
+            elif path == "/api/detect":
+                self._send_json(200, self._detect(body))
             else:
                 self._send_json(404, {"error": "tidak ditemukan"})
         except RequestTooLargeError as e:
@@ -6885,6 +7387,15 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         output, woven = weave(text, refs, style=style, lang=lang)
         return {"output": output, "woven": woven}
 
+    def _detect(self, body: dict) -> dict:
+        text = str(body.get("text") or "").strip()
+        if not text:
+            raise ValueError("teks kosong")
+        lang = body.get("lang") or "id"
+        if lang not in ("id", "en"):
+            raise ValueError("lang harus 'id' atau 'en'")
+        return detect_ai(text, lang=lang)
+
     def _fill_prompt(self, body: dict) -> dict:
         prompt_id = str(body.get("id") or "")
         prompt = get_prompt(prompt_id)
@@ -6928,7 +7439,7 @@ def make_server(host: str = "127.0.0.1", port: int = 8000):
 
 def serve_main(argv=None) -> int:
     p = argparse.ArgumentParser(
-        description="Serve a local web UI for all four tools (localhost only).")
+        description="Serve a local web UI for all six tools (localhost only).")
     p.add_argument("--port", type=int, default=8000,
                    help="port to listen on (default: 8000)")
     p.add_argument("--host", default="127.0.0.1",
@@ -6950,7 +7461,8 @@ def main(argv=None) -> int:
     """Entry point. No args -> interactive menu; jargon/cite/prompts -> passthrough."""
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] in ("jargon", "cite", "prompts", "analyze",
-                           "humanize", "library", "serve", "duplicates"):
+                           "humanize", "library", "serve", "duplicates",
+                           "detect"):
         tool, rest = argv[0], argv[1:]
         try:
             if tool == "jargon":
@@ -6965,6 +7477,8 @@ def main(argv=None) -> int:
                 return library_main(rest)
             if tool == "duplicates":
                 return duplicates_main(rest)
+            if tool == "detect":
+                return detect_main(rest)
             if tool == "serve":
                 return serve_main(rest)
             return prompts_main(rest)
@@ -6982,7 +7496,8 @@ def main(argv=None) -> int:
               f"(cli {CLI_VERSION}; jargon_buster {JARGON_VERSION}; "
               f"citation_weaver {CITATION_VERSION}; "
               f"skripsi_prompts {PROMPTS_VERSION}; "
-              f"academic_quality_check {QUALITY_VERSION})")
+              f"academic_quality_check {QUALITY_VERSION}; "
+              f"ai_detector {DETECTOR_VERSION})")
         return 0
     try:
         return CLI().run()

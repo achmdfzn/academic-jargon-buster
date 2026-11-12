@@ -52,6 +52,7 @@ class TestCoreStaysOneFile(unittest.TestCase):
 
     def test_shims_reexport_the_core(self):
         import academic_cli
+        import ai_detector
         import citation_weaver
         import jargon_buster
         import skripsi_prompts
@@ -60,6 +61,9 @@ class TestCoreStaysOneFile(unittest.TestCase):
         self.assertIs(jargon_buster.main, academic_tools.jargon_main)
         self.assertIs(citation_weaver.main, academic_tools.cite_main)
         self.assertIs(skripsi_prompts.main, academic_tools.prompts_main)
+        self.assertIs(ai_detector.detect_main, academic_tools.detect_main)
+        self.assertEqual(ai_detector.__version__,
+                         academic_tools.DETECTOR_VERSION)
         self.assertEqual(jargon_buster.__version__, academic_tools.JARGON_VERSION)
         self.assertEqual(
             citation_weaver.__version__, academic_tools.CITATION_VERSION
@@ -88,6 +92,9 @@ class TestCoreStaysOneFile(unittest.TestCase):
                      "format_library_stats"):
             self.assertTrue(hasattr(academic_cli, name), name)
             self.assertIn(name, academic_cli.__all__)
+        for name in ("detect_ai", "format_detect", "detect_main"):
+            self.assertTrue(hasattr(ai_detector, name), name)
+            self.assertIn(name, ai_detector.__all__)
         self.assertIn("jargon_main", jargon_buster.__all__)
         self.assertIn("prompts_main", skripsi_prompts.__all__)
 
@@ -104,6 +111,7 @@ class TestDocsMatchTheRepo(unittest.TestCase):
         readme = read_text("README.md")
         self.assertIn(f"{len(academic_tools.DICTIONARY)} terms", readme)
         self.assertIn(f"{len(academic_tools.PROMPTS)} ready-made", readme)
+        self.assertIn("five skills", readme)
 
     def test_documented_paths_exist(self):
         for rel in (
@@ -141,10 +149,18 @@ class TestSkillVersions(unittest.TestCase):
             "citation-weaver": academic_tools.CITATION_VERSION,
             "skripsi-prompts": academic_tools.PROMPTS_VERSION,
             "academic-quality-check": academic_tools.QUALITY_VERSION,
+            "ai-detector": academic_tools.DETECTOR_VERSION,
         }
         for name, version in expected.items():
             meta = self._frontmatter(f"skills/research/{name}/SKILL.md")
             self.assertEqual(meta["version"], version, name)
+
+    def test_skill_folders_match_the_code(self):
+        skills = {p.name for p in (ROOT / "skills" / "research").iterdir()
+                  if p.is_dir()}
+        self.assertEqual(skills, {"academic-jargon-buster", "citation-weaver",
+                                  "skripsi-prompts", "academic-quality-check",
+                                  "ai-detector"})
 
 
 class TestSkillDocsCoverTheTools(unittest.TestCase):

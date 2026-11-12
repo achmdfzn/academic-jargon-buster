@@ -92,18 +92,19 @@ import os
 import re
 import sqlite3
 import sys
+import threading
 import urllib.error
 import urllib.request
 from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.25.0"
+__version__ = "1.25.1"
 JARGON_VERSION = "1.0.5"
-CITATION_VERSION = "1.5.0"
+CITATION_VERSION = "1.5.1"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.7"
-CLI_VERSION = "1.16.0"
+QUALITY_VERSION = "1.2.8"
+CLI_VERSION = "1.16.1"
 
 # ======================================================================
 # Jargon Buster
@@ -696,16 +697,59 @@ def style_for_discipline(name: str):
     return None
 
 
+def _validate_references(data) -> dict:
+    """Validate a parsed bibliography ({key: ref}) in place.
+
+    Top level must be a dict; every value a dict; 'authors', when
+    present, must be a list of strings (a lone string is normalized
+    to [string]); 'title', when present, must be a string. Anything
+    else raises ValueError with a plain message — never a bare
+    KeyError/TypeError downstream. Returns the (normalized) dict.
+    """
+    if not isinstance(data, dict):
+        raise ValueError(
+            "bibliografi tidak valid: harus berupa objek "
+            "{kunci: referensi}, bukan "
+            + ("daftar" if isinstance(data, list) else "nilai tunggal"))
+    for key, ref in data.items():
+        if not isinstance(ref, dict):
+            raise ValueError(
+                f"bibliografi tidak valid: referensi '{key}' "
+                "harus berupa objek")
+        if "authors" in ref:
+            authors = ref["authors"]
+            if isinstance(authors, str):
+                ref["authors"] = [authors]
+            elif isinstance(authors, list):
+                for a in authors:
+                    if not isinstance(a, str):
+                        raise ValueError(
+                            f"bibliografi tidak valid: 'authors' "
+                            f"referensi '{key}' harus berupa daftar "
+                            "nama (string)")
+            else:
+                raise ValueError(
+                    f"bibliografi tidak valid: 'authors' referensi "
+                    f"'{key}' harus berupa daftar nama")
+        if "title" in ref and ref["title"] is not None \
+                and not isinstance(ref["title"], str):
+            raise ValueError(
+                f"bibliografi tidak valid: 'title' referensi '{key}' "
+                "harus berupa teks")
+    return data
+
+
 def load_references(path: str):
     """Load a bibliography JSON file: {"key": {author fields...}}.
 
     Authors are stored as ["Family, Given", ...].
+
+    Raises ValueError with a plain message when the file is not
+    valid JSON or the data is not a well-formed {key: ref} object.
     """
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    if isinstance(data, list):
-        return {r["key"]: r for r in data}
-    return data
+    return _validate_references(data)
 
 
 # ======================================================================
@@ -896,6 +940,8 @@ def _doi_verdict(entry: dict) -> str:
     A DOI only needs to exist in one source to be real: arXiv and
     datasets register with DataCite, not Crossref. 'missing' therefore
     needs both sources to say 404; one source alone is 'unverified'.
+    Scoring treats 'unverified' as half credit (12.5 per DOI): a DOI
+    that could not be checked is not the same as a confirmed fake.
     """
     if not entry["doi"]:
         return "no-doi"
@@ -1201,8 +1247,10 @@ def _in_text(ref, style: str, number: int) -> str:
 def weave(text: str, references: dict, style: str = "apa", lang: str = "id"):
     """Replace [cite:key] / \\cite{key} markers with in-text citations.
 
-    Returns (woven_text, bibliography_text). Unknown keys are marked
-    [PERLU RUJUKAN: key] / [REFERENCE NEEDED: key], never invented.
+    Returns (full_output, woven_text): the complete output (woven
+    text plus the bibliography section) first, then the woven text
+    alone. Unknown keys are marked [PERLU RUJUKAN: key] /
+    [REFERENCE NEEDED: key], never invented.
     """
     if style not in STYLES:
         raise ValueError(f"unknown style: {style}; choose one of {', '.join(STYLES)}")
@@ -1269,9 +1317,16 @@ def _bibtex_escape(text) -> str:
     return "".join(_BIBTEX_ESCAPES.get(ch, ch) for ch in str(text))
 
 
+def _flat(value) -> str:
+    """One-line a string value: a CR or LF inside a title, venue,
+    DOI or key would inject a line break into a BibTeX/RIS record
+    (and a fake field into a parser that reads it back)."""
+    return str(value).replace("\r", " ").replace("\n", " ")
+
+
 def _bibtex_pages(pages) -> str:
     """Normalise a pages value to BibTeX form, e.g. '189-194' -> '189--194'."""
-    p = str(pages).replace("pp. ", "").strip()
+    p = _flat(pages).replace("pp. ", "").strip()
     return p.replace("--", "-").replace("-", "--")
 
 
@@ -1280,10 +1335,10 @@ def _bibtex_entry(key: str, ref: dict) -> str:
     fields = []
     authors = ref.get("authors") or []
     if authors:
-        fields.append(("author", " and ".join(_bibtex_escape(a) for a in authors)))
+        fields.append(("author", " and ".join(_bibtex_escape(_flat(a)) for a in authors)))
     if ref.get("title"):
-        fields.append(("title", _bibtex_escape(ref["title"])))
-    venue = ref.get("venue", "")
+        fields.append(("title", _bibtex_escape(_flat(ref["title"]))))
+    venue = _flat(ref.get("venue", ""))
     pages = ref.get("pages", "")
     if entry_type == "incollection" and ", pp. " in venue:
         venue, _, pp = venue.partition(", pp. ")
@@ -1300,21 +1355,21 @@ def _bibtex_entry(key: str, ref: dict) -> str:
     elif venue:
         fields.append(("note", _bibtex_escape(venue)))
     if ref.get("volume"):
-        fields.append(("volume", str(ref["volume"])))
+        fields.append(("volume", _flat(ref["volume"])))
     if ref.get("issue"):
-        fields.append(("number", str(ref["issue"])))
+        fields.append(("number", _flat(ref["issue"])))
     if pages:
         fields.append(("pages", _bibtex_pages(pages)))
     if ref.get("year"):
-        fields.append(("year", str(ref["year"])))
+        fields.append(("year", _flat(ref["year"])))
     if ref.get("doi"):
-        fields.append(("doi", ref["doi"]))
+        fields.append(("doi", _flat(ref["doi"])))
     if ref.get("arxiv"):
-        fields.append(("eprint", ref["arxiv"]))
+        fields.append(("eprint", _flat(ref["arxiv"])))
         fields.append(("archivePrefix", "arXiv"))
     if ref.get("url"):
-        fields.append(("url", ref["url"]))
-    lines = [f"@{entry_type}{{{key},"]
+        fields.append(("url", _flat(ref["url"])))
+    lines = [f"@{entry_type}{{{_flat(key)},"]
     for name, value in fields:
         lines.append(f"  {name} = {{{value}}},")
     lines.append("}")
@@ -1345,8 +1400,13 @@ _RIS_TYPES = {
 
 
 def _ris_pages(pages) -> tuple:
-    """Split a pages value into (start, end); '189-194' -> ('189', '194')."""
-    p = str(pages).replace("pp. ", "").strip()
+    """Split a pages value into (start, end); '189-194' -> ('189', '194').
+
+    Normalised like _bibtex_pages first: '--', en dash and em dash
+    all become a single '-', so '189–194' and '189--194' split too.
+    """
+    p = _flat(pages).replace("pp. ", "").strip()
+    p = p.replace("--", "-").replace("–", "-").replace("—", "-")
     if "-" in p:
         start, _, end = p.partition("-")
         return start.strip(), end.strip()
@@ -1355,13 +1415,13 @@ def _ris_pages(pages) -> tuple:
 
 def _ris_entry(key: str, ref: dict) -> str:
     entry_type = _RIS_TYPES.get(ref.get("type", ""), "GEN")
-    lines = [f"TY  - {entry_type}", f"ID  - {key}"]
+    lines = [f"TY  - {entry_type}", f"ID  - {_flat(key)}"]
     authors = ref.get("authors") or []
     for a in authors:
-        lines.append(f"AU  - {a}")
+        lines.append(f"AU  - {_flat(a)}")
     if ref.get("title"):
-        lines.append(f"TI  - {ref['title']}")
-    venue = ref.get("venue", "")
+        lines.append(f"TI  - {_flat(ref['title'])}")
+    venue = _flat(ref.get("venue", ""))
     pages = ref.get("pages", "")
     if entry_type == "CHAP" and ", pp. " in venue:
         venue, _, pp = venue.partition(", pp. ")
@@ -1378,9 +1438,9 @@ def _ris_entry(key: str, ref: dict) -> str:
     elif venue:
         lines.append(f"N1  - {venue}")
     if ref.get("volume"):
-        lines.append(f"VL  - {ref['volume']}")
+        lines.append(f"VL  - {_flat(ref['volume'])}")
     if ref.get("issue"):
-        lines.append(f"IS  - {ref['issue']}")
+        lines.append(f"IS  - {_flat(ref['issue'])}")
     if pages:
         start, end = _ris_pages(pages)
         if start:
@@ -1388,13 +1448,13 @@ def _ris_entry(key: str, ref: dict) -> str:
         if end:
             lines.append(f"EP  - {end}")
     if ref.get("year"):
-        lines.append(f"PY  - {ref['year']}")
+        lines.append(f"PY  - {_flat(ref['year'])}")
     if ref.get("doi"):
-        lines.append(f"DO  - {ref['doi']}")
+        lines.append(f"DO  - {_flat(ref['doi'])}")
     if ref.get("url"):
-        lines.append(f"UR  - {ref['url']}")
+        lines.append(f"UR  - {_flat(ref['url'])}")
     if ref.get("arxiv"):
-        lines.append(f"UR  - https://arxiv.org/abs/{ref['arxiv']}")
+        lines.append(f"UR  - https://arxiv.org/abs/{_flat(ref['arxiv'])}")
     lines.append("ER  - ")
     return "\n".join(lines)
 
@@ -1723,9 +1783,9 @@ _NOUN_TO_VERB = {
     "observasi": "mengobservasi", "simulasi": "mensimulasikan",
     "pemodelan": "memodelkan", "pengaruh": "memengaruhi",
     "kontribusi": "menyumbang", "gambaran": "menggambarkan",
-    "informasi": "memberi tahu", "peningkatan": "naik",
-    "penurunan": "turun", "perubahan": "berubah",
-    "perjalanan": "bepergian", "perawatan": "dirawat",
+    "informasi": "memberi tahu", "peningkatan": "meningkatkan",
+    "penurunan": "menurunkan", "perubahan": "mengubah",
+    "perawatan": "merawat",
     "pengembangan": "mengembangkan", "penerapan": "menerapkan",
     "penggunaan": "menggunakan", "pemeriksaan": "memeriksa",
     "penyusunan": "menyusun", "pelaksanaan": "melaksanakan",
@@ -1766,30 +1826,18 @@ def _context_sentence(spans, pos: int) -> str:
     return spans[-1][2] if spans else ""
 
 
-def _apply_suggestion(text: str, s: dict) -> str:
-    """Return `text` with one suggestion's span replaced.
-
-    Collapses double spaces and capitalizes the first letter of
-    every sentence, so a removed sentence-initial connector or a
-    split after "yang mana" still reads correctly.
-    """
-    new = text[:s["start"]] + (s["replacement"] or "") + text[s["end"]:]
-    new = re.sub(r" {2,}", " ", new).strip()
-
-    def _cap(m):
-        return m.group(1) + m.group(2).upper()
-
-    return re.sub(r"(^|[.!?]\s+)([a-z])", _cap, new)
-
-
 def _fixed_sentence(text: str, sug: dict) -> str | None:
-    """The suggestion's sentence with the replacement applied."""
+    """The suggestion's sentence with the replacement applied.
+
+    Uses _apply_one — the same path apply_suggestions() takes — so
+    the preview is exactly the text --apply produces.
+    """
     if sug["replacement"] is None:
         return None
     for s, e, sent in _sentence_spans(text):
         if s <= sug["start"] < e:
             rel = sug["start"] - s
-            return _apply_suggestion(sent, {
+            return _apply_one(sent, {
                 "start": rel,
                 "end": rel + len(sug["original"]),
                 "replacement": sug["replacement"],
@@ -2171,7 +2219,13 @@ def analyze_text_quality(
     performed against it. Otherwise, citation and DOI checks are skipped.
     The style check always runs; its lexical signals are calibrated
     for Indonesian academic prose.
+
+    Raises ValueError("teks kosong") for an empty or whitespace-only
+    text: an empty manuscript has nothing to score, and must not
+    come back as a perfect 100.
     """
+    if not text or not text.strip():
+        raise ValueError("teks kosong")
     result = {
         "jargon": [],
         "citations": None,
@@ -2218,29 +2272,40 @@ def analyze_text_quality(
     score_parts = []
 
     # Jargon: every term found is explained by construction, so a run
-    # with terms scores 25; a text with no recognised jargon is neutral.
+    # with terms scores 25; a text with no recognised jargon is
+    # neutral (also 25). The jargon component is therefore a fixed
+    # 25 by design, and the effective score floor is 75 with no
+    # references and 38 with references (style 0 + citations 0
+    # + DOI 0).
     score_parts.append(25)
 
-    # Citations completeness
+    # Citations completeness: the share of cited markers that have a
+    # bibliography entry. All citations missing scores 0, not 12.5.
     if references is not None:
         cit = result["citations"]
         total_cited = len(cit["cited"]) if cit else 0
         total_missing = len(cit["missing"]) if cit else 0
-        if total_missing == 0:
-            score_parts.append(25)  # all citations have bibliography entries
+        if total_cited == 0:
+            score_parts.append(25)  # nothing cited = neutral
         else:
-            score_parts.append(25 * (1 - min(total_missing / max(1, total_missing + total_cited), 1.0)))
+            score_parts.append(
+                25 * (total_cited - total_missing) / total_cited)
     else:
         score_parts.append(25)  # no refs to audit = neutral
 
     # DOI verification quality: only entries that actually carry a DOI
     # count — a reference without one is not a failed verification.
+    # An 'unverified' DOI (one source could not be checked) earns
+    # half credit: not checked is not the same as confirmed fake.
     doi_result = result.get("doi_verification", {})
     if doi_result:
         checkable = [v for v in doi_result.values() if v.get("doi")]
         if checkable:
             ok_count = sum(1 for v in checkable if v.get("verdict") == "ok")
-            score_parts.append(25 * (ok_count / len(checkable)))
+            unverified = sum(
+                1 for v in checkable if v.get("verdict") == "unverified")
+            score_parts.append(
+                25 * (ok_count + 0.5 * unverified) / len(checkable))
         else:
             score_parts.append(25)  # no DOIs to verify = neutral
     else:
@@ -2250,7 +2315,7 @@ def analyze_text_quality(
     score_parts.append(result["style"]["style_score"])
 
     total_score = sum(score_parts)
-    result["quality_score"] = round(min(total_score, 100))
+    result["quality_score"] = _round_half_up(min(total_score, 100))
 
     # --- Recommendations ---
     en = lang == "en"
@@ -2450,12 +2515,26 @@ _SCORE_PART_LABELS = {
 }
 
 
+def _round_half_up(x: float) -> int:
+    """Round half up (12.5 -> 13), unlike Python's round() which
+    rounds half to even (12.5 -> 12). Scores are never negative,
+    so int(x + 0.5) is exact here. One helper for the total and
+    every displayed component, so the parts always add up to the
+    total (and match the web UI, where Math.round is also half-up)."""
+    return int(x + 0.5)
+
+
 def _score_parts(result: dict) -> list:
     """The four 25-point components behind quality_score.
 
     Mirrors the scoring in analyze_text_quality(): jargon is always
-    25 (every term found is explained by construction), citations
-    lose points for missing entries, DOI for failed verifications.
+    25 (every term found is explained by construction, and a text
+    with no recognised jargon is neutral) — so the effective score
+    floor is 75 with no references and 38 with references (style 0
+    + citations 0 + DOI 0). Citations lose points for missing
+    entries: 25 * (cited - missing) / cited. DOI gives half credit
+    (12.5) for an 'unverified' verdict: a DOI that could not be
+    checked is not the same as a confirmed fake ('missing').
     """
     parts = [25.0]
     cit = result["citations"]
@@ -2463,13 +2542,15 @@ def _score_parts(result: dict) -> list:
         parts.append(25.0)
     else:
         cited, missing = len(cit["cited"]), len(cit["missing"])
-        parts.append(25.0 if missing == 0 else
-                     25 * (1 - missing / max(1, missing + cited)))
+        parts.append(25.0 if cited == 0 else
+                     25 * (cited - missing) / cited)
     dv = result.get("doi_verification", {})
     checkable = [v for v in dv.values() if v.get("doi")]
     if checkable:
         ok = sum(1 for v in checkable if v.get("verdict") == "ok")
-        parts.append(25 * ok / len(checkable))
+        unverified = sum(1 for v in checkable
+                         if v.get("verdict") == "unverified")
+        parts.append(25 * (ok + 0.5 * unverified) / len(checkable))
     else:
         parts.append(25.0)
     parts.append(float(result["style"]["style_score"]))
@@ -2485,7 +2566,7 @@ def format_analyze(result: dict, lang: str = "id") -> str:
     labels = _SCORE_PART_LABELS.get(lang, _SCORE_PART_LABELS["id"])
     for label, value in zip(labels, _score_parts(result)):
         lines.append(f"{label:<10} {_green(_bar(value, 25))} "
-                     f"{round(value):>2}/25")
+                     f"{_round_half_up(value):>2}/25")
     lines.append("")
     jargon = result["jargon"]
     if jargon:
@@ -2669,10 +2750,20 @@ def _analyze_one_file(entry: dict, text: str, references=None, *,
                       db=None) -> dict:
     """Fill one folder-result entry from an already-read text: the
     analyze pass, the optional duplicates check, and the optional
-    library save (recorded under the file name). Returns the entry."""
+    library save (recorded under the file name). Returns the entry.
+
+    A file that fails a step (empty text, a duplicates check against
+    a corrupt library, a failed save) is recorded with its error
+    and left out of the folder average — one policy for every kind
+    of failure, including unreadable files.
+    """
     entry["text"] = text
-    result = analyze_text_quality(text, references, lang=lang,
-                                  verify_dois=verify_dois)
+    try:
+        result = analyze_text_quality(text, references, lang=lang,
+                                      verify_dois=verify_dois)
+    except ValueError as e:
+        entry["error"] = str(e)
+        return entry
     entry["result"] = result
     entry["quality_score"] = result["quality_score"]
     entry["jargon_count"] = len(result["jargon"])
@@ -2690,8 +2781,8 @@ def _analyze_one_file(entry: dict, text: str, references=None, *,
         try:
             entry["duplicates"] = find_duplicates(text, db=db)["count"]
         except ValueError as e:
+            # Record the failure, but still try the save below.
             entry["error"] = str(e)
-            return entry
     if save:
         try:
             entry["library_id"] = save_analysis(
@@ -2742,7 +2833,7 @@ def analyze_folder(folder: str, references=None, *, lang: str = "id",
                                          duplicates=duplicates, save=save,
                                          db=db))
     scores = [e["quality_score"] for e in entries
-              if e["quality_score"] is not None]
+              if e["quality_score"] is not None and not e.get("error")]
     average = round(sum(scores) / len(scores), 1) if scores else None
     return {"folder": folder, "files": entries, "count": len(entries),
             "average": average}
@@ -2883,6 +2974,18 @@ def _past_texts(db=None) -> list:
              "text_hash": r["text_hash"]} for r in rows]
 
 
+def _overlap_gate(words_a: set, words_b: set) -> bool:
+    """True when a pair deserves a difflib comparison. The
+    word-overlap pre-filter (half the words of the shorter sentence
+    shared) is skipped when either sentence has fewer than 3 unique
+    words: a one-word sentence can never reach 0.5 overlap even
+    when it is nearly identical ("pengukuranpengukuran" vs
+    "pengukuran pengukuran" scores 0.96 on difflib)."""
+    if len(words_a) < 3 or len(words_b) < 3:
+        return True
+    return _word_overlap(words_a, words_b) >= 0.5
+
+
 def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
                     min_words: int = 6, past_runs=None) -> dict:
     """Find sentences in `text` that repeat the user's own saved drafts.
@@ -2892,9 +2995,10 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
     the other sentences of the text itself. A match is a normalized
     difflib ratio of at least `threshold`; only the best match per
     sentence is reported. The text itself is never matched against its
-    own saved copy (same text hash), so re-analyzing a saved run does
-    not flag every sentence. A word-overlap pre-filter (half the words
-    of the shorter sentence shared) keeps the comparison fast.
+    own saved copy (same text, ignoring leading/trailing whitespace),
+    so re-analyzing a saved run does not flag every sentence. A
+    word-overlap pre-filter (half the words of the shorter sentence
+    shared) keeps the comparison fast.
 
     Returns {"duplicates": [...], "count": n, "checked": m} where m is
     the number of saved runs compared. Each duplicate carries sentence,
@@ -2907,9 +3011,11 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
     sentences = [s for s in _split_sentences(text)
                  if len(s.split()) >= min_words]
     if past_runs is None:
-        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        text_hash = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
         past_runs = [r for r in _past_texts(db)
-                     if r["text_hash"] != text_hash]
+                     if hashlib.sha256(
+                         r["text"].strip().encode("utf-8")).hexdigest()
+                     != text_hash]
     normalized = [_normalize_sentence(s) for s in sentences]
     word_sets = [set(n.split()) for n in normalized]
 
@@ -2925,13 +3031,13 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
                                                 word_sets)):
         best = None
         for cand_norm, cand_sent, cand_words, run in corpus:
-            if _word_overlap(words, cand_words) < 0.5:
+            if not _overlap_gate(words, cand_words):
                 continue
             sim = _sentence_similarity(norm, cand_norm)
             if sim >= threshold and (best is None or sim > best[0]):
                 best = (sim, cand_sent, run)
         for j in range(i + 1, len(sentences)):
-            if _word_overlap(words, word_sets[j]) < 0.5:
+            if not _overlap_gate(words, word_sets[j]):
                 continue
             sim = _sentence_similarity(norm, normalized[j])
             if sim >= threshold and (best is None or sim > best[0]):
@@ -3193,7 +3299,29 @@ def open_library(db: str | None = None) -> sqlite3.Connection:
             conn.close()
         raise ValueError(
             f"pustaka rusak: {path} — hapus atau ganti file databasenya")
+    try:
+        for table, columns in _LIBRARY_COLUMNS.items():
+            actual = {row[1] for row in conn.execute(
+                f"PRAGMA table_info({table})")}
+            if not columns <= actual:
+                raise ValueError(
+                    f"pustaka rusak: {path} — hapus atau ganti file databasenya")
+    except (ValueError, sqlite3.Error):
+        conn.close()
+        raise ValueError(
+            f"pustaka rusak: {path} — hapus atau ganti file databasenya")
     return conn
+
+
+_LIBRARY_COLUMNS = {
+    "analyses": {"id", "created_at", "title", "quality_score",
+                 "jargon_count", "citations_missing", "doi_ok",
+                 "doi_total", "style_score", "suggestions_count",
+                 "text_hash", "text"},
+    "analysis_references": {"analysis_id", "ref_key"},
+    "library_references": {"key", "title", "authors", "year", "doi",
+                           "url", "added_at", "source", "data"},
+}
 
 
 def _ref_columns(ref: dict) -> dict:
@@ -3249,7 +3377,18 @@ def save_analysis(text: str, result: dict,
 
     The cited references are upserted into the personal bibliography
     (source "analyze") and linked to the run. Returns the run id.
+
+    A reference that cannot be serialized to JSON raises ValueError
+    here, before anything is written — never a bare TypeError from
+    deep inside the upsert.
     """
+    if references:
+        for key, ref in references.items():
+            try:
+                json.dumps(ref, ensure_ascii=False)
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    f"referensi '{key}' tidak bisa disimpan: {e}")
     if title is None:
         first_line = text.strip().splitlines()[0] if text.strip() else ""
         title = first_line[:60] or "tanpa judul"
@@ -3271,7 +3410,7 @@ def save_analysis(text: str, result: dict,
              sum(1 for v in with_doi if v.get("verdict") == "ok"),
              len(with_doi), result["style"]["style_score"],
              result.get("suggestions", {}).get("count", 0),
-             hashlib.sha256(text.encode("utf-8")).hexdigest(), text))
+             hashlib.sha256(text.strip().encode("utf-8")).hexdigest(), text))
         analysis_id = cur.lastrowid
         if references:
             for key in cit.get("cited") or []:
@@ -5764,6 +5903,11 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     return {color: "var(--bad)", label: lang === "en" ? "Needs major revision" : "Perlu banyak revisi"};
   }
   function scoreGauge(res, lang) {
+    if (typeof res.quality_score !== "number") {
+      return '<div class="card"><h2>Skor kualitas</h2><p>'
+        + (lang === "en" ? "Score unavailable — please analyze again." : "Skor tidak tersedia — coba analisis lagi.")
+        + '</p></div>';
+    }
     var band = scoreBand(res.quality_score, lang);
     var h = '<div class="card gauge-card"><h2>Skor kualitas</h2>'
       + '<p class="caption">' + (lang === "en" ? "Score 0–100 from 4 components × 25 points." : "Skor 0–100 dari 4 komponen × 25 poin.") + '</p>'
@@ -5777,6 +5921,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       var labels = lang === "en" ? ["Jargon", "Citations", "DOI", "Style"] : ["Jargon", "Sitasi", "DOI", "Gaya"];
       h += '<div class="parts">';
       parts.forEach(function (v, i) {
+        v = Math.max(0, Math.min(25, Number(v) || 0));
         h += '<div class="part-row"><span class="part-label">' + labels[i] + '</span><div class="bar"><span style="width:' + (v / 25 * 100) + '%"></span></div><span class="part-num">' + Math.round(v) + '/25</span></div>';
       });
       h += '</div>';
@@ -6129,6 +6274,7 @@ _MAX_BODY = 1_000_000  # 1 MB cap on API request bodies
 _DRAIN_CAP = 2_000_000  # most the server will read to discard an oversize body
 _MAX_UPLOAD_BODY = 10_000_000  # 10 MB cap on a folder upload body
 _DRAIN_UPLOAD_CAP = 12_000_000  # drain cap for an oversize upload
+_MAX_FILE_BYTES = 1_000_000  # 1 MB cap per uploaded file
 
 
 class RequestTooLargeError(ValueError):
@@ -6151,9 +6297,7 @@ def _load_ui_references(payload: dict) -> dict | None:
             refs = json.loads(payload["refs_json"])
         except (json.JSONDecodeError, TypeError) as e:
             raise ValueError(f"bibliografi JSON tidak valid: {e}")
-        if not isinstance(refs, dict):
-            raise ValueError("bibliografi JSON harus berupa objek {kunci: referensi}")
-        return refs
+        return _validate_references(refs)
     if payload.get("refs", "sample") == "none":
         return None
     try:
@@ -6168,8 +6312,19 @@ def _read_body(handler, max_body: int, drain_cap: int,
     drained up to `drain_cap` so the client still reads the 413 and
     keep-alive stays usable; beyond the drain cap the connection is
     closed instead (see the v1.17.1 fix — unread bytes would otherwise
-    be parsed as a new request line)."""
-    length = int(handler.headers.get("Content-Length") or 0)
+    be parsed as a new request line).
+
+    A missing Content-Length means an empty body. A present one must
+    be plain digits within the cap; anything else is a generic 400
+    ("ukuran body tidak valid"), never a leaked int() traceback."""
+    raw_length = handler.headers.get("Content-Length")
+    if raw_length is None:
+        length = 0
+    else:
+        raw_length = raw_length.strip()
+        if not re.fullmatch(r"\d+", raw_length):
+            raise ValueError("ukuran body tidak valid")
+        length = int(raw_length)
     if length > max_body:
         if length <= drain_cap:
             remaining = length
@@ -6215,37 +6370,69 @@ def _parse_multipart(body: bytes, boundary: bytes) -> list[dict]:
     Returns a list of parts: {"name", "filename" (or None for a plain
     field), "content_type" (or None), "data" (bytes)}. Raises
     ValueError on a malformed body.
+
+    Line-oriented: a delimiter only counts when it fills a whole
+    line ("--" + boundary, or "--" + boundary + "--" for the close),
+    so a file whose content merely contains the boundary mid-line
+    never splits the parse. Headers are read line by line, so
+    LF-only and CRLF bodies parse the same way. Part bytes are
+    reconstructed exactly (the CRLF before a delimiter is framing,
+    not data); the one exception is a lone trailing CR at the very
+    end of a part, which is indistinguishable from that framing.
     """
     if not boundary:
         raise ValueError("boundary multipart tidak ditemukan")
-    delimiter = b"--" + boundary
+    delim = b"--" + boundary
+    close = delim + b"--"
+    lines = body.split(b"\n")
     parts = []
-    for chunk in body.split(delimiter)[1:]:
-        if chunk.startswith(b"\r\n"):
-            chunk = chunk[2:]
-        elif chunk.startswith(b"\n"):
-            chunk = chunk[1:]
-        if chunk.endswith(b"\r\n"):
-            chunk = chunk[:-2]
-        elif chunk.endswith(b"\n"):
-            chunk = chunk[:-1]
-        if chunk in (b"--", b""):
-            continue  # closing delimiter or trailing empty chunk
-        head, sep, data = chunk.partition(b"\r\n\r\n")
-        if not sep:
-            head, sep, data = chunk.partition(b"\n\n")
-        if not sep:
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i][:-1] if lines[i].endswith(b"\r") else lines[i]
+        if line == close:
+            break
+        if line != delim:
+            i += 1
+            continue
+        i += 1
+        head_lines = []
+        while i < n:
+            head = lines[i][:-1] if lines[i].endswith(b"\r") else lines[i]
+            if head == b"":
+                break
+            if head == delim or head == close:
+                # A delimiter inside the headers means the blank
+                # line between headers and body is missing: malformed.
+                raise ValueError("bagian multipart tidak valid")
+            head_lines.append(lines[i])
+            i += 1
+        if i >= n:
             raise ValueError("bagian multipart tidak valid")
+        i += 1  # skip the blank line between headers and body
+        data_lines = []
+        while i < n:
+            line = lines[i][:-1] if lines[i].endswith(b"\r") else lines[i]
+            if line == delim or line == close:
+                break
+            data_lines.append(lines[i])
+            i += 1
         headers = {}
-        for line in head.split(b"\r\n"):
-            if b":" in line:
-                key, value = line.split(b":", 1)
-                headers[key.strip().lower().decode("latin-1")] = (
-                    value.strip().decode("latin-1"))
+        for raw in head_lines:
+            text = raw.decode("latin-1")
+            if ":" in text:
+                key, value = text.split(":", 1)
+                headers[key.strip().lower()] = value.strip()
         name = _multipart_param(
             headers.get("content-disposition", ""), "name")
         if name is None:
             continue
+        data = b""
+        for j, raw in enumerate(data_lines):
+            if j < len(data_lines) - 1:
+                data += raw + b"\n"
+            else:
+                data += raw[:-1] if raw.endswith(b"\r") else raw
         parts.append({"name": name,
                       "filename": _multipart_param(
                           headers.get("content-disposition", ""),
@@ -6347,20 +6534,21 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         return {"stats": library_stats()}
 
     def do_POST(self):
+        path = urlsplit(self.path).path
         try:
-            if self.path == "/api/analyze-folder":
+            if path == "/api/analyze-folder":
                 self._send_json(200, self._analyze_folder_upload())
                 return
             body = _read_json_body(self)
-            if self.path == "/api/analyze":
+            if path == "/api/analyze":
                 self._send_json(200, self._analyze(body))
-            elif self.path == "/api/humanize":
+            elif path == "/api/humanize":
                 self._send_json(200, self._humanize(body))
-            elif self.path == "/api/jargon":
+            elif path == "/api/jargon":
                 self._send_json(200, self._jargon(body))
-            elif self.path == "/api/cite":
+            elif path == "/api/cite":
                 self._send_json(200, self._cite(body))
-            elif self.path == "/api/prompts/fill":
+            elif path == "/api/prompts/fill":
                 self._send_json(200, self._fill_prompt(body))
             else:
                 self._send_json(404, {"error": "tidak ditemukan"})
@@ -6432,6 +6620,10 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
                 skipped.append({"file": rel,
                                 "reason": "bukan .txt atau .md"})
                 continue
+            if len(part["data"]) > _MAX_FILE_BYTES:
+                skipped.append({"file": rel,
+                                "reason": "file lebih dari 1 MB"})
+                continue
             entry = _blank_folder_entry(name)
             try:
                 text = part["data"].decode("utf-8")
@@ -6447,7 +6639,7 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         firsts = {r.split("/", 1)[0] for r in rels if "/" in r}
         folder_name = firsts.pop() if len(firsts) == 1 else "unggahan"
         scores = [e["quality_score"] for e in entries
-                  if e["quality_score"] is not None]
+                  if e["quality_score"] is not None and not e.get("error")]
         average = round(sum(scores) / len(scores), 1) if scores else None
         return {"folder": {"folder": folder_name, "files": entries,
                            "count": len(entries), "average": average},
@@ -6523,9 +6715,31 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         return {"text": fill_prompt(prompt_id, values, lang=lang)}
 
 
+class _BoundedThreadingHTTPServer(http.server.ThreadingHTTPServer):
+    """ThreadingHTTPServer with a cap on concurrent handlers (8):
+    an unbounded thread pool lets one client exhaust the process
+    with slow parallel uploads. The semaphore is held for the whole
+    request handling (process_request_thread), not just the spawn —
+    holding it only while spawning would bound nothing."""
+
+    _slots = threading.BoundedSemaphore(8)
+
+    def process_request_thread(self, request, client_address):
+        with self._slots:
+            super().process_request_thread(request, client_address)
+
+
 def make_server(host: str = "127.0.0.1", port: int = 8000):
-    """Build the local web UI server (port 0 picks a free port)."""
-    return http.server.ThreadingHTTPServer((host, port), _UIHandler)
+    """Build the local web UI server (port 0 picks a free port).
+
+    Only loopback hosts are allowed: the UI has no authentication
+    and must never listen on a LAN or public interface.
+    """
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        raise ValueError(
+            "serve hanya boleh di localhost: host harus 127.0.0.1, "
+            "localhost, atau ::1")
+    return _BoundedThreadingHTTPServer((host, port), _UIHandler)
 
 
 def serve_main(argv=None) -> int:
@@ -6554,28 +6768,37 @@ def main(argv=None) -> int:
     if argv and argv[0] in ("jargon", "cite", "prompts", "analyze",
                            "humanize", "library", "serve", "duplicates"):
         tool, rest = argv[0], argv[1:]
-        if tool == "jargon":
-            return jargon_main(rest)
-        if tool == "cite":
-            return cite_main(rest)
-        if tool == "analyze":
-            return analyze_main(rest)
-        if tool == "humanize":
-            return humanize_main(rest)
-        if tool == "library":
-            return library_main(rest)
-        if tool == "duplicates":
-            return duplicates_main(rest)
-        if tool == "serve":
-            return serve_main(rest)
-        return prompts_main(rest)
+        try:
+            if tool == "jargon":
+                return jargon_main(rest)
+            if tool == "cite":
+                return cite_main(rest)
+            if tool == "analyze":
+                return analyze_main(rest)
+            if tool == "humanize":
+                return humanize_main(rest)
+            if tool == "library":
+                return library_main(rest)
+            if tool == "duplicates":
+                return duplicates_main(rest)
+            if tool == "serve":
+                return serve_main(rest)
+            return prompts_main(rest)
+        except ValueError as e:
+            # Bad input (bad JSON, empty text, non-loopback host, ...)
+            # is a plain stderr message and exit 1 — never a traceback.
+            # SystemExit from argparse is deliberately not caught.
+            print(str(e), file=sys.stderr)
+            return 1
     if argv and argv[0] in ("-h", "--help"):
         print(__doc__)
         return 0
     if argv and argv[0] in ("-v", "--version"):
-        print(f"academic_cli {CLI_VERSION} "
-              f"(jargon_buster {JARGON_VERSION}, citation_weaver {CITATION_VERSION}, "
-              f"skripsi_prompts {PROMPTS_VERSION})")
+        print(f"academic_tools.py {__version__} "
+              f"(cli {CLI_VERSION}; jargon_buster {JARGON_VERSION}; "
+              f"citation_weaver {CITATION_VERSION}; "
+              f"skripsi_prompts {PROMPTS_VERSION}; "
+              f"academic_quality_check {QUALITY_VERSION})")
         return 0
     try:
         return CLI().run()

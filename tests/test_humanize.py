@@ -55,8 +55,8 @@ class TestSuggestStyleFixes(unittest.TestCase):
         result = suggest_style_fixes("Suhu mengalami peningkatan sebesar 12%.")
         self.assertEqual(result["count"], 1)
         sug = result["suggestions"][0]
-        self.assertEqual(sug["replacement"], "naik")
-        self.assertEqual(sug["fixed"], "Suhu naik 12%.")
+        self.assertEqual(sug["replacement"], "meningkatkan")
+        self.assertEqual(sug["fixed"], "Suhu meningkatkan 12%.")
 
     def test_light_verb_untuk_not_dropped(self):
         # "pengujian untuk validasi" must NOT become "menguji validasi".
@@ -75,6 +75,58 @@ class TestSuggestStyleFixes(unittest.TestCase):
         self.assertIsNone(sug["replacement"])
         self.assertIsNone(sug["fixed"])
         self.assertIn("kata kerja langsung", sug["note"])
+
+    def test_noun_to_verb_table(self):
+        # The noun->verb table uses real transitive verbs, not the
+        # intransitive/adverbial readings the old table had.
+        cases = [
+            ("Suhu mengalami peningkatan sebesar 12%.",
+             "meningkatkan", "Suhu meningkatkan 12%."),
+            ("Suhu mengalami penurunan sebesar 5%.",
+             "menurunkan", "Suhu menurunkan 5%."),
+            ("Penelitian ini melakukan perubahan terhadap desain.",
+             "mengubah", "Penelitian ini mengubah desain."),
+            ("Tim melakukan perawatan terhadap alat.",
+             "merawat", "Tim merawat alat."),
+        ]
+        for text, verb, fixed in cases:
+            with self.subTest(text=text):
+                result = suggest_style_fixes(text)
+                self.assertEqual(result["count"], 1)
+                sug = result["suggestions"][0]
+                self.assertEqual(sug["replacement"], verb)
+                self.assertEqual(sug["fixed"], fixed)
+
+    def test_perjalanan_is_guidance_only(self):
+        # "perjalanan" has no direct-verb mapping: "bepergian" is a
+        # different construction, so the suggestion stays guidance.
+        result = suggest_style_fixes(
+            "Penelitian ini melakukan perjalanan ke lokasi.")
+        self.assertEqual(result["count"], 1)
+        sug = result["suggestions"][0]
+        self.assertIsNone(sug["replacement"])
+        self.assertIsNone(sug["fixed"])
+
+    def test_preview_fixed_matches_apply(self):
+        # The "fixed" preview must be exactly what --apply produces:
+        # both go through the same _apply_one path. This covers the
+        # tricky cases (sentence-initial connector removal, the
+        # "yang mana" split) where the old preview path capitalized
+        # and spaced differently from the apply path.
+        texts = [
+            "Selain itu, penelitian memakai purposive sampling.",
+            "Sistem menggunakan pendingin alami, yang mana hal ini "
+            "mengurangi konsumsi.",
+            "Penelitian ini melakukan perubahan terhadap desain.",
+            "Suhu mengalami peningkatan sebesar 12%.",
+        ]
+        for text in texts:
+            with self.subTest(text=text):
+                result = suggest_style_fixes(text)
+                applied = apply_suggestions(text, result)["text"]
+                for sug in result["suggestions"]:
+                    if sug["fixed"] is not None:
+                        self.assertEqual(applied, sug["fixed"])
 
     def test_connector_removal_capitalizes(self):
         result = suggest_style_fixes(
@@ -284,7 +336,7 @@ class TestApplySuggestions(unittest.TestCase):
     def test_apply_sebesar(self):
         text = "Suhu mengalami peningkatan sebesar 12%."
         fixed = apply_suggestions(text, suggest_style_fixes(text))
-        self.assertEqual(fixed["text"], "Suhu naik 12%.")
+        self.assertEqual(fixed["text"], "Suhu meningkatkan 12%.")
 
     def test_apply_connector_and_yang_mana(self):
         text = ("Selain itu, penelitian memakai purposive sampling. "

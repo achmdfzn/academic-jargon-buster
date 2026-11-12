@@ -206,6 +206,57 @@ class TestCiteMainLookup(unittest.TestCase):
         self.assertEqual(cm.exception.code, 2)
 
 
+class TestLoadReferencesValidation(unittest.TestCase):
+    def _write(self, d, data):
+        path = os.path.join(d, "refs.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        return path
+
+    def test_list_top_level_rejected(self):
+        # The old list form (no 'key' per item) used to raise a bare
+        # KeyError; now it is a plain ValueError.
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, [{"title": "Tanpa kunci"}])
+            with self.assertRaises(ValueError) as cm:
+                tools.load_references(path)
+            self.assertIn("bibliografi tidak valid", str(cm.exception))
+
+    def test_non_dict_top_level_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, "bukan objek")
+            with self.assertRaises(ValueError):
+                tools.load_references(path)
+
+    def test_non_dict_value_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, {"kunci": "bukan objek"})
+            with self.assertRaises(ValueError):
+                tools.load_references(path)
+
+    def test_single_string_author_normalized(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, {"a": {"title": "Judul",
+                                         "authors": "Solo, Penulis"}})
+            refs = tools.load_references(path)
+            self.assertEqual(refs["a"]["authors"], ["Solo, Penulis"])
+
+    def test_non_string_authors_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, {"a": {"authors": [1, 2]}})
+            with self.assertRaises(ValueError):
+                tools.load_references(path)
+            path = self._write(d, {"a": {"authors": 42}})
+            with self.assertRaises(ValueError):
+                tools.load_references(path)
+
+    def test_non_string_title_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, {"a": {"title": 123}})
+            with self.assertRaises(ValueError):
+                tools.load_references(path)
+
+
 class TestVerifyDois(unittest.TestCase):
     """Cross-source DOI verification: Crossref + OpenAlex.
 

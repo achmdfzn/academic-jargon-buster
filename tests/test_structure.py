@@ -165,6 +165,25 @@ class TestSkillDocsCoverTheTools(unittest.TestCase):
         self.assertIn("Quality check (analyze)", text)
         self.assertIn("academic-quality-check", text)
 
+    def test_citation_skill_is_plain_text_only(self):
+        # Citation Weaver takes plain text, not PDFs or TeX files.
+        text = read_text("skills/research/citation-weaver/SKILL.md")
+        self.assertNotIn("Accepts paper PDFs", text)
+        self.assertNotIn("TeX files, or raw text", text)
+        self.assertIn("plain text only", text)
+
+    def test_quality_check_skill_documents_scoring_rules(self):
+        # The scoring rules the audit fixed: proportional citations,
+        # half credit for an unverified DOI, the jargon floor, and
+        # the empty-text error.
+        text = read_text("skills/research/academic-quality-check/SKILL.md")
+        self.assertIn("25 × (cited − missing) / cited", text)
+        self.assertIn("half credit", text)
+        self.assertIn("Always 25", text)
+        self.assertIn("75 with no references", text)
+        self.assertIn("38 with references", text)
+        self.assertIn("teks kosong", text)
+
     def test_prompts_skill_documents_humanize_and_analyze(self):
         text = read_text("skills/research/skripsi-prompts/SKILL.md")
         self.assertIn("Humanize", text)

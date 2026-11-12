@@ -284,6 +284,36 @@ class LibraryTestCase(unittest.TestCase):
         self.assertIn("pustaka rusak", err.getvalue())
         self.assertNotIn("Traceback", err.getvalue())
 
+    def test_wrong_schema_db_is_clean_error(self):
+        # A valid SQLite file whose tables do not match the schema
+        # (e.g. an analyses table missing the 'text' column) is
+        # rejected the same way as a corrupt file — not with a bare
+        # sqlite error when the first query touches the column.
+        import sqlite3
+
+        wrong = os.path.join(self.tmp.name, "wrong.db")
+        conn = sqlite3.connect(wrong)
+        conn.execute("CREATE TABLE analyses (id INTEGER PRIMARY KEY, "
+                     "title TEXT)")
+        conn.execute("CREATE TABLE library_references (key TEXT PRIMARY "
+                     "KEY, data TEXT NOT NULL)")
+        conn.commit()
+        conn.close()
+        with self.assertRaises(ValueError) as cm:
+            tools.open_library(wrong)
+        self.assertIn("pustaka rusak", str(cm.exception))
+
+    def test_save_rejects_unserializable_ref(self):
+        # A reference that cannot be serialized to JSON fails up
+        # front with a plain ValueError — and nothing is written.
+        bad_refs = dict(SAMPLE_REFS)
+        bad_refs["aneh"] = {"title": "Tidak bisa disimpan",
+                            "authors": {"satu", "dua"}}
+        with self.assertRaises(ValueError) as cm:
+            save_analysis(TEXT, self._result(), bad_refs, db=self.db)
+        self.assertIn("tidak bisa disimpan", str(cm.exception))
+        self.assertEqual(list_analyses(db=self.db), [])
+
 
 class TestLibraryStats(unittest.TestCase):
     def setUp(self):

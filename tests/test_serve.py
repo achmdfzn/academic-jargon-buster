@@ -150,10 +150,21 @@ class TestServe(unittest.TestCase):
             "refs": "sample", "verify": False})
         self.assertEqual(status, 200)
         res = json.loads(body)
-        # Cited 1 marker, missing 1: the citations component loses half.
-        self.assertEqual(res["score_parts"][1], 12.5)
+        # Cited 1 marker, missing 1: the citations component is 0 —
+        # every cited marker is missing, so no credit at all.
+        self.assertEqual(res["score_parts"][1], 0.0)
         self.assertEqual(round(sum(res["score_parts"])),
                          res["quality_score"])
+
+    def test_analyze_score_parts_half_for_one_missing_citation(self):
+        status, body = _request(self.base, "POST", "/api/analyze", {
+            "text": ("Penelitian ini memakai [cite:devlin2019] dan "
+                     "[cite:tidakada]."),
+            "refs": "sample", "verify": False})
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        # Cited 2 markers, 1 missing: half the citations component.
+        self.assertEqual(res["score_parts"][1], 12.5)
 
     def test_analyze_without_refs(self):
         status, body = _request(self.base, "POST", "/api/analyze", {
@@ -254,6 +265,64 @@ class TestServe(unittest.TestCase):
         with self.assertRaises(ValueError):
             tools._parse_multipart(body, _BOUNDARY.encode())
 
+    def test_parse_multipart_boundary_mid_line_in_file(self):
+        # A file whose content contains the boundary mid-line must
+        # not split the parse: the delimiter only counts on a line
+        # of its own.
+        data = (b"baris pertama\n--" + _BOUNDARY.encode()
+                + b" di tengah baris\nbaris ketiga")
+        body = _multipart([("files", "bab1.txt", data)])
+        parts = tools._parse_multipart(body, _BOUNDARY.encode())
+        self.assertEqual(len(parts), 1)
+        self.assertEqual(parts[0]["data"], data)
+
+    def test_parse_multipart_lf_only_body(self):
+        # LF-only bodies (no CR at all) must parse the same way as
+        # CRLF bodies — headers and data included.
+        body = (b"--" + _BOUNDARY.encode() + b"\n"
+                b'Content-Disposition: form-data; name="files"; '
+                b'filename="bab1.txt"\n'
+                b"Content-Type: text/plain\n"
+                b"\n"
+                b"isi LF saja\nbaris dua\n"
+                b"--" + _BOUNDARY.encode() + b"--\n")
+        parts = tools._parse_multipart(body, _BOUNDARY.encode())
+        self.assertEqual(len(parts), 1)
+        self.assertEqual(parts[0]["filename"], "bab1.txt")
+        self.assertEqual(parts[0]["data"], b"isi LF saja\nbaris dua")
+
+    def test_read_body_rejects_invalid_content_length(self):
+        # A garbage Content-Length is a generic 400, never a leaked
+        # int() traceback; a missing one means an empty body.
+        class _FakeHandler:
+            def __init__(self, length, data=b""):
+                self.headers = {} if length is None else {
+                    "Content-Length": length}
+                self.rfile = io.BytesIO(data)
+
+        for bad in ("abc", "-5", "12x", "1.5", ""):
+            with self.subTest(length=bad):
+                with self.assertRaises(ValueError) as cm:
+                    tools._read_body(_FakeHandler(bad),
+                                     1_000_000, 2_000_000, "1 MB")
+                self.assertEqual(str(cm.exception),
+                                 "ukuran body tidak valid")
+        self.assertEqual(
+            tools._read_body(_FakeHandler(None), 1_000_000, 2_000_000,
+                             "1 MB"), b"")
+        self.assertEqual(
+            tools._read_body(_FakeHandler("5", b"hello"),
+                             1_000_000, 2_000_000, "1 MB"), b"hello")
+
+    def test_post_with_query_string(self):
+        # A query string on the POST path must not turn a known
+        # endpoint into a 404.
+        status, body = _request(self.base, "POST", "/api/analyze?debug=1",
+                                {"text": TEXT, "refs": "sample",
+                                 "verify": False})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["quality_score"], 100)
+
     def test_folder_upload_two_files_with_duplicates_and_save(self):
         bab1 = ("Penelitian ini melakukan pengukuran terhadap kepuasan "
                 "pengguna [cite:devlin2019].")
@@ -318,7 +387,70 @@ class TestServe(unittest.TestCase):
         self.assertEqual(res["folder"]["count"], 2)
         self.assertIsNotNone(res["folder"]["files"][0]["error"])
         self.assertEqual(res["folder"]["files"][1]["quality_score"], 100)
-        self.assertEqual(res["folder"]["average"], 100)
+
+    def test_folder_upload_oversize_file_is_skipped(self):
+        # A single file over 1 MB is skipped with a clear reason —
+        # it must not fail the run or drag the average.
+        big = b"a" * 1_000_001
+        status, body = _request_multipart(self.base,
+            "/api/analyze-folder", [
+                ("refs", None, b"sample"),
+                ("files", "besar.txt", big),
+                ("files", "bab1.txt",
+                 b"Penelitian ini memakai skala likert."),
+            ])
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertEqual(res["folder"]["count"], 1)
+        self.assertEqual(res["folder"]["files"][0]["file"], "bab1.txt")
+        self.assertEqual(res["folder"]["average"], 100.0)
+        self.assertEqual(
+            [(s["file"], s["reason"]) for s in res["skipped"]],
+            [("besar.txt", "file lebih dari 1 MB")])
+
+    def test_folder_upload_empty_file_is_error_not_average(self):
+        # B3 via the web upload: an empty file is an error entry and
+        # stays out of the average.
+        status, body = _request_multipart(self.base,
+            "/api/analyze-folder", [
+                ("refs", None, b"sample"),
+                ("files", "kosong.txt", b""),
+                ("files", "bab1.txt",
+                 b"Penelitian ini memakai skala likert."),
+            ])
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertEqual(res["folder"]["count"], 2)
+        by_file = {e["file"]: e for e in res["folder"]["files"]}
+        self.assertEqual(by_file["kosong.txt"]["error"], "teks kosong")
+        self.assertIsNone(by_file["kosong.txt"]["quality_score"])
+        self.assertEqual(res["folder"]["average"], 100.0)
+
+    def test_home_page_score_gauge_guards_missing_score(self):
+        status, body = _request(self.base, "GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn('typeof res.quality_score !== "number"', body)
+        self.assertIn(
+            "Math.max(0, Math.min(25, Number(v) || 0))", body)
+
+    def test_make_server_rejects_non_loopback(self):
+        for host in ("0.0.0.0", "192.168.1.1", "example.com"):
+            with self.subTest(host=host):
+                with self.assertRaises(ValueError):
+                    tools.make_server(host, 0)
+        server = tools.make_server("localhost", 0)
+        server.server_close()
+
+    def test_make_server_bounds_concurrent_handlers(self):
+        server = tools.make_server("127.0.0.1", 0)
+        try:
+            got = [server._slots.acquire(blocking=False)
+                   for _ in range(9)]
+            self.assertEqual(got, [True] * 8 + [False])
+        finally:
+            for _ in range(8):
+                server._slots.release()
+            server.server_close()
 
     def test_folder_upload_no_files_is_400(self):
         status, body = _request_multipart(self.base,

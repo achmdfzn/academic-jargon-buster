@@ -136,6 +136,40 @@ class TestFindDuplicates(unittest.TestCase):
             self.assertEqual(result["count"], 0)
             self.assertEqual(result["checked"], 0)
 
+    def test_trailing_whitespace_still_same_text(self):
+        # Hashes ignore leading/trailing whitespace, so a saved run
+        # is still recognised as "itself" when re-checked with
+        # different trailing newlines — and vice versa.
+        with tempfile.TemporaryDirectory() as tmp:
+            db = os.path.join(tmp, "library.db")
+            _save(db, PAST_TEXT + "\n\n")
+            self.assertEqual(
+                find_duplicates(PAST_TEXT, db=db)["count"], 0)
+            self.assertEqual(
+                find_duplicates(PAST_TEXT + "  \n", db=db)["count"], 0)
+            # ...but a genuinely repeated sentence is still found.
+            sentence = ("Data dikumpulkan melalui wawancara semi "
+                        "terstruktur dengan dua belas informan yang "
+                        "dipilih secara purposive.")
+            result = find_duplicates(sentence + " " + NEW_SENTENCE,
+                                     db=db)
+            self.assertEqual(result["count"], 1)
+
+    def test_one_word_sentence_skips_prefilter(self):
+        # "pengukuranpengukuran pengukuran ..." vs "pengukuran
+        # pengukuran ..." is 0.84 similar on difflib, but the stored
+        # sentence has a single unique word, so the word-overlap
+        # pre-filter (0.5) would have skipped the comparison entirely.
+        past = [_run(1, "Bab 1",
+                     "pengukuran pengukuran pengukuran pengukuran "
+                     "pengukuran pengukuran.")]
+        text = ("pengukuranpengukuran pengukuran pengukuran pengukuran "
+                "pengukuran pengukuran.")
+        result = find_duplicates(text, past_runs=past)
+        self.assertEqual(result["count"], 1)
+        self.assertGreaterEqual(
+            result["duplicates"][0]["similarity"], 0.8)
+
     def test_empty_library(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = os.path.join(tmp, "library.db")

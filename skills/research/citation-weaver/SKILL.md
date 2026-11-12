@@ -1,7 +1,7 @@
 ---
 name: citation-weaver
 description: "Weave citations into narrative text automatically."
-version: 1.5.0
+version: 1.5.1
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -33,7 +33,7 @@ Never claim a citation-weaver feature you haven't verified. When in doubt, fetch
 
 # Citation Weaver Skill
 
-Automatically weave citations into narrative text for academic writing. Accepts paper PDFs, TeX files, or raw text, identifies relevant citations from a database, and produces annotated text with citations embedded in proper academic format. Supports multiple citation styles (APA, MLA, Chicago, IEEE) and provides side-by-side preview of original text vs. cited text.
+Automatically weave citations into narrative text for academic writing. It works on plain text only — no PDF or TeX input — identifies relevant citations from a database, and produces annotated text with citations embedded in proper academic format. Supports multiple citation styles (APA, MLA, Chicago, IEEE) and provides side-by-side preview of original text vs. cited text.
 
 ## Reference lookup (v1.1.0)
 
@@ -76,7 +76,7 @@ python3 academic_tools.py analyze naskah.txt --refs my-refs.json
 python3 academic_tools.py analyze naskah.txt --refs my-refs.json --suggest
 ```
 
-The citation component scores 25 when no marker is missing from the bibliography; the DOI component scores 25 when every DOI that exists is found in Crossref or OpenAlex (entries without a DOI do not count as failures). `--suggest` adds the Humanize rewrite suggestions to the same pass. Without `--refs` both components are skipped (neutral). Exit code is 1 when a citation is missing or a DOI is not found. In the interactive menu, this is option 4, Analisis Kualitas.
+The citation component is proportional: 25 × (cited − missing) / cited, so one missing marker out of two costs half (12.5) and every marker missing scores 0. The DOI component gives half credit (12.5) for an `unverified` DOI — a DOI that could not be checked is not the same as a confirmed fake. The DOI component scores 25 when every DOI that exists is found in Crossref or OpenAlex (entries without a DOI do not count as failures). `--suggest` adds the Humanize rewrite suggestions to the same pass. Without `--refs` both components are skipped (neutral). Exit code is 1 when a citation is missing or a DOI is not found. In the interactive menu, this is option 4, Analisis Kualitas.
 
 ## BibTeX export (v1.2.0)
 

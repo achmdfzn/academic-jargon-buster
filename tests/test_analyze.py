@@ -68,6 +68,86 @@ class TestAnalyzeTextQuality(unittest.TestCase):
         self.assertTrue(any("tidakada2020" in r
                             for r in out["recommendations"]))
 
+    def test_empty_text_raises(self):
+        # B3: an empty manuscript has nothing to score — it must not
+        # come back as a perfect 100.
+        for text in ("", "   ", "\n\t "):
+            with self.assertRaises(ValueError) as cm:
+                tools.analyze_text_quality(text)
+            self.assertEqual(str(cm.exception), "teks kosong")
+
+    def test_all_citations_missing_scores_zero_component(self):
+        # B1: every cited marker missing means 0 for the citations
+        # component, not a half-credit 12.5.
+        refs = tools.load_references(SAMPLE_REFS)
+        out = tools.analyze_text_quality(
+            "Lihat [cite:tidakada2020].", references=refs, verify_dois=False)
+        self.assertEqual(tools._score_parts(out),
+                         [25.0, 0.0, 25.0, 25.0])
+        self.assertEqual(out["quality_score"], 75)
+
+    def test_half_citations_missing_scores_half_component(self):
+        # B1: 1 of 2 cited markers missing -> 12.5 for citations.
+        refs = tools.load_references(SAMPLE_REFS)
+        text = ("Metode penelitian ini memakai purposive sampling dan "
+                "thematic analysis. Hasilnya sejalan dengan temuan "
+                "sebelumnya [cite:devlin2019] [cite:tidakada2020].")
+        out = tools.analyze_text_quality(text, references=refs,
+                                         verify_dois=False)
+        self.assertEqual(tools._score_parts(out),
+                         [25.0, 12.5, 25.0, 25.0])
+        # 25 + 12.5 + 25 + 25 = 87.5 -> 88 (half-up, not banker's 88
+        # by luck: round(87.5) is 88 too, so the component line below
+        # is the real half-up check).
+        self.assertEqual(out["quality_score"], 88)
+
+    def test_doi_unverified_gets_half_credit(self):
+        # B2: one ok + one unverified DOI -> 25 * (1 + 0.5) / 2.
+        refs = tools.load_references(SAMPLE_REFS)
+        fake = {"a": {"doi": "10.1/x", "verdict": "ok"},
+                "b": {"doi": "10.2/y", "verdict": "unverified"}}
+        with patch.object(tools, "verify_reference_dois",
+                          return_value=fake):
+            out = tools.analyze_text_quality(
+                "Penelitian ini memakai purposive sampling.",
+                references=refs)
+        self.assertEqual(tools._score_parts(out)[2], 18.75)
+        self.assertEqual(out["quality_score"], 94)
+
+    def test_doi_all_unverified_scores_half_component(self):
+        # B2: a DOI that could not be checked is not a confirmed fake.
+        refs = tools.load_references(SAMPLE_REFS)
+        fake = {"a": {"doi": "10.1/x", "verdict": "unverified"}}
+        with patch.object(tools, "verify_reference_dois",
+                          return_value=fake):
+            out = tools.analyze_text_quality(
+                "Penelitian ini memakai purposive sampling.",
+                references=refs)
+        self.assertEqual(tools._score_parts(out)[2], 12.5)
+        self.assertEqual(out["quality_score"], 88)
+
+    def test_round_half_up(self):
+        self.assertEqual(tools._round_half_up(12.5), 13)
+        self.assertEqual(tools._round_half_up(12.4), 12)
+        self.assertEqual(tools._round_half_up(87.5), 88)
+        self.assertEqual(tools._round_half_up(0), 0)
+        self.assertEqual(tools._round_half_up(25.0), 25)
+
+    def test_format_analyze_rounds_component_half_up(self):
+        # A 12.5 component displays as 13/25, so the displayed parts
+        # add up to the displayed total (88).
+        refs = tools.load_references(SAMPLE_REFS)
+        text = ("Metode penelitian ini memakai purposive sampling dan "
+                "thematic analysis. Hasilnya sejalan dengan temuan "
+                "sebelumnya [cite:devlin2019] [cite:tidakada2020].")
+        out = tools.analyze_text_quality(text, references=refs,
+                                         verify_dois=False)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            text = tools.format_analyze(out, lang="id")
+        self.assertIn("Skor kualitas: 88/100", text)
+        self.assertIn("13/25", text)
+
     def test_doi_part_ignores_entries_without_doi(self):
         # Only devlin2019 carries a DOI in the sample; the other six
         # entries must not drag the DOI score down.

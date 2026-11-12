@@ -98,6 +98,27 @@ class TestBibTeXExport(unittest.TestCase):
         self.assertIn(r"author = {A \& B, C},", out)
         self.assertIn(r"title = {100\% sure: costs \$5 \& under\_score \#1},", out)
 
+    def test_newlines_in_values_are_flattened(self):
+        # A CR/LF inside a value must not inject a line break into
+        # the BibTeX record (which would break the entry).
+        out = tools.export_bibtex({
+            "aneh\n2020": {
+                "authors": ["A\nB"],
+                "title": "Judul\nbaris kedua",
+                "type": "article",
+                "venue": "Jurnal\r\nX",
+                "doi": "10.1/x\r\ny",
+            }
+        })
+        self.assertIn("@article{aneh 2020,", out)
+        self.assertIn('author = {A B},', out)
+        self.assertIn('title = {Judul baris kedua},', out)
+        self.assertIn('journal = {Jurnal  X},', out)
+        self.assertIn('doi = {10.1/x  y},', out)
+        for line in out.splitlines():
+            self.assertFalse(line.startswith("baris kedua"))
+            self.assertFalse(line.startswith("y"))
+
     def test_entries_sorted_by_key_and_nothing_invented(self):
         out = tools.export_bibtex({
             "zebra2020": {"authors": ["Z, A"], "title": "Zed", "type": "book", "year": 2020},

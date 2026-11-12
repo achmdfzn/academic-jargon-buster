@@ -7,8 +7,9 @@ unittest.mock.patch and capture stdout. No real terminal needed.
 import io
 import os
 import sys
+import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -224,11 +225,61 @@ class TestAcademicCli(unittest.TestCase):
         self.assertIn("vancouver", buf.getvalue())
 
     def test_version_flag(self):
+        import academic_tools as tools
+
         buf = io.StringIO()
         with redirect_stdout(buf):
             code = academic_cli.main(["--version"])
         self.assertEqual(code, 0)
-        self.assertIn("academic_cli", buf.getvalue())
+        out = buf.getvalue()
+        self.assertIn(f"academic_tools.py {tools.__version__}", out)
+        self.assertIn(f"cli {tools.CLI_VERSION}", out)
+        self.assertIn(f"jargon_buster {tools.JARGON_VERSION}", out)
+        self.assertIn(f"citation_weaver {tools.CITATION_VERSION}", out)
+        self.assertIn(f"skripsi_prompts {tools.PROMPTS_VERSION}", out)
+        self.assertIn(
+            f"academic_quality_check {tools.QUALITY_VERSION}", out)
+
+    def test_subcommand_version_flag(self):
+        # A subcommand --version prints just "prog {__version__}":
+        # the component list belongs to the top-level --version only.
+        import academic_tools as tools
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            with self.assertRaises(SystemExit) as cm:
+                academic_cli.main(["analyze", "--version"])
+        self.assertEqual(cm.exception.code, 0)
+        self.assertTrue(
+            buf.getvalue().strip().endswith(tools.__version__))
+        self.assertNotIn("jargon_buster", buf.getvalue())
+
+    def test_main_empty_text_is_clean_exit_1(self):
+        # A ValueError from a subcommand (empty text) is a plain
+        # stderr message and exit 1 — never a traceback.
+        err = io.StringIO()
+        with redirect_stderr(err):
+            code = academic_cli.main(
+                ["analyze", "--text", "   ", "--no-verify"])
+        self.assertEqual(code, 1)
+        self.assertIn("teks kosong", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+
+    def test_main_bad_refs_json_is_clean_exit_1(self):
+        # JSONDecodeError is a ValueError, so a malformed
+        # bibliography file is the same clean exit 1.
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "refs.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("{bukan json")
+            err = io.StringIO()
+            with redirect_stderr(err):
+                code = academic_cli.main([
+                    "analyze", "--text",
+                    "Penelitian ini memakai purposive sampling.",
+                    "--refs", path, "--no-verify"])
+            self.assertEqual(code, 1)
+            self.assertNotIn("Traceback", err.getvalue())
 
 
 if __name__ == "__main__":

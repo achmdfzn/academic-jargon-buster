@@ -110,6 +110,37 @@ class TestRISExport(unittest.TestCase):
         self.assertIn("DO  - 10.18653/v1/N19-1423", out)
         self.assertIn("UR  - https://example.org/bert", out)
 
+    def test_pages_dashes_normalized(self):
+        # '--', en dash and em dash all split like a plain '-'.
+        self.assertEqual(tools._ris_pages("189--194"), ("189", "194"))
+        self.assertEqual(tools._ris_pages("189–194"), ("189", "194"))
+        self.assertEqual(tools._ris_pages("189—194"), ("189", "194"))
+        self.assertEqual(tools._ris_pages("189-194"), ("189", "194"))
+
+    def test_newlines_in_values_are_flattened(self):
+        # A CR/LF inside a value must not inject a line break into
+        # the RIS record (which would look like a new field).
+        out = tools.export_ris({
+            "aneh\n2020": {
+                "authors": ["A\nB", "C\rD"],
+                "title": "Judul\nbaris kedua",
+                "type": "article",
+                "venue": "Jurnal\r\nX",
+                "doi": "10.1/x\r\ny",
+                "url": "https://example.org/a\nb",
+            }
+        })
+        self.assertIn("ID  - aneh 2020", out)
+        self.assertIn("AU  - A B", out)
+        self.assertIn("AU  - C D", out)
+        self.assertIn("TI  - Judul baris kedua", out)
+        self.assertIn("JO  - Jurnal  X", out)
+        self.assertIn("DO  - 10.1/x  y", out)
+        self.assertIn("UR  - https://example.org/a b", out)
+        for line in out.splitlines():
+            self.assertFalse(line.startswith("baris kedua"))
+            self.assertFalse(line.startswith("y"))
+
     def test_entries_sorted_by_key_and_nothing_invented(self):
         out = tools.export_ris({
             "zebra2020": {"authors": ["Z, A"], "title": "Zed", "type": "book", "year": 2020},

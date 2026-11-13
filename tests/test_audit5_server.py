@@ -154,12 +154,18 @@ class TestAudit5DeepJson(_ServerCase):
             s.close()
 
     def test_nesting_9000_control_is_400_object(self):
-        # 9000 levels still parse (below the recursion limit),
+        # 500 levels still parse on every supported platform,
         # but the value is a list, not an object — the same 400
-        # as before the fix, never a 500.
+        # as before the fix, never a 500. (The depth used to be
+        # 9000, but the recursion threshold inside json.loads is
+        # platform-dependent: 9000 parses on Python 3.12/Linux
+        # yet already overflows on Python 3.9 and on Windows,
+        # where it takes the RecursionError path instead — same
+        # 400 status, different message. 500 is safely below the
+        # threshold everywhere while still being deep nesting.)
         s = socket.create_connection((self.host, self.port), timeout=5)
         try:
-            body = (b"[" * 9000) + (b"]" * 9000)
+            body = (b"[" * 500) + (b"]" * 500)
             _post_raw(s, "/api/analyze", body)
             status, _, data = _read_response(s)
             self.assertEqual(status, "HTTP/1.1 400 Bad Request")

@@ -1,7 +1,7 @@
 ---
 name: ai-detector
 description: "Heuristic AI-text detector (stdlib only, no language model): burstiness, template phrases, lexical diversity, repeated sentence starters."
-version: 1.0.1
+version: 1.0.2
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -60,7 +60,7 @@ Verdict bands (fixed thresholds):
 | 40–59, or ≥ 60 with fewer than 3 signals applicable | "Campuran / tidak pasti" / "Mixed / uncertain" |
 | < 40 | "Kemungkinan besar manusia" / "Likely human" |
 
-- **The top band is capped: a score of 60 or more only earns "Kemungkinan besar AI" when at least 3 of the 4 signals apply.** A short text (under 100 words, under 6 sentences) has only two signals — burstiness and template phrases — and uniform human prose trips both easily: a typical methods paragraph scores 80.5 yet is capped to "Campuran / tidak pasti". The `ai_score` itself is not changed (it stays the honest number); the result carries `verdict_capped: true` and a `verdict_capped_reason` ("hanya 2 dari 4 sinyal yang berlaku — …"), shown by the CLI and the web UI whenever it applies.
+- **The top band is capped: a score of 60 or more only earns "Kemungkinan besar AI" when at least 3 of the 4 signals apply.** A short text (under 100 words, under 6 sentences) has only two signals — burstiness and template phrases — and uniform human prose trips both easily: a typical methods paragraph scores 80.5 yet is capped to "Campuran / tidak pasti". The `ai_score` itself is not changed (it stays the honest number); the result carries `verdict_capped: true` and a `verdict_capped_reason` ("hanya 2 dari 4 sinyal yang berlaku — …"), shown by the CLI and the web UI whenever it applies. The CLI also states the structural limit whenever the verdict is capped: a short text (<100 words or <6 sentences) can never reach "Kemungkinan besar AI".
 
 - **Under 30 words the verdict is "Teks terlalu pendek" / "Text too short"** and `ai_score` is `None` — there is not enough text to judge. An empty or whitespace-only text is an error (`teks kosong`, exit 1), like `analyze`.
 - **The result always carries a `note`** stating the honesty limit (below). The `sentences` list scores every sentence 0–100 (most AI-like first): 60% whether it contains a template phrase, 30% closeness of its length to the mean sentence length, 10% whether it opens with the text's most common starter.

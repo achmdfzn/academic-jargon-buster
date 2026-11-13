@@ -118,14 +118,14 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.27.2"
-JARGON_VERSION = "1.0.7"
-CITATION_VERSION = "1.5.4"
+__version__ = "1.27.3"
+JARGON_VERSION = "1.0.8"
+CITATION_VERSION = "1.5.5"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.13"
-DETECTOR_VERSION = "1.0.1"
-READABILITY_VERSION = "1.0.1"
-CLI_VERSION = "1.18.1"
+QUALITY_VERSION = "1.2.14"
+DETECTOR_VERSION = "1.0.2"
+READABILITY_VERSION = "1.0.2"
+CLI_VERSION = "1.18.2"
 
 # ======================================================================
 # Jargon Buster
@@ -136,79 +136,95 @@ DICTIONARY = {
         "a collection of techniques for studying how a system changes "
         "when you look at it at different scales",
         "physics",
-        "arXiv glossary / Wikipedia",
+        "Wilson & Kogut 1974, 'The renormalization group and the ε expansion' (DOI 10.1016/0370-1573(74)90023-4)",
     ),
     "gradient descent": (
         "a step-by-step method for finding the lowest point of a curve "
         "by repeatedly moving downhill",
         "machine-learning",
-        "Wikipedia / field textbooks",
+        "Boyd & Vandenberghe 2004, 'Convex Optimization' (ISBN 978-0-521-83378-3)",
     ),
     "causal inference": (
         "figuring out whether one thing actually causes another, "
         "rather than just happening at the same time",
         "economics",
-        "Wikipedia / field textbooks",
+        "Pearl 2009, 'Causality' (2nd ed., ISBN 978-0-521-89560-6)",
     ),
     "polymorphism": (
         "one interface that can work with different kinds of objects, "
         "like one remote control working with different devices",
         "computer-science",
-        "Wikipedia / field textbooks",
+        "Cardelli & Wegner 1985, 'On understanding types, data abstraction, and polymorphism' (DOI 10.1145/6041.6042)",
     ),
     "mitosis": (
         "the process by which one cell divides into two identical cells, "
         "step by step",
         "biology",
-        "Wikipedia / field textbooks",
+        "Alberts et al. 2014, 'Molecular Biology of the Cell' (6th ed., ISBN 978-0-8153-4432-2)",
     ),
     "stochastic gradient descent": (
         "gradient descent that uses a small random sample of the data "
         "at each step instead of the whole dataset, to go faster",
         "machine-learning",
-        "Wikipedia / field textbooks",
+        "Robbins & Monro 1951, 'A Stochastic Approximation Method' (DOI 10.1214/aoms/1177729586)",
     ),
     "overfitting": (
         "when a model memorises its training examples so closely that "
         "it performs badly on new, unseen examples",
         "machine-learning",
-        "Wikipedia / field textbooks",
+        "Hastie, Tibshirani & Friedman 2009, 'The Elements of Statistical Learning' (2nd ed., ISBN 978-0-387-84857-0)",
     ),
     "heteroscedasticity": (
         "when the spread of errors in data is not constant, but changes "
         "across the range of values",
         "economics",
-        "Wikipedia / field textbooks",
+        "White 1980, 'A Heteroskedasticity-Consistent Covariance Matrix Estimator and a Direct Test for Heteroskedasticity' (DOI 10.2307/1912934)",
     ),
     "peer review": (
         "when other experts in the same field read and check a paper "
         "before it is published, to catch mistakes and judge its quality",
         "general",
-        "Wikipedia",
+        "Smith 2006, 'Peer review: a flawed process at the heart of science and journals' (PMID 16574968)",
     ),
     "hypothesis": (
         "a testable guess or proposed explanation that a study sets out "
         "to check with evidence",
         "general",
-        "Wikipedia / field textbooks",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
+    ),
+    # Added 2026-11-13 (audit #5, N-3): irregular English plural /
+    # adjective forms as separate keys pointing at the same explanation
+    # and source as the base form — the same alias mechanism as the
+    # Indonesian keys ("skala likert", "studi kasus", ...).
+    "hypotheses": (
+        "a testable guess or proposed explanation that a study sets out "
+        "to check with evidence",
+        "general",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
     ),
     "methodology": (
         "the overall plan of how a study is done — what data is collected, "
         "how it is collected, and why that way",
         "general",
-        "Wikipedia / field textbooks",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
+    ),
+    "methodologies": (
+        "the overall plan of how a study is done — what data is collected, "
+        "how it is collected, and why that way",
+        "general",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
     ),
     "qualitative research": (
         "research that describes qualities, meanings, and experiences, "
         "usually with words rather than numbers",
         "general",
-        "Wikipedia / field textbooks",
+        "Creswell 2013, 'Qualitative Inquiry and Research Design' (3rd ed., ISBN 978-1-4129-9530-6)",
     ),
     "quantitative research": (
         "research that measures things with numbers and statistics, "
         "to find patterns and test relationships",
         "general",
-        "Wikipedia / field textbooks",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
     ),
     # Added 2026-11-11 from a real student abstract (management
     # information system, SUS evaluation). Indonesian aliases included
@@ -229,7 +245,7 @@ DICTIONARY = {
         "a technique that lets code treat database tables as ordinary "
         "objects instead of writing raw SQL",
         "software-engineering",
-        "Software engineering textbooks",
+        "Fowler 2002, 'Patterns of Enterprise Application Architecture' (ISBN 978-0-321-12742-6)",
     ),
     "likert scale": (
         "a survey answer scale with ordered steps, usually 1 to 5, "
@@ -247,13 +263,13 @@ DICTIONARY = {
         "checking that a user really is who they claim to be, "
         "usually with a username and password",
         "software-engineering",
-        "Software engineering textbooks",
+        "Needham & Schroeder 1978, 'Using encryption for authentication in large networks of computers' (DOI 10.1145/359657.359659)",
     ),
     "autentikasi": (
         "checking that a user really is who they claim to be, "
         "usually with a username and password",
         "software-engineering",
-        "Software engineering textbooks",
+        "Needham & Schroeder 1978, 'Using encryption for authentication in large networks of computers' (DOI 10.1145/359657.359659)",
     ),
     "role-based access control": (
         "deciding what each user may do in a system based on their role, "
@@ -501,6 +517,14 @@ DICTIONARY = {
         "research-methods",
         "Yin 2018, 'Case Study Research and Applications' (6th ed.)",
     ),
+    # Audit #5, N-3: irregular plural alias of "case study" (same
+    # explanation and source as the base form).
+    "case studies": (
+        "an in-depth study of one case — a person, group, or event — "
+        "in its real-life setting, using several kinds of evidence",
+        "research-methods",
+        "Yin 2018, 'Case Study Research and Applications' (6th ed.)",
+    ),
     "studi kasus": (
         "an in-depth study of one case — a person, group, or event — "
         "in its real-life setting, using several kinds of evidence",
@@ -508,6 +532,14 @@ DICTIONARY = {
         "Yin 2018, 'Case Study Research and Applications' (6th ed.)",
     ),
     "phenomenology": (
+        "a qualitative approach that studies how people experience a "
+        "phenomenon, to describe what that experience is like for them",
+        "research-methods",
+        "Moustakas 1994, 'Phenomenological Research Methods'",
+    ),
+    # Audit #5, N-3: adjective-form alias of "phenomenology" (same
+    # explanation and source as the base form).
+    "phenomenological": (
         "a qualitative approach that studies how people experience a "
         "phenomenon, to describe what that experience is like for them",
         "research-methods",
@@ -686,9 +718,11 @@ def update_dictionary(from_file: str, field: str | None = None):
 
 # Characters allowed immediately before a dictionary match (H-7):
 # whitespace is checked with str.isspace(); these are the opening
-# brackets and quotes. Anything else before a match — a letter, a
-# digit, a hyphen — means the term sits inside a longer word.
-_MATCH_START_CHARS = "([{'\""
+# brackets and quotes, plus punctuation that separates two terms in
+# running text (", ; : / ?" and the dashes). A period is deliberately
+# NOT in the set, so ".anova" still does not match (audit #4), and a
+# hyphen still blocks, so "pre-t-test" stays empty.
+_MATCH_START_CHARS = "([{'\",;:/?—–"
 
 
 def _iter_matches(text: str, field: str | None = None):
@@ -1209,8 +1243,12 @@ _VERIFY_STRINGS = {
             "belum terverifikasi {unverified}, tanpa DOI {no_doi}."
         ),
         "note": (
-            "DOI yang baru dicek satu sumber dilaporkan 'belum terverifikasi', "
-            "bukan palsu. Set OPENALEX_API_KEY agar dua sumber diperiksa."
+            "DOI dilaporkan 'tidak ditemukan' bila satu sumber yang "
+            "diperiksa menjawab 404 dan tidak ada sumber yang error — "
+            "sumber yang dilewati karena tanpa key tidak melindunginya. "
+            "'Belum terverifikasi' hanya bila ada sumber yang error, "
+            "atau tidak ada sumber yang diperiksa sama sekali. "
+            "Set OPENALEX_API_KEY agar dua sumber diperiksa."
         ),
         "empty": "Tidak ada referensi di bibliografi.",
     },
@@ -1230,7 +1268,10 @@ _VERIFY_STRINGS = {
             "unverified {unverified}, no DOI {no_doi}."
         ),
         "note": (
-            "A DOI checked in only one source is 'unverified', not fake. "
+            "A DOI is reported 'not found' when one checked source "
+            "answers 404 and no source errored — a source skipped for "
+            "lack of a key does not shield it. 'Unverified' only when "
+            "a source errored, or when nothing was checked at all. "
             "Set OPENALEX_API_KEY so both sources are checked."
         ),
         "empty": "No references in the bibliography.",
@@ -1316,6 +1357,8 @@ def _given(author: str) -> str:
 
 
 def _authors_apa(authors):
+    if not authors:
+        return ""
     formatted = [f"{_family(a)}, {_initials(a)}" for a in authors]
     if len(formatted) == 1:
         return formatted[0]
@@ -1325,6 +1368,8 @@ def _authors_apa(authors):
 
 
 def _authors_mla(authors):
+    if not authors:
+        return ""
     if len(authors) == 1:
         return f"{_family(authors[0])}, {_given(authors[0])}"
     if len(authors) == 2:
@@ -1333,6 +1378,8 @@ def _authors_mla(authors):
 
 
 def _authors_chicago(authors):
+    if not authors:
+        return ""
     formatted = [f"{_family(authors[0])}, {_given(authors[0])}"] + [
         f"{_given(a)} {_family(a)}" for a in authors[1:]
     ]
@@ -1377,58 +1424,86 @@ def _doi_url(ref):
 
 
 def format_reference(ref, style: str) -> str:
-    """Format one bibliography entry in the given style (simplified)."""
-    authors = ref.get("authors", [])
+    """Format one bibliography entry in the given style (simplified).
+
+    `authors` is normalised with _authors_list, so a lone string
+    becomes [string] instead of being rendered letter by letter
+    (BibTeX/RIS already do this). A reference with no authors never
+    crashes: it is rendered title-first with "n.d." for the year,
+    the usual no-author form in every style.
+    """
+    authors = _authors_list(ref.get("authors", []), "format_reference")
     year = ref.get("year", "n.d.")
+    # The default year "n.d." already ends in a period: styles that
+    # append "{year}." must not render "n.d..".
+    year_dot = str(year) if str(year).endswith(".") else f"{year}."
     title = ref.get("title", "")
     venue = _venue(ref)
     link = _doi_url(ref)
     if style == "apa":
-        out = f"{_authors_apa(authors)} ({year}). {title}."
+        if authors:
+            out = f"{_authors_apa(authors)} ({year}). {title}."
+        else:
+            out = f"{title}. ({year})."
         if venue:
             out += f" {venue}."
         if link:
             out += f" {link}"
         return out
     if style == "mla":
-        out = f"{_authors_mla(authors)}. “{title}.”"
+        if authors:
+            out = f"{_authors_mla(authors)}. “{title}.”"
+        else:
+            out = f"“{title}.”"
         if venue:
             out += f" {venue},"
-        out += f" {year}."
+        out += f" {year_dot}"
         if link:
             out += f" {link}."
         return out
     if style == "chicago":
-        out = f"{_authors_chicago(authors)}. {year}. “{title}.”"
+        if authors:
+            out = f"{_authors_chicago(authors)}. {year_dot} “{title}.”"
+        else:
+            out = f"“{title}.” {year_dot}"
         if venue:
             out += f" {venue}."
         if link:
             out += f" {link}."
         return out
     if style == "ieee":
-        out = f"{_authors_ieee(authors)}, “{title},”"
+        if authors:
+            out = f"{_authors_ieee(authors)}, “{title},”"
+        else:
+            out = f"“{title},”"
         if venue:
             out += f" {venue},"
-        out += f" {year}."
+        out += f" {year_dot}"
         if link:
             out += f" {link}."
         return out
     if style == "harvard":
-        first = _family(authors[0]) if authors else ""
-        etal = " et al." if len(authors) > 3 else ""
-        if len(authors) in (2, 3):
-            first = ", ".join(_family(a) for a in authors[:-1]) + f" and {_family(authors[-1])}"
-        out = f"{first}{etal} ({year}) '{title}',"
+        if authors:
+            first = _family(authors[0])
+            etal = " et al." if len(authors) > 3 else ""
+            if len(authors) in (2, 3):
+                first = ", ".join(_family(a) for a in authors[:-1]) + f" and {_family(authors[-1])}"
+            out = f"{first}{etal} ({year}) '{title}',"
+        else:
+            out = f"'{title}' ({year}),"
         if venue:
             out += f" {venue}."
         if link:
             out += f" Available at: {link}"
         return out
     if style == "vancouver":
-        out = f"{_authors_vancouver(authors)}. {title}."
+        if authors:
+            out = f"{_authors_vancouver(authors)}. {title}."
+        else:
+            out = f"{title}."
         if venue:
             out += f" {venue};"
-        out += f" {year}."
+        out += f" {year_dot}"
         if link:
             out += f" Available from: {link}"
         return out
@@ -1569,12 +1644,12 @@ def _bibtex_pages(pages) -> str:
 
     Dashes are normalised first ('--', en dash, em dash all become
     a single '-'), like _ris_pages, so '189–194' becomes '189--194'
-    instead of passing the en dash through untouched. Only the first
-    range is kept: '189–194, 200' becomes '189--194', the trailing
-    page after the comma is dropped.
+    instead of passing the en dash through untouched. Unlike RIS,
+    the FULL value is kept: '189–194, 200' becomes '189--194, 200'
+    — a BibTeX pages field can hold a list, so dropping the trailing
+    page would lose information.
     """
     p = _flat(pages).replace("pp. ", "").strip()
-    p = p.split(",")[0].strip()
     p = p.replace("--", "-").replace("–", "-").replace("—", "-")
     return p.replace("-", "--")
 
@@ -1675,7 +1750,9 @@ def _ris_pages(pages) -> tuple:
     Normalised like _bibtex_pages first: '--', en dash and em dash
     all become a single '-', so '189–194' and '189--194' split too.
     Only the first range is kept: '189–194, 200' becomes
-    ('189', '194'), the trailing page after the comma is dropped.
+    ('189', '194') — RIS has a single SP and a single EP line, so
+    a trailing page after the comma has nowhere to go. BibTeX keeps
+    the full value instead (see _bibtex_pages).
     """
     p = _flat(pages).replace("pp. ", "").strip()
     p = p.split(",")[0].strip()
@@ -1751,12 +1828,55 @@ def export_ris(references: dict) -> str:
 _CITE_PATTERN = re.compile(r"(?:\[cite:([^\]]+)\]|\\cite\{([^}]+)\})")
 
 
+def _author_year_keys(text: str, references: dict) -> list:
+    """Bibliography keys cited in author-year form, in first-appearance
+    order: parenthetical "(Field, 2018)" / "(Field et al., 2018)" and
+    narrative "Field (2018)" / "Menurut Field (2018)".
+
+    Only the first author's family name and the year are matched, so
+    this is NOT a full audit: it cannot tell which of two entries by
+    the same family in the same year is meant, and multi-author
+    forms ("Field and Ghozali (2018)", "(Field & Ghozali, 2018)")
+    are not recognised. Callers must flag the matches as author-year
+    (see audit_citations), never as verified [cite:key] citations.
+    """
+    found = []
+    for key, ref in references.items():
+        if not isinstance(ref, dict):
+            continue
+        authors = ref.get("authors")
+        if isinstance(authors, str):
+            authors = [authors]
+        if not isinstance(authors, (list, tuple)) or not authors:
+            continue
+        first = authors[0]
+        family = _family(first) if isinstance(first, str) else ""
+        year = ref.get("year")
+        if not family or year in (None, ""):
+            continue
+        fam = re.escape(family)
+        yr = re.escape(str(year).strip())
+        paren = re.compile(
+            r"\(\s*" + fam + r"(?:\s+et al\.?)?\s*,?\s*" + yr + r"\s*\)")
+        narrative = re.compile(
+            r"\b" + fam + r"(?:\s+et al\.?)?\s*\(\s*" + yr + r"\s*\)")
+        if paren.search(text) or narrative.search(text):
+            found.append(key)
+    return found
+
+
 def audit_citations(text: str, references: dict) -> dict:
     """Audit citations in `text` against `references`.
 
     Returns {"cited": [...], "counts": {...}, "missing": [...],
-    "unused": [...]}. `cited` keeps first-appearance order; `missing`
-    and `unused` are sorted.
+    "unused": [...], "author_year": [...]}. `cited` keeps
+    first-appearance order; `missing` and `unused` are sorted.
+    `author_year` lists the bibliography keys matched only in
+    author-year form ("(Field, 2018)", "Field (2018)"): those keys
+    count as cited and are NOT reported as "unused", but the match
+    is name + year only, so author-year style is NOT fully audited —
+    a same-family, same-year entry can be credited to the wrong key,
+    and multi-author forms are not recognised at all.
     """
     if references is None:
         references = {}
@@ -1767,9 +1887,15 @@ def audit_citations(text: str, references: dict) -> dict:
         counts[key] = counts.get(key, 0) + 1
         if key not in cited:
             cited.append(key)
+    author_year = _author_year_keys(text, references)
+    for key in author_year:
+        counts[key] = counts.get(key, 0) + 1
+        if key not in cited:
+            cited.append(key)
     missing = sorted(k for k in cited if k not in references)
     unused = sorted(k for k in references if k not in counts)
-    return {"cited": cited, "counts": counts, "missing": missing, "unused": unused}
+    return {"cited": cited, "counts": counts, "missing": missing,
+            "unused": unused, "author_year": author_year}
 
 
 def _reference_link(ref: dict) -> str:
@@ -1821,6 +1947,7 @@ _AUDIT_STRINGS = {
         "none_missing": "Tidak ada sitasi yang hilang.",
         "none_unused": "Tidak ada entri yang tidak terpakai.",
         "none_dead": "Semua link yang dicek masih hidup.",
+        "author_year": "Sitasi author-year terdeteksi (tidak diaudit penuh — hanya nama penulis + tahun yang dicocokkan)",
     },
     "en": {
         "heading": "Citation audit result",
@@ -1832,6 +1959,7 @@ _AUDIT_STRINGS = {
         "none_missing": "No missing citations.",
         "none_unused": "No unused entries.",
         "none_dead": "Every checked link is alive.",
+        "author_year": "Author-year citations detected (not fully audited — matched on author name + year only)",
     },
 }
 
@@ -1857,6 +1985,11 @@ def format_audit(result: dict, lang: str = "id", links: dict | None = None) -> s
             lines.append(f"- {key}")
     else:
         lines.append(s["none_unused"])
+    if result.get("author_year"):
+        lines.append("")
+        lines.append(f"## {s['author_year']}")
+        for key in result["author_year"]:
+            lines.append(f"- {key}")
     if links is not None:
         lines.append("")
         dead = {k: v for k, v in links.items() if not v[1]}
@@ -1937,9 +2070,15 @@ _YANG_MANA_RE = re.compile(r"\byang mana\b|\bdimana\b", re.IGNORECASE)
 
 # Abbreviations whose period never ends a sentence. Protected with
 # a private-use placeholder before splitting, restored after.
-# "hal." is the Indonesian abbreviation for "halaman" (page).
-_ABBREVIATIONS = ("Dr.", "Prof.", "Drs.", "dkk.", "dst.", "dll.",
-                  "e.g.", "i.e.", "hal.", "No.")
+# "hal." is the Indonesian abbreviation for "halaman" (page);
+# "hlm." is the standard KBBI abbreviation for the same word.
+# Honorifics (Bpk./Sdr./Tn./Ny./Nn.) join the list (audit #5 H-7).
+# The list abbreviations dll./dst./dkk. are NOT here: they are only
+# protected when the next word starts lowercase (audit #5 H-6) —
+# "dll. Kemudian" ends a sentence, "dll. kemudian" does not — so
+# they get their own conditional protection below.
+_ABBREVIATIONS = ("Dr.", "Prof.", "Drs.", "Bpk.", "Sdr.", "Tn.",
+                  "Ny.", "Nn.", "e.g.", "i.e.", "hal.", "hlm.", "No.")
 _ABBREV_PLACEHOLDER = "\ue000"
 # Every period inside an abbreviation is hidden, not just the last
 # one: "e.g." used to survive as "e.g<placeholder>", whose remaining
@@ -1950,17 +2089,33 @@ _ABBREV_RE = re.compile(
     r"\b(?:" + "|".join(
         re.escape(a) for a in sorted(_ABBREVIATIONS, key=len, reverse=True)
     ) + r")")
+# List abbreviations (dll./dst./dkk.): protected only when the next
+# word starts with a lowercase letter (audit #5 H-6). A capitalised
+# next word — or the end of the text — means the abbreviation closed
+# the sentence ("Ia membeli buku, dll. Kemudian pulang." is two
+# sentences; "Buku itu dst. dibaca semua." is one). Matched at a word
+# boundary so a word that merely ends in the same letters is not
+# protected by mistake; the lowercase check is done in
+# _split_sentences with str.islower(), so it covers non-ASCII
+# lowercase letters too.
+_LIST_ABBREV_RE = re.compile(r"\b(?:dll|dst|dkk)\.")
+# A dotted academic degree (M.Si., S.Pd., S.Si., M.Pd.): a capital
+# letter, a period, a capital letter with optional lowercase
+# letters, a period (audit #5 N-11). Protected like an abbreviation
+# so the degree never splits a sentence mid-way.
+_DEGREE_RE = re.compile(r"\b[A-Z]\.[A-Z][a-z]*\.")
 # A lone capital letter followed by a period, e.g. "A." in
 # "Dr. A. Budi" — an initial, not a sentence end. Only protected
 # when another capitalised word follows, so a sentence that merely
 # ends in a lone capital ("Nilainya A.") still splits.
 _INITIAL_RE = re.compile(r"\b[A-Z]\.(?=\s+[A-Z])")
-# A sentence terminator: . ! ? (runs of them, e.g. "..."), plus an
-# optional closing quote or parenthesis, followed by whitespace or
+# A sentence terminator: . ! ? (runs of them, e.g. "..."), plus a
+# RUN of closing quotes or parentheses (audit #5 N-1: "'Pergi!')"
+# ends a sentence, not just "'Pergi!'"), followed by whitespace or
 # the end of the text. Only terminators are scanned for — the
 # previous pattern also scanned "[^.!?]*" from every position,
 # which was quadratic on text without a terminator.
-_TERMINATOR_RE = re.compile(r"[.!?]+['\"”’)]?(?=\s|$)")
+_TERMINATOR_RE = re.compile(r"[.!?]+['\"”’)]*(?=\s|$)")
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -1973,10 +2128,14 @@ def _split_sentences(text: str) -> list[str]:
     trailing fragment without a terminator is kept as its own
     sentence, and empty text gives [].
 
-    Abbreviations ("Dr.", "e.g.", "i.e.", "hal.", ...) and single
-    capital initials ("A." in "Dr. A. Budi") never split a
-    sentence. Linear time: only terminators are matched, then the
-    text is sliced between matches.
+    Abbreviations ("Dr.", "e.g.", "i.e.", "hal.", "hlm.", "Bpk.",
+    "Tn.", ...) and single capital initials ("A." in "Dr. A. Budi")
+    never split a sentence, and neither do dotted degrees ("M.Si.",
+    "S.Pd."). List abbreviations ("dll.", "dst.", "dkk.") are only
+    protected when the next word starts lowercase; a capitalised
+    next word (or the end of the text) ends the sentence. Linear
+    time: only terminators are matched, then the text is sliced
+    between matches.
 
     Limitation: a sentence that genuinely ends in a lone capital
     letter is merged with the next one when the next sentence
@@ -1986,6 +2145,21 @@ def _split_sentences(text: str) -> list[str]:
     """
     protected = text.strip()
     protected = _ABBREV_RE.sub(
+        lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
+
+    def _protect_list_abbrev(m):
+        # A list abbreviation is protected only when the next word
+        # starts lowercase (audit #5 H-6); a capitalised next word
+        # or the end of the text leaves the period as a terminator.
+        # `protected` here is still the pre-substitution string,
+        # since the assignment happens after sub() returns.
+        after = protected[m.end():].lstrip()
+        if after and after[0].islower():
+            return m.group(0).replace(".", _ABBREV_PLACEHOLDER)
+        return m.group(0)
+
+    protected = _LIST_ABBREV_RE.sub(_protect_list_abbrev, protected)
+    protected = _DEGREE_RE.sub(
         lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
     protected = _INITIAL_RE.sub(
         lambda m: m.group(0)[:-1] + _ABBREV_PLACEHOLDER, protected)
@@ -2825,6 +2999,9 @@ _ANALYZE_STRINGS = {
         "duplicates": "Duplikasi",
         "duplicates_none": "Tidak ada kalimat yang berulang dengan pustaka.",
         "duplicates_found": "kalimat berulang",
+        "duplicates_truncated": ("Peringatan: pemeriksaan duplikasi berhenti "
+                                "setelah {spent} perbandingan (batas {budget}) "
+                                "— hasil mungkin tidak lengkap."),
         "duplicates_similar": "mirip",
         "duplicates_in_text": "naskah ini",
         "duplicates_in_library": "pustaka",
@@ -2859,6 +3036,9 @@ _ANALYZE_STRINGS = {
         "duplicates": "Duplication",
         "duplicates_none": "No sentences repeat the library.",
         "duplicates_found": "repeated sentences",
+        "duplicates_truncated": ("Warning: the duplication check stopped "
+                                "after {spent} comparisons (limit {budget}) "
+                                "— results may be incomplete."),
         "duplicates_similar": "similar to",
         "duplicates_in_text": "this text",
         "duplicates_in_library": "library",
@@ -2998,6 +3178,10 @@ def format_analyze(result: dict, lang: str = "id") -> str:
                      f"{s['style_clean']}")
     dups = result.get("duplicates")
     if dups is not None:
+        if dups.get("truncated"):
+            lines.append(s["duplicates_truncated"].format(
+                spent=dups.get("comparisons_spent", "?"),
+                budget=_MAX_DUPLICATE_COMPARISONS))
         if dups["duplicates"]:
             lines.append(f"{s['duplicates']}: {dups['count']} "
                          f"{s['duplicates_found']}")
@@ -3462,11 +3646,13 @@ def _is_own_run(run: dict, text_hash: str, legacy_hash: str) -> bool:
 # Work budget for find_duplicates (audit #4, N-15): the number of
 # difflib comparisons one call may perform. A normal check compares
 # a few hundred sentence pairs at most — the overlap gate rejects
-# the rest — so the budget is never reached and results are
-# unchanged; a pathological text (hundreds of sentences sharing one
-# small vocabulary) would otherwise spend minutes in difflib. Once
-# the budget is spent the call stops comparing and returns the
-# matches found so far.
+# the rest — so the budget is rarely reached; but a legitimate,
+# heavily derivative text (hundreds of sentences sharing one small
+# vocabulary, audit #5 B-1) DOES exhaust it, and the call then
+# stops comparing and returns the matches found so far. That
+# truncation is honest: the result always carries "truncated" and
+# "comparisons_spent", and every renderer (format_duplicates, the
+# analyze report, the web UI) warns the user when it happened.
 _MAX_DUPLICATE_COMPARISONS = 2000
 
 
@@ -3488,9 +3674,16 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
     (_MAX_DUPLICATE_COMPARISONS difflib comparisons per call) caps
     pathological inputs at a few seconds.
 
-    Returns {"duplicates": [...], "count": n, "checked": m} where m is
-    the number of saved runs compared. Each duplicate carries sentence,
-    match, similarity, source_id, source_title, source_date; a repeat
+    Returns {"duplicates": [...], "count": n, "checked": m,
+    "truncated": bool, "comparisons_spent": k} where m is the number
+    of saved runs compared and k is the number of difflib
+    comparisons actually performed. "truncated" is True exactly
+    when the work budget (_MAX_DUPLICATE_COMPARISONS) was exhausted:
+    the call stopped comparing early, so "duplicates" may be
+    incomplete — some sentences were never compared. It is False
+    (and k is below the budget) on a normal input, where the result
+    is complete. Each duplicate carries sentence, match,
+    similarity, source_id, source_title, source_date; a repeat
     inside the text itself has source_id None and source_title
     "naskah ini".
     """
@@ -3564,7 +3757,9 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
                                 if run else None),
             })
     return {"duplicates": duplicates, "count": len(duplicates),
-            "checked": len(past_runs)}
+            "checked": len(past_runs),
+            "truncated": spent >= _MAX_DUPLICATE_COMPARISONS,
+            "comparisons_spent": spent}
 
 
 _DUPLICATES_STRINGS = {
@@ -3574,6 +3769,9 @@ _DUPLICATES_STRINGS = {
         "checked": "Dibandingkan dengan {n} analisis tersimpan.",
         "similar": "mirip",
         "source": "sumber",
+        "truncated": ("Peringatan: pemeriksaan berhenti setelah {spent} "
+                      "perbandingan (batas {budget}) — hasil mungkin tidak "
+                      "lengkap; sebagian kalimat belum dibandingkan."),
     },
     "en": {
         "heading": "Internal duplication",
@@ -3581,14 +3779,29 @@ _DUPLICATES_STRINGS = {
         "checked": "Compared with {n} saved analyses.",
         "similar": "similar to",
         "source": "source",
+        "truncated": ("Warning: the check stopped after {spent} "
+                      "comparisons (limit {budget}) — results may be "
+                      "incomplete; some sentences were not compared."),
     },
 }
 
 
 def format_duplicates(result: dict, lang: str = "id") -> str:
-    """Render a find_duplicates() result as readable text."""
+    """Render a find_duplicates() result as readable text.
+
+    When the result is truncated (the work budget ran out), a
+    warning line is shown right after the "checked" line — before
+    the list, and also when no duplicates were found at all, so a
+    short or empty list is never mistaken for a complete check.
+    Old hand-built dicts without "truncated" are treated as
+    complete (no warning).
+    """
     s = _DUPLICATES_STRINGS.get(lang, _DUPLICATES_STRINGS["id"])
     lines = [s["heading"], s["checked"].format(n=result["checked"])]
+    if result.get("truncated"):
+        lines.append(s["truncated"].format(
+            spent=result.get("comparisons_spent", "?"),
+            budget=_MAX_DUPLICATE_COMPARISONS))
     if not result["duplicates"]:
         lines.append(s["none"])
         return "\n".join(lines)
@@ -3832,6 +4045,11 @@ _DETECT_STRINGS = {
         "capped": ("Kesimpulan dibatasi ke Campuran: hanya {n} dari 4 "
                    "sinyal yang berlaku — skor tinggi dari dua sinyal "
                    "keseragaman saja belum cukup untuk menyebut teks ini AI."),
+        "capped_limit": ("Batas detektor: teks pendek (<100 kata atau "
+                         "<6 kalimat) tidak pernah bisa mendapat "
+                         "'Kemungkinan besar AI' — keragaman kosakata "
+                         "hanya berlaku pada ≥100 kata dan pengulangan "
+                         "awalan hanya pada ≥6 kalimat."),
     },
     "en": {
         "heading": "AI Detection",
@@ -3848,6 +4066,10 @@ _DETECT_STRINGS = {
         "capped": ("Verdict capped at Mixed: only {n} of 4 signals "
                    "apply — a high score from two uniformity signals "
                    "alone is not enough to call this text AI."),
+        "capped_limit": ("Detector limit: a short text (<100 words or "
+                         "<6 sentences) can never reach 'Likely AI' — "
+                         "lexical diversity only applies at ≥100 words "
+                         "and starter repetition only at ≥6 sentences."),
     },
 }
 
@@ -4069,6 +4291,11 @@ def format_detect(result: dict, lang: str = "id") -> str:
         if result.get("verdict_capped") and result.get(
                 "verdict_capped_reason"):
             lines.append(result["verdict_capped_reason"])
+            # N-7 (audit #5): the cap reason says only two signals
+            # apply, but not WHY a short text can never reach the top
+            # band. State the structural limit here (CLI output), so
+            # a capped high score is not read as "almost AI".
+            lines.append(s["capped_limit"])
     lines.append("")
     lines.append(f"{s['signals']}:")
     for name, label in labels.items():
@@ -4186,87 +4413,274 @@ _VOWELS = set("aeiou")
 # gabungan-huruf-vokal/, verified 2026-11-13). The "ei" is the new
 # one: PUEBI (Permendikbud 50/2015) added it for loanwords such as
 # "survei", and EYD V kept all four. The old claim of only three
-# diphthongs was wrong.
-_DIPHTHONGS = ("ai", "au", "ei", "oi")
+# diphthongs was wrong. (The pairs live in _VOWEL_PAIRS_SINGLE
+# below, which adds "eu", the EYD V monophthong.)
 
-# Whole words where a diphthong-looking vowel pair is NOT a
-# diphthong: the pair straddles a syllable or morpheme boundary
-# (EYD V: not every run of vowels is a diphthong — "ma-in",
-# "bu-ah" split between the vowels). The value is the pair(s) to
-# NOT subtract for that word. Matched on the WHOLE word only,
-# never as a substring: "main" is listed, "domain" is not, so a
-# word that merely contains a listed word keeps the plain rule.
-# Curated, not complete: this is lexical, not rule-based ("baik"
-# IS one syllable, "main" is two), so common academic words are
-# listed explicitly and anything unlisted falls back to the plain
-# diphthong rule. Counts checked against KBBI syllabification
-# (da-un, de-da-un-an, ber-a-ir, ma-in, sa-ins, ca-pa-i,
-# per-ba-i-ki, ke-ba-i-kan, ke-in-dah-an, ma-u-pun).
+# Whole ROOTS where a diphthong-looking vowel pair is NOT a
+# diphthong: the pair is two syllables in the root itself
+# (KBBI: ba·ik, ma·in, ka·in, la·ut, ko·in, ga·i·rah). The
+# value is the pair(s) to NOT subtract for that root. Matched
+# on the ROOT (after affix stripping) only, never as a
+# substring: "main" is listed, "domain" is not, so a word that
+# merely contains a listed word keeps the plain rule.
+# Derivatives are NOT listed here — affix stripping derives
+# them ("dimainkan" = di- + main + -kan = 4, "kebaikan" =
+# ke- + baik + -an = 4). Curated, not complete: this is
+# lexical, not rule-based, so anything unlisted falls back
+# to the plain diphthong rule. Counts checked against KBBI
+# syllabification (kbbi.web.id, 2026-11-13). Three entries
+# from v1.27.2 were WRONG and are removed here: "capai" is
+# ca-pai (2, a real diphthong), "mencapai"/"tercapai" are 3
+# — only their suffixed forms split ("capaian" 4).
 _SYLLABLE_EXCEPTIONS = {
-    # "ai" splits across a boundary: ma-in, ca-pa-i, per-ba-i-ki.
+    # "ai" is hiatus in these roots.
+    "baik": ("ai",),
     "main": ("ai",),
-    "bermain": ("ai",),
-    "memainkan": ("ai",),
-    "permainan": ("ai",),
-    "pemain": ("ai",),
-    "mainan": ("ai",),
     "sains": ("ai",),
-    "capai": ("ai",),
-    "mencapai": ("ai",),
-    "tercapai": ("ai",),
-    "capaian": ("ai",),
-    "pencapaian": ("ai",),
-    "perbaiki": ("ai",),
-    "diperbaiki": ("ai",),
-    "memperbaiki": ("ai",),
-    "terperbaiki": ("ai",),
-    "perbaikan": ("ai",),
-    "kebaikan": ("ai",),
-    # "au" splits: ma-u-pun, a-ta-u-pun, ka-la-u-pun, da-un.
-    # "bagaimanapun" keeps its real "ai" diphthong (ba-gai) and
-    # only loses the "au" (ma-na-pun).
-    "maupun": ("au",),
-    "ataupun": ("au",),
-    "kalaupun": ("au",),
-    "bagaimanapun": ("au",),
-    "daun": ("au",),
-    "dedaunan": ("au",),
-    # "ai" splits: a-ir.
     "air": ("ai",),
-    "berair": ("ai",),
-    # "ei" splits: ke-in-dah-an (not sur-vei, where "ei" IS one).
-    "keindahan": ("ei",),
+    "kain": ("ai",),
+    "lain": ("ai",),
+    "gaib": ("ai",),
+    "kait": ("ai",),
+    "cair": ("ai",),
+    "raih": ("ai",),
+    "naik": ("ai",),
+    "saing": ("ai",),
+    "kaidah": ("ai",),
+    "gairah": ("ai",),
+    # "au" is hiatus in these roots.
+    "daun": ("au",),
+    "laut": ("au",),
+    "jauh": ("au",),
+    "bau": ("au",),
+    "kau": ("au",),
+    "paus": ("au",),
+    "saus": ("au",),
+    "kaus": ("au",),
+    "haus": ("au",),
+    "kaum": ("au",),
+    "maut": ("au",),
+    "dedaun": ("au",),
+    # "oi" is hiatus in these roots.
+    "koin": ("oi",),
+    "poin": ("oi",),
+    "heroik": ("oi",),
+    "stoik": ("oi",),
 }
+
+# Pairs that count as ONE syllable (EYD V diphthongs ai, au,
+# ei, oi, plus "eu", the EYD V monophthong [ə]: "seudati" is
+# 3, "euis" is 2). Used by _count_syllables; entries in
+# _SYLLABLE_EXCEPTIONS above opt a root out of a pair.
+_VOWEL_PAIRS_SINGLE = ("ai", "au", "ei", "oi", "eu")
+
+# Whole words whose syllable count cannot be derived by rule:
+# rare loanwords where the "eu" monophthong spans what looks
+# like a prefix boundary. "seudati" is seu-da-ti (3) — the
+# "eu" is one syllable — so stripping "se-" would break it
+# ("udati" counts 3 on its own). Checked before affix
+# stripping. Verified against the EYD V monophthong [ə].
+_SYLLABLE_WHOLE_WORD = {"seudati": 3}
+
+# Prefixes that never precede a vowel-initial root: men-/mem-/
+# pen-/pem- are nasal assimilations before consonants (men- +
+# a vowel would be meng- or me-/pe- instead). "menaiki" is
+# me- + naik, not men- + aiki.
+_NO_VOWEL_AFTER = ("men", "mem", "pen", "pem")
+
+# Common Indonesian prefixes, longest first: (affix, syllables).
+# "memper-"/"diper-" count 2 (mem-per-, di-per-); the rest 1.
+# (Written without the trailing hyphen: "bermain" is ber +
+# main, there is no literal "-" in the word.)
+_PREFIXES = (
+    ("memper", 2), ("diper", 2),
+    ("ber", 1), ("ter", 1), ("meng", 1), ("mem", 1),
+    ("men", 1), ("peng", 1), ("pem", 1), ("pen", 1),
+    ("per", 1), ("me", 1), ("pe", 1), ("di", 1),
+    ("ke", 1), ("se", 1),
+)
+
+# Common Indonesian suffixes, longest first: (affix, syllables).
+# "-kan" is tried before "-an" because "mainkan" is main + -kan
+# while "kebaikan" is kebaik + -an — _strip_id_affixes
+# disambiguates via the hiatus-root dict.
+_SUFFIXES = (
+    ("kan", 1), ("nya", 1), ("lah", 1), ("kah", 1),
+    ("pun", 1), ("an", 1), ("mu", 1), ("ku", 1), ("i", 1),
+)
+
+# A root-final diphthong splits before these suffixes
+# ("capai" + "-an" is ca-pa-i-an = 4, "mau" + "-kah" is
+# ma-u-kah = 3), but NOT before the possessive enclitics
+# -nya/-ku/-mu ("maunya" is 2, "pulaunya" is 3: the diphthong
+# stays intact there).
+_SPLIT_SUFFIXES = frozenset({"kan", "an", "i", "lah", "kah", "pun"})
+
+# English hiatus words where a vowel pair is two syllables
+# (curated, not complete — like the Indonesian list), plus
+# words the "-le" rule must not touch ("aisle"/"isle" are 1).
+_ENGLISH_EXCEPTIONS = {
+    "idea": 3, "area": 3, "real": 2, "poem": 2,
+    "science": 2, "rhythm": 2,
+    "aisle": 1, "isle": 1,
+}
+
+
+def _root_ends_with_counted_pair(root: str) -> bool:
+    """True if root ends in a vowel pair counted as one syllable.
+
+    That is: the pair is in _VOWEL_PAIRS_SINGLE and the root is
+    NOT in _SYLLABLE_EXCEPTIONS for that pair. Used to decide
+    whether the pair splits before a split-eligible suffix.
+    """
+    for pair in _VOWEL_PAIRS_SINGLE:
+        if root.endswith(pair) and pair not in _SYLLABLE_EXCEPTIONS.get(root, ()):
+            return True
+    return False
+
+
+def _may_strip_i(rest: str) -> bool:
+    """May the final "-i" be stripped as a suffix?
+
+    "-i" is a real suffix in "menaiki" (me- + naik + -i) and
+    "saingi" (saing + -i), but part of the root in "pantai",
+    "damai", "ramai", "sampai", "survei" — and in "mencapai"
+    (men- + capai, the "ai" is the root's own diphthong, not
+    root + suffix). Allow the strip only when the remaining
+    root is a hiatus root, or when it ends in a consonant
+    (stripping there is count-neutral: one vowel out of the
+    root, one suffix back in). Known miss: a genuine "-i"
+    suffix on a vowel-final root is not stripped ("mencintai"
+    counts 3, not 4; "melukai" 3, not 4) — the surface form
+    is indistinguishable from a root diphthong ("capai"),
+    and the diphthong reading is far more common in academic
+    text, so the diphthong wins.
+    """
+    if rest in _SYLLABLE_EXCEPTIONS:
+        return True
+    return rest[-1] not in _VOWELS
+
+
+def _strip_id_affixes(w: str):
+    """Peel Indonesian prefixes/suffixes off w.
+
+    Returns (root, affix_syllables, split). ``split`` is True
+    when a suffix from _SPLIT_SUFFIXES was stripped right after
+    a root ending in a counted diphthong — the pair then splits
+    before that suffix ("capaian" = capai + -an = 4).
+    A prefix/suffix is only stripped when at least 2 characters
+    with a vowel remain, so short words ("ber", "di") are never
+    gutted. Prefixes are stripped first, longest first, in a
+    loop ("mempermainkan" -> "mainkan"); suffixes the same way.
+    """
+    affixes = 0
+    while True:
+        for pre, syl in _PREFIXES:
+            if not w.startswith(pre):
+                continue
+            rest = w[len(pre):]
+            if len(rest) < 2 or not any(c in _VOWELS for c in rest):
+                continue
+            if pre in _NO_VOWEL_AFTER and rest[0] in _VOWELS:
+                continue
+            w = rest
+            affixes += syl
+            break
+        else:
+            break
+    split = False
+    while True:
+        for suf, syl in _SUFFIXES:
+            if not w.endswith(suf):
+                continue
+            rest = w[:-len(suf)]
+            if len(rest) < 2 or not any(c in _VOWELS for c in rest):
+                continue
+            if suf == "i" and not _may_strip_i(rest):
+                continue
+            if suf == "kan":
+                # "-kan" vs "-an": prefer the parse whose root is
+                # a hiatus root ("mainkan" -> main + -kan, but
+                # "kebaikan" -> kebaik + -an). When neither is,
+                # either parse counts the same (a trailing "k"
+                # changes no vowel/diphthong count), so keep "-kan".
+                if rest not in _SYLLABLE_EXCEPTIONS:
+                    alt = w[:-2]
+                    if alt in _SYLLABLE_EXCEPTIONS:
+                        suf, syl = "an", 1
+                        rest = alt
+            if suf in _SPLIT_SUFFIXES and _root_ends_with_counted_pair(rest):
+                split = True
+            w = rest
+            affixes += syl
+            break
+        else:
+            break
+    return w, affixes, split
 
 
 def _count_syllables(word: str, lang: str = "id") -> int:
     """Syllables in one word.
 
-    Indonesian (lang="id", the default): count the vowels
-    (a, e, i, o, u); each diphthong counts as one syllable, so one
-    is subtracted per diphthong. EYD edisi V has four diphthongs —
-    ai, au, ei, oi — so "survei" is 2 (sur-vei) and "baik" is 1.
-    But not every run of vowels is a diphthong: where the pair
-    straddles a syllable/morpheme boundary ("ma-in", "ba-i-ki",
-    "ke-in-dah-an") it counts as two. That is lexical, so the
-    common words where it happens are listed explicitly in
-    _SYLLABLE_EXCEPTIONS (whole-word match only; the list is
-    curated, not complete — anything unlisted falls back to the
-    plain diphthong rule).
+    Source of truth: KBBI syllabification, word by word. EYD
+    edisi V lists four diphthongs (ai, au, ei, oi) — and that
+    claim is correct — but a diphthong only counts as one
+    syllable when the vowel pair sits inside ONE syllable.
+    KBBI decides that per word, and the two authorities
+    disagree on some words: EYD says the "ai" diphthong is
+    never split (example: "pandai"), while KBBI syllabifies
+    "baik" as ba·ik (2 syllables), "naik" as na·ik, "kain" as
+    ka·in. This function follows KBBI, because Flesch counts
+    pronounced syllables, not spelling. The tension is real
+    and deliberate: do not "fix" it back to the EYD-only rule.
 
-    English (lang="en"): count runs of vowel letters (a, e, i, o,
-    u, y — "y" counts, so "happy" and "study" are 2), then
-    subtract 1 for a silent final "e" ("make" is 1). Known limit:
-    a final "-le" after a consonant is a syllable of its own
-    ("table", "syllable" undercount by 1); the plain rule does
-    not special-case it.
+    Indonesian (lang="id", the default): vowels are counted,
+    minus one per diphthong/monophthong pair (ai, au, ei, oi,
+    plus "eu", the EYD V monophthong [ə]: "seudati" is 3).
+    Two mechanisms keep the pairs honest:
+    (1) a curated list of hiatus ROOTS in _SYLLABLE_EXCEPTIONS
+    ("baik", "kain", "laut", "naik", "koin", "gairah", ...),
+    where the pair is two syllables; and
+    (2) affix stripping — common prefixes (ber-, me-, pe-,
+    di-, ke-, ter-, se-, memper-, ...) and suffixes (-kan,
+    -an, -i, -nya, -mu, -ku, -lah, -kah, -pun) are peeled off
+    and counted separately, so derivatives of a hiatus root
+    stay right ("dimainkan" = di- + main + -kan = 4) without
+    listing every derivative. A root-final diphthong splits
+    before a derivational suffix or particle
+    (-kan, -an, -i, -lah, -kah, -pun: "capai" + "-an" is
+    ca-pa-i-an = 4, "mau" + "-kah" is ma-u-kah = 3), but NOT
+    before the possessive enclitics -nya/-ku/-mu ("maunya" is
+    2, "pulaunya" is 3). Hyphenated reduplication is counted
+    per part ("baik-baik" is 4). The list is curated, not
+    complete — anything unlisted falls back to the plain
+    diphthong rule.
+
+    English (lang="en"): vowel-letter runs (a, e, i, o, u, y)
+    minus a silent final "e", plus one for a final "-le"
+    after a consonant ("table" is 2, "syllable" is 3), plus
+    a small curated list of hiatus words ("idea" 3, "real" 2,
+    "science" 2, "rhythm" 2 — "fire" and "hour" are 1 and
+    need no exception). "aisle"/"isle" are 1 (the "-le" rule
+    would otherwise overcount them).
 
     A word with no vowel (a number, an abbreviation) counts as 1.
     Non-letters at the ends of the word are stripped first; the
     word is lowercased.
     """
     w = re.sub(r"^[^a-z]+|[^a-z]+$", "", word.lower())
+    if not w:
+        return 1
+    if w in _SYLLABLE_WHOLE_WORD:
+        return _SYLLABLE_WHOLE_WORD[w]
+    if "-" in w:
+        parts = [p for p in w.split("-") if p]
+        if parts:
+            return sum(_count_syllables(p, lang) for p in parts)
+        return 1
     if lang == "en":
+        if w in _ENGLISH_EXCEPTIONS:
+            return _ENGLISH_EXCEPTIONS[w]
         groups = 0
         in_group = False
         for ch in w:
@@ -4280,13 +4694,30 @@ def _count_syllables(word: str, lang: str = "id") -> int:
             return 1
         if w.endswith("e") and groups > 1:
             groups -= 1
+        if len(w) >= 3 and w.endswith("le") and w[-3] not in _VOWELS and w[-3] != "y":
+            groups += 1
         return max(1, groups)
-    vowels = sum(1 for ch in w if ch in _VOWELS)
+    root, affixes, split = _strip_id_affixes(w)
+    skip = _SYLLABLE_EXCEPTIONS.get(root, ())
+    vowels = sum(1 for ch in root if ch in _VOWELS)
     if vowels == 0:
-        return 1
-    skip = _SYLLABLE_EXCEPTIONS.get(w, ())
-    diphthongs = sum(w.count(d) for d in _DIPHTHONGS if d not in skip)
-    return max(1, vowels - diphthongs)
+        return max(1, affixes + 1)
+    pairs = 0
+    for d in _VOWEL_PAIRS_SINGLE:
+        if d in skip:
+            continue
+        n = root.count(d)
+        if d == "eu" and n > 1:
+            # "eu" is rare (Acehnese/Sundanese loans); the
+            # verified words with two "eu" (peuyeum, eureun)
+            # have exactly one true monophthong, so the
+            # subtraction is capped at 1 per word.
+            n = 1
+        pairs += n
+    count = vowels - pairs
+    if split:
+        count += 1
+    return max(1, count + affixes)
 
 
 def readability_score(text: str, lang: str = "id") -> dict:
@@ -4309,10 +4740,14 @@ def readability_score(text: str, lang: str = "id") -> dict:
     a perfect 100). No minimum word count:
     the formulas are pure arithmetic, so even one sentence scores.
     Every result carries the honesty note (see _READABILITY_NOTE).
+    Raises ValueError for an unsupported lang: only "id" and "en"
+    are supported — an unknown lang used to fall back to "id"
+    silently, which hid caller bugs (audit #5, N-10).
     """
     if not text or not text.strip():
         raise ValueError("teks kosong")
-    lang = lang if lang in ("id", "en") else "id"
+    if lang not in ("id", "en"):
+        raise ValueError("lang harus 'id' atau 'en'")
     words = text.split()
     if not any(any(ch.isalpha() for ch in w) for w in words):
         # Punctuation and digits alone are not a text: without this
@@ -4650,7 +5085,44 @@ def save_analysis(text: str, result: dict,
     characters, then re-stripped), and the stored hash is the
     SHA-256 of exactly those stored bytes — never a re-canonicalised
     hash — so sha256(stored_text) == text_hash always holds.
+
+    The result shape is validated first, the same way references
+    are: a missing 'quality_score' or 'style'/'style_score', or a
+    mistyped container (jargon, citations, doi_verification,
+    suggestions), raises ValueError before anything is written —
+    never a bare KeyError/AttributeError from the INSERT below.
     """
+    if not isinstance(result, dict):
+        raise ValueError(
+            "hasil analisis tidak valid: harus berupa objek")
+    if "quality_score" not in result:
+        raise ValueError(
+            "hasil analisis tidak lengkap: 'quality_score' tidak ada")
+    style = result.get("style")
+    if not isinstance(style, dict) or "style_score" not in style:
+        raise ValueError(
+            "hasil analisis tidak lengkap: 'style.style_score' "
+            "tidak ada")
+    if "jargon" in result and result["jargon"] is not None \
+            and not isinstance(result["jargon"], list):
+        raise ValueError(
+            "hasil analisis tidak valid: 'jargon' harus berupa daftar")
+    if "citations" in result and result["citations"] is not None \
+            and not isinstance(result["citations"], dict):
+        raise ValueError(
+            "hasil analisis tidak valid: 'citations' harus berupa "
+            "objek")
+    if "doi_verification" in result \
+            and result["doi_verification"] is not None \
+            and not isinstance(result["doi_verification"], dict):
+        raise ValueError(
+            "hasil analisis tidak valid: 'doi_verification' harus "
+            "berupa objek")
+    if "suggestions" in result \
+            and not isinstance(result["suggestions"], dict):
+        raise ValueError(
+            "hasil analisis tidak valid: 'suggestions' harus berupa "
+            "objek")
     text = _canonical_text(text)
     if references is not None:
         # Shape first (a non-dict reference is a ValueError, never
@@ -7358,7 +7830,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       h += '<div class="card"><h2>' + (lang === "en" ? "Readability" : "Keterbacaan") + '</h2><p>'
         + 'Flesch Reading Ease ' + num(r.flesch_reading_ease, 100).toFixed(1) + '/100 — ' + esc(r.band)
         + '<br>Flesch-Kincaid Grade Level ' + num(r.flesch_kincaid_grade)
-        + '<br>' + (lang === "en" ? "Average " : "Rata-rata ") + num(r.avg_words_per_sentence) + (lang === "en" ? " words/sentence, " : " kata/kalimat, ") + num(r.avg_syllables_per_word, 100) + (lang === "en" ? " syllables/word" : " suku kata/kata")
+        + '<br>' + (lang === "en" ? "Average " : "Rata-rata ") + num(r.avg_words_per_sentence) + (lang === "en" ? " words/sentence, " : " kata/kalimat, ") + num(r.avg_syllables_per_word) + (lang === "en" ? " syllables/word" : " suku kata/kata")
         + ' (' + num(r.words) + (lang === "en" ? " words, " : " kata, ") + num(r.sentences) + (lang === "en" ? " sentences, " : " kalimat, ") + num(r.total_syllables) + (lang === "en" ? " syllables)" : " suku kata)")
         + '</p><p>' + esc(r.note) + '</p></div>';
     }
@@ -7416,8 +7888,12 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
     }
     if (res.duplicates) {
       var d = res.duplicates;
+      // Audit #5 B-1: when the work budget ran out the list below
+      // is only partial — say so in the card, in both branches, so
+      // a short or empty list is never mistaken for a complete check.
+      var truncWarn = d.truncated ? '<p><strong>\u26a0\ufe0f Peringatan: pemeriksaan berhenti setelah ' + num(d.comparisons_spent, 0) + ' perbandingan (batas 2000) \u2014 hasil mungkin tidak lengkap; sebagian kalimat belum dibandingkan.</strong></p>' : '';
       if (d.duplicates.length) {
-        h += '<div class="card"><h2>Duplikasi <span class="meta">' + d.duplicates.length + ' kalimat berulang</span></h2><ul>';
+        h += '<div class="card"><h2>Duplikasi <span class="meta">' + d.duplicates.length + ' kalimat berulang</span></h2>' + truncWarn + '<ul>';
         d.duplicates.forEach(function (x) {
           h += "<li>" + esc(x.sentence) + '<br><span class="meta">'
             + Math.round(num(x.similarity, 1) * 100) + "% mirip &ldquo;" + esc(x.match)
@@ -7425,7 +7901,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
         });
         h += "</ul></div>";
       } else {
-        h += '<div class="card"><h2>Duplikasi</h2><p>Tidak ada kalimat yang berulang dengan pustaka.</p></div>';
+        h += '<div class="card"><h2>Duplikasi</h2>' + truncWarn + '<p>Tidak ada kalimat yang berulang dengan pustaka.</p></div>';
       }
     }
     if (res.recommendations && res.recommendations.length) {
@@ -7742,7 +8218,8 @@ def _load_ui_references(payload: dict) -> dict | None:
     if payload.get("refs_json"):
         try:
             refs = json.loads(payload["refs_json"])
-        except (json.JSONDecodeError, TypeError) as e:
+        except (json.JSONDecodeError, TypeError,
+                RecursionError) as e:
             raise ValueError(f"bibliografi JSON tidak valid: {e}")
         return _validate_references(refs)
     if payload.get("refs", "sample") == "none":
@@ -7769,10 +8246,33 @@ def _read_body(handler, max_body: int, drain_cap: int,
     the rest of the body unread and desync keep-alive. Identical
     duplicates are harmless and accepted.
 
+    A Transfer-Encoding header is a 400, never silently ignored:
+    chunked framing is not decoded here, so trusting the
+    Content-Length next to it (or reading zero bytes when there is
+    none) would leave the chunked body unread and desync
+    keep-alive. The connection is closed for the same reason: the
+    unread body must not be parsed as a new request.
+
     Whenever the length cannot be trusted (invalid or conflicting),
     the body cannot be drained, so the connection is closed instead
-    of leaving unread bytes to be parsed as a new request."""
+    of leaving unread bytes to be parsed as a new request.
+
+    Accepted behaviour (audit #5, N-13): bytes a client sends
+    BEYOND Content-Length are that client's framing error, and the
+    stdlib parses them as the start of a pipelined next request
+    (e.g. a 501 for a garbage method). Only that offending
+    connection is affected — no other client sees it — and a
+    well-behaved client (browser, fetch) never sends them, so this
+    is documented, not fixed."""
     get_all = getattr(handler.headers, "get_all", None)
+    if get_all is not None:
+        raw_te = get_all("Transfer-Encoding") or []
+    else:  # plain-dict headers (unit-test fakes): at most one value
+        single = handler.headers.get("Transfer-Encoding")
+        raw_te = [] if single is None else [single]
+    if raw_te:
+        handler.close_connection = True
+        raise ValueError("Transfer-Encoding tidak didukung")
     if get_all is not None:
         raw_lengths = get_all("Content-Length") or []
     else:  # plain-dict headers (unit-test fakes): at most one value
@@ -7808,7 +8308,8 @@ def _read_json_body(handler) -> dict:
     raw = _read_body(handler, _MAX_BODY, _DRAIN_CAP, "1 MB") or b"{}"
     try:
         body = json.loads(raw.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError):
+    except (json.JSONDecodeError, UnicodeDecodeError,
+            RecursionError):
         raise ValueError("badan permintaan harus JSON yang valid")
     if not isinstance(body, dict):
         raise ValueError("badan permintaan harus berupa objek JSON")
@@ -7972,20 +8473,32 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         # HTTP/0.9 requests, whose responses carry no headers at
         # all under the stdlib — closing is the safe alternative
         # to sending a header-less response on a live connection.
+        # Accepted stdlib behaviours, documented not fixed
+        # (audit #5, N-14/N-15): a blank line before the request
+        # line closes the connection with no response at all
+        # (RFC 7230 §3.5 says a server SHOULD ignore one empty
+        # line; http.server does not), and HTTP/0.9-style and 505
+        # responses carry no headers on Python <=3.12 — the stdlib
+        # skips them there, while 3.13 sends the full response.
+        # Neither leaks data to another client; the connection
+        # close above is what keeps it safe.
         self.close_connection = True
         safe = (message or "").replace("\r", " ").replace("\n", " ")
         body = ("<!DOCTYPE HTML><html><head><title>%d</title></head>"
                 "<body><h1>%d</h1></body></html>"
                 % (code, code)).encode("utf-8")
         self.send_response(code, safe or None)
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.send_header("Content-Type", "text/html;charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self._security_headers()
         self.end_headers()
-        try:
-            self.wfile.write(body)
-        except (BrokenPipeError, ConnectionResetError):
-            pass
+        if self.command != "HEAD":
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def version_string(self):
         # No "BaseHTTP/0.6 Python/3.12.3": the Server header must

@@ -12,8 +12,9 @@
 - N-10: Indonesian alias 'diskusi kelompok terfokus' for
   'focus group discussion'.
 - N-11: _validate_references accepts a tuple for 'authors'.
-- N-12: _ris_pages / _bibtex_pages keep only the first range of
-  '189–194, 200'.
+- N-12: _ris_pages keeps only the first range of
+  '189–194, 200' (audit #5, N-5, changed _bibtex_pages to keep the
+  full value instead).
 - N-13: 'uji reliabilitas' says Cronbach's alpha can be negative.
 - N-14: humanize --apply --text ends stdout with a newline, and
   --apply on a file writes no .humanized file when 0 suggestions
@@ -182,7 +183,9 @@ class TestValidateReferencesTuple(unittest.TestCase):
 
 
 class TestPagesFirstRangeOnly(unittest.TestCase):
-    """N-12: odd multi-page ranges keep only the first range."""
+    """N-12 (audit #4): RIS keeps only the first range of an odd
+    multi-page range. BibTeX changed in audit #5 (N-5): it keeps the
+    full value, because a BibTeX pages field can hold a list."""
 
     def test_ris_pages_drops_trailing_page(self):
         self.assertEqual(_ris_pages("189–194, 200"), ("189", "194"))
@@ -190,9 +193,9 @@ class TestPagesFirstRangeOnly(unittest.TestCase):
         self.assertEqual(_ris_pages("189–194"), ("189", "194"))
         self.assertEqual(_ris_pages("189"), ("189", ""))
 
-    def test_bibtex_pages_drops_trailing_page(self):
-        self.assertEqual(_bibtex_pages("189–194, 200"), "189--194")
-        self.assertEqual(_bibtex_pages("189-194, 200"), "189--194")
+    def test_bibtex_pages_keeps_full_value(self):
+        self.assertEqual(_bibtex_pages("189–194, 200"), "189--194, 200")
+        self.assertEqual(_bibtex_pages("189-194, 200"), "189--194, 200")
         self.assertEqual(_bibtex_pages("189–194"), "189--194")
 
 

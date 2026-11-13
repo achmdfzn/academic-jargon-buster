@@ -222,11 +222,16 @@ class TestSplitSentences(unittest.TestCase):
             tools._split_sentences(
                 "Dr. Budi datang ke kampus. Ia membawa buku."),
             ["Dr. Budi datang ke kampus", "Ia membawa buku"])
+        # Audit #5 H-6: "dst." before the lowercase "dan" is still
+        # protected, but "dll." before the capitalised "No." now
+        # ends its sentence — so this text is three sentences, not
+        # two as it was under the old unconditional protection.
         self.assertEqual(
-            len(tools._split_sentences(
+            tools._split_sentences(
                 "Prof. Sari dan Drs. Andi membahas dst. dan dll. "
-                "No. 5 sudah dibaca kemarin. Hasilnya bagus.")),
-            2)
+                "No. 5 sudah dibaca kemarin. Hasilnya bagus."),
+            ["Prof. Sari dan Drs. Andi membahas dst. dan dll",
+             "No. 5 sudah dibaca kemarin", "Hasilnya bagus"])
 
     def test_closing_quote_belongs_to_its_sentence(self):
         self.assertEqual(

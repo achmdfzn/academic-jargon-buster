@@ -327,6 +327,7 @@ class TestFindDuplicatesPerformance(unittest.TestCase):
                     norm = _normalize_sentence(sent)
                     corpus.append((norm, sent, set(norm.split()), run))
             duplicates = []
+            spent = 0
             for i, (sent, norm, w) in enumerate(
                     zip(sentences, normalized, word_sets)):
                 best = None
@@ -334,6 +335,7 @@ class TestFindDuplicatesPerformance(unittest.TestCase):
                     if not _overlap_gate(w, cw):
                         continue
                     sim = _sentence_similarity(norm, cn)
+                    spent += 1
                     if sim >= threshold and (best is None
                                              or sim > best[0]):
                         best = (sim, cs, run)
@@ -341,6 +343,7 @@ class TestFindDuplicatesPerformance(unittest.TestCase):
                     if not _overlap_gate(w, word_sets[j]):
                         continue
                     sim = _sentence_similarity(norm, normalized[j])
+                    spent += 1
                     if sim >= threshold and (best is None
                                              or sim > best[0]):
                         best = (sim, sentences[j], None)
@@ -356,7 +359,8 @@ class TestFindDuplicatesPerformance(unittest.TestCase):
                                         if run else None),
                     })
             return {"duplicates": duplicates, "count": len(duplicates),
-                    "checked": len(past_runs)}
+                    "checked": len(past_runs), "truncated": False,
+                    "comparisons_spent": spent}
 
         for seed in (1, 2, 3):
             rng = random.Random(seed)

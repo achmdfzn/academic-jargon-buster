@@ -1,7 +1,7 @@
 ---
 name: citation-weaver
 description: "Weave citations into narrative text automatically."
-version: 1.5.4
+version: 1.5.5
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -87,7 +87,7 @@ python3 academic_tools.py cite --refs my-refs.json --export-bibtex --out my-refs
 # or print to stdout: omit --out
 ```
 
-Entry types follow the stored `type`: `article` → `@article`, `book` → `@book`, `conference` → `@inproceedings`, `chapter` → `@incollection`, anything else → `@misc`. Raw Crossref types are normalised first (`journal-article` → `article`, `book-chapter` → `chapter`, `proceedings-article` → `conference`); anything else unrecognised still becomes `@misc`. arXiv IDs become `eprint` + `archivePrefix`. Chapter page ranges split out of the venue into `pages = {189--194}` — en/em dashes in a page range are normalised to `--` first, so `189–194` also becomes `189--194`. LaTeX special characters (`& % $ # _ { } ~ ^ \`) are escaped in every string field — including DOI, URL, eprint, volume, issue, and year. A lone author string is exported as one author; a non-list/non-tuple `authors`, or a list/tuple holding a non-string, is a plain `ValueError` instead of a broken record. Keys are sanitised (braces, commas, and whitespace become `-`). `--export-bibtex` and `--export-ris` together are rejected (exit 2). Only fields actually present are exported — a missing title simply means no title field, never an invented one. A sample export of the bundled bibliography lives in `demos/citation-weaver/references.bib`.
+Entry types follow the stored `type`: `article` → `@article`, `book` → `@book`, `conference` → `@inproceedings`, `chapter` → `@incollection`, anything else → `@misc`. Raw Crossref types are normalised first (`journal-article` → `article`, `book-chapter` → `chapter`, `proceedings-article` → `conference`); anything else unrecognised still becomes `@misc`. arXiv IDs become `eprint` + `archivePrefix`. Chapter page ranges split out of the venue into `pages = {189--194, 200}` — the full value is kept, because a BibTeX pages field can hold a list; en/em dashes in a page range are normalised to `--` first, so `189–194, 200` becomes `189--194, 200`. RIS keeps only the first range (`SP 189` / `EP 194`) because it has a single SP and a single EP line. LaTeX special characters (`& % $ # _ { } ~ ^ \`) are escaped in every string field — including DOI, URL, eprint, volume, issue, and year. A lone author string is exported as one author; a non-list/non-tuple `authors`, or a list/tuple holding a non-string, is a plain `ValueError` instead of a broken record. Keys are sanitised (braces, commas, and whitespace become `-`). `--export-bibtex` and `--export-ris` together are rejected (exit 2). Only fields actually present are exported — a missing title simply means no title field, never an invented one. A sample export of the bundled bibliography lives in `demos/citation-weaver/references.bib`.
 
 ## RIS export (v1.5.0)
 
@@ -109,6 +109,6 @@ Before a manuscript is submitted, audit its citations against the bibliography:
 python3 academic_tools.py cite --refs my-refs.json --audit naskah.txt --check-links
 ```
 
-The report lists every `[cite:key]` / `\cite{key}` with no bibliography entry (the reader can never check it), every bibliography entry never cited, and — with `--check-links` — every cited DOI / arXiv / URL that no longer resolves (plain HEAD request). A link that cannot be reached is reported as unreachable, never faked as alive. Exit code is 1 when a citation is missing or a link is dead, 0 when clean — so it fits in a pre-submission checklist or a CI step.
+The report lists every `[cite:key]` / `\cite{key}` with no bibliography entry (the reader can never check it), every bibliography entry never cited, and — with `--check-links` — every cited DOI / arXiv / URL that no longer resolves (plain HEAD request). A link that cannot be reached is reported as unreachable, never faked as alive. Exit code is 1 when a citation is missing or a link is dead, 0 when clean — so it fits in a pre-submission checklist or a CI step. Author-year citations are detected too: `(Field, 2018)` and `Field (2018)` mark the entry cited (reported under `author_year` in the JSON result) — but name + year alone cannot prove which entry a name refers to when two entries share a surname and year, so author-year style is flagged as not fully audited; `[cite:key]` remains the exact form. A reference with no authors renders with the title first (`Judul Saja. (n.d.).` in APA) instead of crashing, and a lone author string is treated as one author, never letter by letter.
 - **Keys are automatic** (first author family name + year, e.g. `lecun2015`) and get a letter suffix on collision (`lecun2015a`). Use `--key` to pick your own.
 - In the interactive menu, Citation Weaver option 4 looks a reference up and offers to save it to a bibliography file of your choice; option 7 verifies every DOI in a bibliography.

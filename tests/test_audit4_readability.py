@@ -102,19 +102,24 @@ class TestCountSyllablesAudit4(unittest.TestCase):
         "perbaikan": 4, "keindahan": 4,
     }
 
-    # Derivatives registered explicitly in _SYLLABLE_EXCEPTIONS.
+    # Derivatives of the hiatus roots, derived by affix stripping
+    # (not listed anywhere): "capai" is a real diphthong (ca-pai),
+    # so it and its prefix forms count 2/3 — only the suffixed
+    # forms split ("capaian" 4, "pencapaian" 5). Audit #5, H-2.
     DERIVATIVES_ID = {
         "memainkan": 4, "permainan": 4, "pemain": 3, "mainan": 3,
-        "capai": 3, "mencapai": 4, "tercapai": 4, "pencapaian": 5,
+        "capai": 2, "mencapai": 3, "tercapai": 3, "pencapaian": 5,
         "perbaiki": 4, "memperbaiki": 5, "terperbaiki": 5,
         "ataupun": 4, "kalaupun": 4, "bagaimanapun": 5,
         "daun": 2, "dedaunan": 4, "air": 2, "berair": 3,
     }
 
-    # Words that must NOT change: real diphthongs, and "domain",
-    # which merely contains "main" as a substring.
+    # Words that must NOT change: real diphthongs. "baik" and "kau"
+    # used to be listed here at 1 — audit #5, H-2 proved them
+    # hiatus (ba·ik, ka·u = 2) and they moved to
+    # tests/test_audit5_syllables.py as regressions.
     UNCHANGED_ID = {
-        "survei": 2, "baik": 1, "atau": 2, "boikot": 2, "kau": 1,
+        "survei": 2, "atau": 2, "boikot": 2,
         "mau": 1, "pulau": 2, "danau": 2, "sungai": 2, "pantai": 2,
         "pandai": 2, "geiser": 2, "domain": 2,
     }

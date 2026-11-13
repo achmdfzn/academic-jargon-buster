@@ -339,7 +339,8 @@ class TestDuplicatesReadOnlyAndValidation(unittest.TestCase):
             db = os.path.join(d, "sub", "library.db")
             result = find_duplicates(PAST_TEXT, db=db)
             self.assertEqual(result, {"duplicates": [], "count": 0,
-                                      "checked": 0})
+                                      "checked": 0, "truncated": False,
+                                      "comparisons_spent": 0})
             self.assertFalse(os.path.exists(db))
             self.assertFalse(os.path.exists(os.path.dirname(db)))
 

@@ -42,7 +42,7 @@ class TestCountSyllables(unittest.TestCase):
         # Every example from the spec, including the documented limits.
         cases = {
             "penelitian": 5, "mahasiswa": 4, "kuesioner": 5,
-            "baik": 1, "atau": 2, "boikot": 2, "dia": 2, "biaya": 3,
+            "baik": 2, "atau": 2, "boikot": 2, "dia": 2, "biaya": 3,
             "buah": 2, "keindahan": 4, "sistem": 2, "informasi": 4,
             "di": 1, "yang": 1,
         }
@@ -53,8 +53,9 @@ class TestCountSyllables(unittest.TestCase):
     def test_ei_is_a_diphthong(self):
         # EYD edisi V has FOUR diphthongs, ai/au/ei/oi: "survei" is
         # 2 (sur-vei), not 3. "keindahan" stays 4 (ke-in-dah-an):
-        # its "ei" straddles a morpheme boundary, so it is covered
-        # by the whole-word exception list, not by the diphthong.
+        # its "ei" straddles a morpheme boundary (ke- + indah + -an),
+        # so affix stripping separates it before counting — the
+        # pair is never subtracted, because it was never one syllable.
         self.assertEqual(tools._count_syllables("survei"), 2)
         self.assertEqual(tools._count_syllables("keindahan"), 4)
 

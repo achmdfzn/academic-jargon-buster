@@ -26,10 +26,23 @@ REFS = tools.load_references(
 class TestAcademicTools(unittest.TestCase):
     def test_one_file_holds_everything(self):
         self.assertRegex(tools.__version__, r"^\d+\.\d+\.\d+$")
-        self.assertEqual(len(tools.DICTIONARY), 73)
-        self.assertEqual(len(tools.STYLES), 6)
-        self.assertEqual(len(tools.DISCIPLINES), 21)
-        self.assertEqual(len(tools.PROMPTS), 18)
+        # Counts are derived from the data, never hard-coded literals:
+        # adding a dictionary term, style, discipline, or prompt must
+        # not turn this test red (this is what CHANGELOG v1.27.2 claims).
+        self.assertGreater(len(tools.DICTIONARY), 0)
+        for term, (explanation, field, source) in tools.DICTIONARY.items():
+            self.assertTrue(explanation, f"{term}: empty explanation")
+            self.assertTrue(field, f"{term}: empty field")
+            self.assertTrue(source, f"{term}: empty source")
+        self.assertEqual(
+            sorted(tools.STYLES),
+            ["apa", "chicago", "harvard", "ieee", "mla", "vancouver"])
+        self.assertEqual(len(tools.DISCIPLINES),
+                         len({d["id"] for d in tools.DISCIPLINES}))
+        for d in tools.DISCIPLINES:
+            self.assertIn(d["style"], tools.STYLES)
+        self.assertEqual(len(tools.PROMPTS),
+                         len({p["id"] for p in tools.PROMPTS}))
         for name in ("find_terms", "weave", "fill_prompt", "lookup_reference",
                      "fetch_reference_by_doi", "search_reference_by_title",
                      "save_reference", "CLI",

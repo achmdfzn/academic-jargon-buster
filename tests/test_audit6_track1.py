@@ -28,6 +28,7 @@ external network is used. Raw-socket and Node-render helpers mirror
 tests/test_audit5_server.py and tests/test_audit4_readability.py.
 """
 
+import http.client
 import io
 import json
 import os
@@ -373,11 +374,16 @@ class TestSendJsonConnectionClose(_ServerCase):
     def test_oversize_content_length_413_carries_connection_close(self):
         # 3.000.000 > the 2 MB drain cap: the connection is closed
         # instead of drained, and the 413 must say so.
+        # The 413 reason phrase is stdlib-version-dependent:
+        # "Request Entity Too Large" (<= Python 3.12) vs
+        # "Content Too Large" (Python 3.13+, RFC 9110) — the server
+        # renders http.client.responses[413], so the test does too
+        # instead of pinning one spelling.
         self._assert_closes(
             b"POST /api/analyze HTTP/1.1\r\nHost: x\r\n"
             b"Content-Type: application/json\r\n"
             b"Content-Length: 3000000\r\n\r\n",
-            "HTTP/1.1 413 Request Entity Too Large")
+            "HTTP/1.1 413 " + http.client.responses[413])
 
     def test_plain_bad_json_400_keeps_keep_alive(self):
         # Control: an ordinary 400 (invalid JSON, length trusted)

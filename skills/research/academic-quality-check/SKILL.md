@@ -1,7 +1,7 @@
 ---
 name: academic-quality-check
 description: "One-pass quality check, style rewrite suggestions, a local library, and a web UI for student writing."
-version: 1.2.14
+version: 1.2.15
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]

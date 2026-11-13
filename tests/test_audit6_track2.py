@@ -22,6 +22,9 @@ the audit's:
 - "raib" (T-6, suspected 2) has NO entry on kbbi.web.id at
   all, so it was NOT added and is deliberately NOT pinned
   here — an unverified count must not be frozen into a test.
+  (Correction, audit #7 H-4: the entry DOES exist — ra·ib
+  (2), "hilang; gaib" — and "raib" was added + pinned in
+  v1.27.5. See TestT6VerifiedAudit6 in this file.)
 
 Verified and added (H-3): kail, bait, paut, taut, laik, lauk,
 kaut, gaun, aum, syair, mozaik, protein, kasein. Verified and
@@ -196,11 +199,14 @@ class TestT6VerifiedAudit6(unittest.TestCase):
     """T-6: the suspected words that KBBI verified. "kais" is
     ka·is (2), "deisme" de·is·me (3), "teisme" te·is·me (3).
     "geiser" is gei·ser (2) — the suspicion of 3 was wrong and
-    the code was already right. "raib" has no kbbi.web.id entry
-    at all: NOT added, NOT pinned (see module docstring)."""
+    the code was already right. "raib" was NOT added in v1.27.4
+    (no kbbi.web.id entry was found then); audit #7 H-4 proved
+    the entry DOES exist — ra·ib (2), "hilang; gaib" — so it
+    was added + pinned in v1.27.5."""
 
     WORDS = {
         "kais": 2, "deisme": 3, "teisme": 3, "geiser": 2,
+        "raib": 2,
     }
 
     def test_verified(self):

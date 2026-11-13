@@ -118,14 +118,14 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.27.4"
+__version__ = "1.27.5"
 JARGON_VERSION = "1.0.9"
-CITATION_VERSION = "1.5.6"
+CITATION_VERSION = "1.5.7"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.14"
+QUALITY_VERSION = "1.2.15"
 DETECTOR_VERSION = "1.0.3"
-READABILITY_VERSION = "1.0.3"
-CLI_VERSION = "1.18.3"
+READABILITY_VERSION = "1.0.4"
+CLI_VERSION = "1.18.4"
 
 # ======================================================================
 # Jargon Buster
@@ -990,6 +990,13 @@ def load_references(path: str):
             data = json.load(f)
     except FileNotFoundError:
         raise ValueError(f"File tidak ditemukan: {path}") from None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        # Audit #7 H-3: JSONDecodeError is a ValueError, so a
+        # malformed file used to surface the raw decoder message
+        # ("Expecting property name ... (char 1)") to the caller.
+        # Same for a file that is not valid UTF-8. Both are the
+        # same plain message now.
+        raise ValueError("bibliografi JSON tidak valid") from None
     return _validate_references(data)
 
 
@@ -1848,7 +1855,9 @@ def _author_year_keys(text: str, references: dict) -> list:
     narrative "Field (2018)" / "Menurut Field (2018)". A parenthetical
     group may hold several citations — "(Field, 2018; Creswell,
     2018)" and "(Field, 2018, Creswell, 2018)" both credit every
-    unit inside the group.
+    unit inside the group — and a unit may carry a short intro word
+    after the separator ("(Field, 2018; lihat juga Creswell, 2018)";
+    the list is fixed: lihat juga, bandingkan, cf., lihat).
 
     Only the first author's family name and the year are matched, so
     this is NOT a full audit: it cannot tell which of two entries by
@@ -1880,8 +1889,20 @@ def _author_year_keys(text: str, references: dict) -> list:
         # all; the trailing separator (instead of ')') is also what
         # keeps "(Field, 2019)" from matching a 2018 entry and a
         # bare "Field, 2018" outside parens from being claimed.
+        # An intro word may follow the separator before the next
+        # family name ("(Field, 2018; lihat juga Creswell, 2018)"
+        # — audit #7 N-1). The list is deliberately short and
+        # "lihat juga" comes first, so "lihat" cannot claim the
+        # "lihat" of "lihat juga" and leave "juga" unmatched:
+        # any word here is skipped, so a long list would invite
+        # false positives. The intro is allowed ONLY after ';'
+        # or ',' — NOT at the start of a group: audit #6 pins
+        # "(lihat Field, 2018)" as NOT a citation, and that
+        # negative still stands.
+        intro = r"(?:lihat juga|bandingkan|cf\.?|lihat)\s+"
         unit = re.compile(
-            r"(?:^|[;,])\s*" + fam + r"(?:\s+et al\.?)?\s*,?\s*" + yr
+            r"(?:^|[;,]\s*(?:" + intro + r")?)\s*" + fam
+            + r"(?:\s+et al\.?)?\s*,?\s*" + yr
             + r"\s*(?:[;,]|$)")
         narrative = re.compile(
             r"\b" + fam + r"(?:\s+et al\.?)?\s*\(\s*" + yr + r"\s*\)")
@@ -2180,6 +2201,57 @@ _INITIAL_RE = re.compile(r"\b[A-Z]\.(?=\s+[A-Z])")
 _TERMINATOR_RE = re.compile(r"[.!?]+(['\"”’)]*)(?=\s|$)")
 
 
+def _protect_abbreviations(text: str) -> str:
+    """Hide abbreviation periods so terminator scans skip them.
+
+    Every "." inside a protected abbreviation is replaced by the
+    single placeholder char, so the returned string has EXACTLY the
+    same length as the input — offsets into the protected string
+    are offsets into the original. Shared by _split_sentences and
+    _sentence_spans (audit #7 H-5: the old _sentence_spans used a
+    naive terminator regex and cut "Dr. Budi ..." into "Dr." +
+    "Budi ...", so humanize previews lost the title).
+    """
+    protected = text
+    # The chained degree first: _ABBREV_RE below would hide the
+    # period of "Dr.", after which the phrase no longer matches.
+    protected = _CHAINED_DEGREE_RE.sub(
+        lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
+    protected = _ABBREV_RE.sub(
+        lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
+
+    def _protect_list_abbrev(m):
+        # A list abbreviation is protected only when the next word
+        # starts lowercase (audit #5 H-6); a capitalised next word
+        # or the end of the text leaves the period as a terminator.
+        # `protected` here is still the pre-substitution string,
+        # since the assignment happens after sub() returns.
+        after = protected[m.end():].lstrip()
+        if after and after[0].islower():
+            return m.group(0).replace(".", _ABBREV_PLACEHOLDER)
+        return m.group(0)
+
+    protected = _LIST_ABBREV_RE.sub(_protect_list_abbrev, protected)
+
+    def _protect_date_abbrev(m):
+        # A date abbreviation is protected only when the next token
+        # is a digit (the year/day that normally follows: "12 Jan.
+        # 2020", "Tgl. 12") or a lowercase word ("Jan. lalu");
+        # a capitalised next word means the date closed the
+        # sentence (audit #6 H-8). Same closure caveat as above.
+        after = protected[m.end():].lstrip()
+        if after and (after[0].isdigit() or after[0].islower()):
+            return m.group(0).replace(".", _ABBREV_PLACEHOLDER)
+        return m.group(0)
+
+    protected = _DATE_ABBREV_RE.sub(_protect_date_abbrev, protected)
+    protected = _DEGREE_RE.sub(
+        lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
+    protected = _INITIAL_RE.sub(
+        lambda m: m.group(0)[:-1] + _ABBREV_PLACEHOLDER, protected)
+    return protected
+
+
 def _split_sentences(text: str) -> list[str]:
     """Sentences as strings; splits on . ! ? followed by space/end.
 
@@ -2222,43 +2294,7 @@ def _split_sentences(text: str) -> list[str]:
     titles and addresses are never sentence-final in real text,
     so the protection is worth the trade-off.
     """
-    protected = text.strip()
-    # The chained degree first: _ABBREV_RE below would hide the
-    # period of "Dr.", after which the phrase no longer matches.
-    protected = _CHAINED_DEGREE_RE.sub(
-        lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
-    protected = _ABBREV_RE.sub(
-        lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
-
-    def _protect_list_abbrev(m):
-        # A list abbreviation is protected only when the next word
-        # starts lowercase (audit #5 H-6); a capitalised next word
-        # or the end of the text leaves the period as a terminator.
-        # `protected` here is still the pre-substitution string,
-        # since the assignment happens after sub() returns.
-        after = protected[m.end():].lstrip()
-        if after and after[0].islower():
-            return m.group(0).replace(".", _ABBREV_PLACEHOLDER)
-        return m.group(0)
-
-    protected = _LIST_ABBREV_RE.sub(_protect_list_abbrev, protected)
-
-    def _protect_date_abbrev(m):
-        # A date abbreviation is protected only when the next token
-        # is a digit (the year/day that normally follows: "12 Jan.
-        # 2020", "Tgl. 12") or a lowercase word ("Jan. lalu");
-        # a capitalised next word means the date closed the
-        # sentence (audit #6 H-8). Same closure caveat as above.
-        after = protected[m.end():].lstrip()
-        if after and (after[0].isdigit() or after[0].islower()):
-            return m.group(0).replace(".", _ABBREV_PLACEHOLDER)
-        return m.group(0)
-
-    protected = _DATE_ABBREV_RE.sub(_protect_date_abbrev, protected)
-    protected = _DEGREE_RE.sub(
-        lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
-    protected = _INITIAL_RE.sub(
-        lambda m: m.group(0)[:-1] + _ABBREV_PLACEHOLDER, protected)
+    protected = _protect_abbreviations(text.strip())
     # Scan for sentence ends instead of splitting: a closing quote
     # (or parenthesis) after the terminator belongs to the sentence
     # that just ended, so it must be kept, not consumed as a
@@ -2435,18 +2471,49 @@ _SAFE_TRAILING_PREPS = ("terhadap", "atas", "antara", "sebesar", "kepada")
 
 
 def _sentence_spans(text: str) -> list[tuple[int, int, str]]:
-    """(start, end, sentence) for each sentence in the text."""
+    """(start, end, sentence) for each sentence in the text.
+
+    Abbreviation-aware (audit #7 H-5): the periods inside
+    abbreviations are hidden first — via _protect_abbreviations,
+    which is length-preserving, so offsets into the protected
+    string are offsets into the original — and the same
+    _TERMINATOR_RE + lowercase-after-closers rule (audit #6 H-9)
+    as _split_sentences decides the boundaries. The old version
+    used a naive `[.!?]+(?:\\s+|$)` regex, so "Dr. Budi ..." was
+    cut into "Dr." + "Budi ..." and humanize previews (context
+    and fixed, used by the CLI and the web UI) lost the title.
+
+    Each span's start is the first non-space char of the sentence
+    and end is just past its terminator, so a suggestion offset
+    inside the sentence lines up exactly with the returned
+    (stripped) sentence string — that is what _fixed_sentence
+    relies on.
+    """
+    protected = _protect_abbreviations(text)
     spans = []
     start = 0
-    for m in re.finditer(r"[.!?]+(?:\s+|$)", text):
+    for m in _TERMINATOR_RE.finditer(protected):
+        if m.group(1):
+            # Terminator + closing quote/paren (audit #6 H-9): a
+            # lowercase continuation belongs to the same sentence,
+            # so this match is not a boundary.
+            after = protected[m.end():].lstrip()
+            if after and after[0].islower():
+                continue
         end = m.end()
         sent = text[start:end].strip()
         if sent:
-            spans.append((start, end, sent))
+            s0 = start
+            while s0 < end and text[s0].isspace():
+                s0 += 1
+            spans.append((s0, end, sent))
         start = end
     tail = text[start:].strip()
     if tail:
-        spans.append((start, len(text), tail))
+        s0 = start
+        while s0 < len(text) and text[s0].isspace():
+            s0 += 1
+        spans.append((s0, len(text), tail))
     return spans
 
 
@@ -4603,6 +4670,13 @@ _SYLLABLE_EXCEPTIONS = {
     "kais": ("ai",),
     "syair": ("ai",),
     "mozaik": ("ai",),
+    # "ai" is hiatus in these roots (audit #7 H-4/T-6).
+    # "raib" is ra·ib (2): the v1.27.4 CHANGELOG claim that it
+    # has no KBBI entry was WRONG — the entry exists
+    # (kbbi.web.id index + kbbi.co.id "hilang; gaib").
+    "raib": ("ai",),
+    "pais": ("ai",),   # pa·is (KBBI: pepes)
+    "tais": ("ai",),   # ta·is (KBBI, arkais: kotor)
     # "au" is hiatus in these roots.
     "daun": ("au",),
     "laut": ("au",),
@@ -4624,6 +4698,14 @@ _SYLLABLE_EXCEPTIONS = {
     "gaun": ("au",),
     "aum": ("au",),
     "raup": ("au",),
+    # "au" is hiatus in these roots (audit #7 H-4/T-6).
+    "laun": ("au",),  # la·un (KBBI: lambat; perlahan)
+    "saur": ("au",),  # sa·ur (KBBI, Mk: berbelit)
+    "kaul": ("au",),  # ka·ul (KBBI: janji; nazar)
+    "saut": ("au",),  # sa·ut (KBBI: lihat "akar")
+    "pauk": ("au",),  # pa·uk (KBBI: la·uk-pa·uk; pe·ma·uk)
+    "taul": ("au",),  # ta·ul (KBBI, ark: me·na·ul)
+    "gaut": ("au",),  # ga·ut (KBBI, Mk: dalam frasa "gaut gapai")
     # "ei" is hiatus in these roots (audit #6 H-3/T-6):
     # pro·te·in, ka·se·in, de·is·me, te·is·me — the "ei"
     # straddles two syllables, so it is not the EYD diphthong.
@@ -4660,6 +4742,10 @@ _SYLLABLE_EXCEPTIONS = {
 # ("memoin"/"mengoin" unverified; "poin"/"koin" have no
 # kbbi.web.id entry at all). "aib" is a real root (a·ib, via
 # meng·a·ib·kan), so it lives in _SYLLABLE_EXCEPTIONS, not here.
+# Audit #7 adds "aul", "yaur", "mauk", "naul" (me·nga·ul·kan,
+# me·nya·ur, pe·ma·uk, me·na·ul — all KBBI). NOT added: "mais"
+# (no "memais" in KBBI), "yaut" (no "menyaut"), "nais" (no
+# "menais").
 _NASAL_REMNANTS = {
     # "ai" is hiatus in these remnants.
     "ait": ("ai",),    # kait
@@ -4672,6 +4758,11 @@ _NASAL_REMNANTS = {
     "aut": ("au",),    # kaut
     "aup": ("au",),    # raup
     "naut": ("au",),   # taut
+    # "au" is hiatus in these remnants (audit #7 H-4/T-6).
+    "aul": ("au",),    # kaul (me·nga·ul·kan, KBBI)
+    "yaur": ("au",),   # saur (me·nya·ur, KBBI)
+    "mauk": ("au",),   # pauk (pe·ma·uk, KBBI)
+    "naul": ("au",),   # taul (me·na·ul, KBBI)
 }
 
 # Pairs that count as ONE syllable (EYD V diphthongs ai, au,
@@ -4759,7 +4850,9 @@ _ENGLISH_EXCEPTIONS = {
     # "gue"/"que" is silent ("vague" 1, "antique" 2), except
     # these two, where the "u" is a real vowel: "argue" 2
     # (the "u" is /ju:/) and "segue" 2 (the "ue" is /weI/).
-    "argue": 2, "segue": 2,
+    # "arguing" is 3 (ar-gu-ing): the "-ing" keeps the /u:/
+    # + /I/ split (audit #7 H-7, three syllable dictionaries).
+    "argue": 2, "segue": 2, "arguing": 3,
     # "eu" has no rule: it is one sound word-initially
     # ("eulogy" 3) but two sounds across the re- boundary
     # ("reunion" 3, "reuse" 2, "reunite" 3, "reusable" 4,
@@ -4770,6 +4863,22 @@ _ENGLISH_EXCEPTIONS = {
     # "ia" splits — the -tial rule would give 1 ("partial" 2
     # is one sound, "trial" is two).
     "trial": 2,
+    # Audit #7 H-6/H-8/N-2: pinned irregulars. "chihuahua" is
+    # 3 (Chi-hua-hua; the "ua" rule fires twice without the
+    # pin) and "chihuahuas" likewise. "adobe" is 3 (a-do-be)
+    # and "phoebe" is 2 (phoe-be): the final "e" is pronounced
+    # after vowel + "b". "unscientific" is 5 (un-sci-en-tif-ic).
+    # "interest" 2 / "interested" 3 are the common REDUCED
+    # pronunciations (/ˈɪn.trest/, /ˈɪn.trə.stɪd/ — Cambridge,
+    # Oxford); the full forms (3/4, howmanysyllables) are
+    # variants, like "interesting" 4, which is deliberately
+    # left unpinned for the same reason. NOT pinned: "gruel"
+    # and "nescience" — audit #7's "want 1"/"want 3" were
+    # wrong; the majority of syllable dictionaries give 2 for
+    # both, and the code already counts 2.
+    "chihuahua": 3, "chihuahuas": 3,
+    "adobe": 3, "phoebe": 2, "unscientific": 5,
+    "interest": 2, "interested": 3,
 }
 
 
@@ -4812,13 +4921,14 @@ def _en_hiatus_extra(w: str) -> int:
     ambiguous, so those words live in _ENGLISH_EXCEPTIONS.
     "io" after "n" is one syllable ("opinion", "companion",
     "union", "senior", "junior" — the "io" is /j@/).
-    Known misses (documented, not guessed): "unscientific" 4
-    (want 5 — "un-" + "scientific" keeps /saɪ/ but the rule
-    only trusts a word-initial "sc"), "nescience" 2 (want 3),
-    "gruel" 2 (want 1), "extraordinary" 6 (AmE 5, BrE 6 —
-    dialect, unpinned), "management" 4 (want 3 — no "-ment"
-    rule, it would break "element" 3), "adobe"/"phoebe"
-    (pronounced final "e" after vowel + "b").
+    Known misses (documented, not guessed): "extraordinary" 6
+    (AmE 5, BrE 6 — dialect, unpinned), "management" 4 (want 3
+    — no "-ment" rule, it would break "element" 3). Former
+    misses now pinned in _ENGLISH_EXCEPTIONS (audit #7):
+    "unscientific" 5, "adobe" 3, "phoebe" 2. "nescience" 2
+    and "gruel" 2 were listed here as misses by mistake —
+    the majority of syllable dictionaries give 2 for both,
+    and the code already counts 2, so they are not misses.
     """
     extra = 0
     i = 0
@@ -5427,12 +5537,15 @@ def open_library(db: str | None = None, *,
     created when missing. With `create=False` (read-only callers)
     a missing file raises FileNotFoundError instead of creating
     one — a read must never conjure a library into existence.
-    A corrupt or unreadable file raises ValueError with a plain
-    message instead of leaking a sqlite3 traceback to the user.
-    The message names only the file's basename, never the absolute
-    path (audit #6 N-3): the library lives under the user's home
-    directory, and the full path is local detail the error does
-    not need to disclose.
+    A 0-byte file is the one exception: it holds no data, so the
+    schema is created on read, exactly as a save would do it
+    (audit #7 N-6, option a) — reads and writes then agree on
+    it. A corrupt or unreadable file raises ValueError with a
+    plain message instead of leaking a sqlite3 traceback to the
+    user. The message names only the file's basename, never the
+    absolute path (audit #6 N-3): the library lives under the
+    user's home directory, and the full path is local detail the
+    error does not need to disclose.
     """
     path = library_path(db)
     if path == ":memory:":
@@ -5461,11 +5574,29 @@ def open_library(db: str | None = None, *,
         conn.row_factory = sqlite3.Row
         if create:
             conn.executescript(_LIBRARY_SCHEMA)
+        elif os.path.exists(path) and os.path.getsize(path) == 0:
+            # Audit #7 N-6(a): a 0-byte file holds no data, so
+            # creating the schema on read loses nothing and makes
+            # reads agree with writes (a save self-heals the same
+            # file with 200). Wrong-schema and garbage files are
+            # NOT healed — their tables may hold user data — and
+            # still raise "pustaka rusak" below.
+            conn.executescript(_LIBRARY_SCHEMA)
     except sqlite3.OperationalError:
         if conn is not None:
             conn.close()
         if not create:
-            raise FileNotFoundError(f"pustaka belum ada: {os.path.basename(path)}")
+            # Audit #7 N-5: only a truly missing file means
+            # "empty library". A directory at the path (or any
+            # other file that cannot be opened) is corrupt, not
+            # missing — the old code mapped every
+            # OperationalError to FileNotFoundError, so a
+            # directory answered 200 with an empty library.
+            if not os.path.exists(path):
+                raise FileNotFoundError(
+                    f"pustaka belum ada: {os.path.basename(path)}")
+            raise ValueError(
+                f"pustaka rusak: {os.path.basename(path)} — hapus atau ganti file databasenya")
         raise ValueError(
             f"pustaka rusak: {os.path.basename(path)} — hapus atau ganti file databasenya")
     except sqlite3.Error:
@@ -7512,8 +7643,14 @@ class CLI:
                 self.pause()
             elif choice == 2:
                 raw = self.ask(self.t["analysis_id"])
-                if raw.strip().isdigit():
-                    analysis = get_analysis(int(raw))
+                try:
+                    # Audit #7 N-7: int() accepts a leading "+"
+                    # ("+1" is id 1) where .isdigit() skipped it.
+                    analysis_id = int(raw.strip())
+                except ValueError:
+                    analysis_id = -1
+                if analysis_id >= 1:
+                    analysis = get_analysis(analysis_id)
                     if analysis is None:
                         print(f"{self.t['analysis_missing']} {raw}")
                     else:
@@ -8817,8 +8954,13 @@ def _load_ui_references(payload: dict) -> dict | None:
         try:
             refs = json.loads(payload["refs_json"])
         except (json.JSONDecodeError, TypeError,
-                RecursionError) as e:
-            raise ValueError(f"bibliografi JSON tidak valid: {e}")
+                RecursionError):
+            # Audit #7 H-3: the decoder message itself (and the
+            # TypeError text for a non-string refs_json, e.g.
+            # "the JSON object must be str, bytes or bytearray,
+            # not int") leaked raw into the API error. A fixed
+            # generic message says the same thing to the user.
+            raise ValueError("bibliografi JSON tidak valid") from None
         return _validate_references(refs)
     if payload.get("refs", "sample") == "none":
         return None
@@ -9054,6 +9196,42 @@ def _parse_multipart(body: bytes, boundary: bytes) -> list[dict]:
     return parts
 
 
+def _json_flag(body: dict, key: str) -> bool:
+    """A JSON API boolean flag: only the JSON value `true` counts.
+
+    Audit #7 H-1: `bool(body.get(key))` treated any truthy value
+    as on, so a client sending the STRING "false" got the effect
+    of `true` — `save: "false"` really WROTE a row to the library.
+    Only an actual JSON `true` (Python `True`) enables the flag;
+    strings, numbers, and anything else are ignored (not an
+    error — the web UI always sends real booleans). The
+    folder-upload path is form data, not JSON, and keeps its
+    presence-based flags ("verify" in fields) — this helper is
+    for the JSON handlers only.
+    """
+    return body.get(key) is True
+
+
+def _json_text(body: dict) -> str:
+    """The `text` field of a JSON API request, validated.
+
+    Audit #7 H-2: `str(body.get("text") or "")` silently coerced
+    a list/dict/bool into its repr and analyzed it with a 200
+    ("['a']" was even echoed back by humanize+apply). A missing
+    or null text still means "teks kosong" (as before); any other
+    non-string is a plain 400.
+    """
+    raw = body.get("text")
+    if raw is None:
+        raw = ""
+    if not isinstance(raw, str):
+        raise ValueError("text harus berupa string")
+    text = raw.strip()
+    if not text:
+        raise ValueError("teks kosong")
+    return text
+
+
 class _UIHandler(http.server.BaseHTTPRequestHandler):
     """Serves the embedded page plus a small JSON API for the five tabs."""
 
@@ -9125,6 +9303,18 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):  # keep the console quiet
         pass
 
+    def _connection_header(self) -> None:
+        # Audit #6 H-1 / audit #7 N-4: say so when the connection
+        # is being closed (bad framing, oversize body, timeout) —
+        # without this header a reusing client gets EOF instead.
+        # HTTP/1.0 defaults to close, so a client that asked to
+        # keep the connection alive needs the header to know the
+        # reuse is honoured (audit #6 N-8).
+        if self.close_connection:
+            self.send_header("Connection", "close")
+        elif self.request_version == "HTTP/1.0":
+            self.send_header("Connection", "keep-alive")
+
     def _send_json(self, status: int, payload: dict) -> None:
         try:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -9142,13 +9332,7 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         # Audit #6 H-1: like send_error, say so when the connection
         # is being closed (bad framing, oversize body, timeout) —
         # without this header a reusing client gets EOF instead.
-        if self.close_connection:
-            self.send_header("Connection", "close")
-        elif self.request_version == "HTTP/1.0":
-            # HTTP/1.0 defaults to close, so a client that asked to
-            # keep the connection alive needs the header to know the
-            # reuse is honoured (audit #6 N-8).
-            self.send_header("Connection", "keep-alive")
+        self._connection_header()
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self._security_headers()
@@ -9159,6 +9343,9 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         data = WEB_UI_HTML.replace(
             "__ACADEMIC_TOOLS_VERSION__", __version__).encode("utf-8")
         self.send_response(200)
+        # Audit #7 N-4: the page used to skip the Connection
+        # header _send_json sends — same logic, same helper.
+        self._connection_header()
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self._security_headers()
@@ -9219,9 +9406,21 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
 
     def _library_analysis(self, query: dict) -> dict:
         raw = (query.get("id") or [None])[0]
-        if raw is None or not raw.isdigit():
+        if raw is None:
             raise ValueError("id analisis harus angka")
-        analysis = get_analysis(int(raw))
+        try:
+            # Audit #7 N-7: int() accepts a leading "+" ("+1" is
+            # id 1) where the old .isdigit() check rejected it.
+            # A negative id is not a valid analysis id (400);
+            # zero falls through to get_analysis, which returns
+            # None, so id=0 still answers 404 like before
+            # (audit #6 T-1 pins that).
+            analysis_id = int(raw)
+        except (TypeError, ValueError):
+            raise ValueError("id analisis harus angka")
+        if analysis_id < 0:
+            raise ValueError("id analisis harus angka")
+        analysis = get_analysis(analysis_id)
         if analysis is None:
             raise KeyError(f"tidak ada analisis #{raw}")
         return {"analysis": analysis}
@@ -9350,8 +9549,11 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
             entry = _blank_folder_entry(name)
             try:
                 text = part["data"].decode("utf-8")
-            except UnicodeDecodeError as e:
-                entry["error"] = str(e)
+            except UnicodeDecodeError:
+                # Audit #7 H-3: the raw codec message ("'utf-8'
+                # codec can't decode byte 0xff ...") leaked into
+                # the entry error. Fixed generic message.
+                entry["error"] = "file bukan teks UTF-8 yang valid"
                 entries.append(entry)
                 continue
             entries.append(_analyze_one_file(
@@ -9382,49 +9584,50 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
                 "skipped": skipped}
 
     def _analyze(self, body: dict) -> dict:
-        text = str(body.get("text") or "").strip()
-        if not text:
-            raise ValueError("teks kosong")
+        text = _json_text(body)
         lang = body.get("lang") or "id"
         if lang not in ("id", "en"):
             raise ValueError("lang harus 'id' atau 'en'")
         refs = _load_ui_references(body)
         result = analyze_text_quality(
-            text, refs, lang=lang, verify_dois=bool(body.get("verify")),
-            suggest=bool(body.get("suggest")))
+            text, refs, lang=lang, verify_dois=_json_flag(body, "verify"),
+            suggest=_json_flag(body, "suggest"))
         # The dashboard gauge reads the four 25-point components from
         # here, so the browser never recomputes the score.
         result["score_parts"] = _score_parts(result)
-        if body.get("duplicates"):
+        if _json_flag(body, "duplicates"):
             result["duplicates"] = find_duplicates(text)
-        if body.get("save"):
+        if _json_flag(body, "save"):
             result["library_id"] = save_analysis(text, result, refs)
         return result
 
     def _humanize(self, body: dict) -> dict:
-        text = str(body.get("text") or "").strip()
-        if not text:
-            raise ValueError("teks kosong")
+        text = _json_text(body)
         lang = body.get("lang") or "id"
         if lang not in ("id", "en"):
             raise ValueError("lang harus 'id' atau 'en'")
         result = suggest_style_fixes(text, lang=lang, limit=None)
-        if body.get("apply"):
+        if _json_flag(body, "apply"):
             result["fixed_text"] = apply_suggestions(text, result)["text"]
         return result
 
     def _jargon(self, body: dict) -> dict:
-        text = str(body.get("text") or "").strip()
-        if not text:
-            raise ValueError("teks kosong")
+        text = _json_text(body)
         field = body.get("field") or None
+        if field is not None:
+            # Audit #7 N-8: an unknown field used to be silently
+            # ignored (zero matches), unlike an unknown lang/style
+            # which answers 400. The known fields come from the
+            # merged dictionary (built-in + user-added), so a field
+            # a user added in dictionary.json stays valid.
+            known = {v[1] for v in load_dictionary().values()}
+            if not isinstance(field, str) or field not in known:
+                raise ValueError(f"bidang tidak dikenal: {field}")
         matches = find_terms(text, field)
         return {"matches": matches, "count": len(matches)}
 
     def _cite(self, body: dict) -> dict:
-        text = str(body.get("text") or "").strip()
-        if not text:
-            raise ValueError("teks kosong")
+        text = _json_text(body)
         refs = _load_ui_references(body)
         if refs is None:
             raise ValueError("sitasi butuh bibliografi (pilih contoh bawaan atau tempel JSON)")
@@ -9438,9 +9641,7 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         return {"output": output, "woven": woven}
 
     def _detect(self, body: dict) -> dict:
-        text = str(body.get("text") or "").strip()
-        if not text:
-            raise ValueError("teks kosong")
+        text = _json_text(body)
         lang = body.get("lang") or "id"
         if lang not in ("id", "en"):
             raise ValueError("lang harus 'id' atau 'en'")

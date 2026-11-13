@@ -24,7 +24,7 @@ Out: Penelitian ini mengukur suhu ruangan. Penelitian ini menganalisis
 
 ## The file
 
-`academic_tools.py` (v1.27.4) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100, or a whole folder of chapters at once), style rewrite suggestions (before/after, applied only with `--apply`, including mechanical Indonesian spelling fixes), a heuristic AI-text detector (sentence-length variation, template phrases, lexical diversity, repeated sentence starters — an indication, never proof), a readability score (Flesch Reading Ease + Flesch-Kincaid Grade Level with the standard Flesch bands — an indication, not a verdict), a local library of past analyses and references (one SQLite file, no account), an internal duplication check against your own saved drafts, an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
+`academic_tools.py` (v1.27.5) holds everything — the jargon dictionary and translator, the citation engine with online reference lookup, 18 thesis prompts, a one-pass quality check (jargon + citations + DOI verification + a style check, one score 0–100, or a whole folder of chapters at once), style rewrite suggestions (before/after, applied only with `--apply`, including mechanical Indonesian spelling fixes), a heuristic AI-text detector (sentence-length variation, template phrases, lexical diversity, repeated sentence starters — an indication, never proof), a readability score (Flesch Reading Ease + Flesch-Kincaid Grade Level with the standard Flesch bands — an indication, not a verdict), a local library of past analyses and references (one SQLite file, no account), an internal duplication check against your own saved drafts, an interactive menu CLI, and a local web UI. The other `.py` files are thin wrappers, so old commands keep working.
 
 ## Quick start
 
@@ -37,7 +37,7 @@ python3 academic_tools.py serve           # web UI at http://127.0.0.1:8000/
 
 ```
   ╭──────────────────────────────────────────────────────────────╮
-  │ Academic Tools                                       v1.27.4 │
+  │ Academic Tools                                       v1.27.5 │
   │ ──────────────────────────────────────────────────────────── │
   │ Satu file. Semua alat. Tanpa referensi palsu.                │
   │ Jargon Buster  ·  Citation Weaver  ·  Prompt Skripsi         │
@@ -133,14 +133,14 @@ python3 academic_tools.py library --import my-refs.json
 python3 academic_tools.py serve --port 8000
 ```
 
-`--version` prints the tool version plus every component version (`academic_tools.py 1.27.4 (cli …; jargon_buster …; citation_weaver …; skripsi_prompts …; academic_quality_check …; ai_detector …; readability 1.0.3)`); a subcommand's `--version` (e.g. `analyze --version`) prints just the tool version.
+`--version` prints the tool version plus every component version (`academic_tools.py 1.27.5 (cli …; jargon_buster …; citation_weaver …; skripsi_prompts …; academic_quality_check …; ai_detector …; readability 1.0.4)`); a subcommand's `--version` (e.g. `analyze --version`) prints just the tool version.
 
 Title search needs a free `OPENALEX_API_KEY` — OpenAlex has required a key since February 2026 (about $0.001 per search under a ~$1/day free allowance). DOI lookups try Crossref first, so they keep working without a key. `--verify` checks every DOI against Crossref and OpenAlex; a DOI found in either source is real, and "missing" needs a checked source to answer 404 with no source erroring — a Crossref 404 is already "missing" when OpenAlex was merely skipped for lack of a key; only a source error, or nothing checked at all, leaves a DOI "unverified". It exits 1 only when a DOI is missing from a checked source; references without a DOI are reported as `no DOI` (use `--audit --check-links` for arXiv IDs and URLs).
 
 ## Layout
 
 ```
-academic_tools.py            # everything (v1.27.4)
+academic_tools.py            # everything (v1.27.5)
 jargon_buster.py / citation_weaver.py / skripsi_prompts.py / academic_cli.py / ai_detector.py / readability.py   # thin wrappers
 pyproject.toml               # optional: pipx install . / pip install .
 .github/workflows/tests.yml  # CI: 3 OS x Python 3.9, 3.12, 3.13
@@ -148,7 +148,7 @@ skills/research/             # five skills: the three tools + a quality-check sk
 demos/jargon-buster/         # jargon example + sample paper
 demos/citation-weaver/       # citation examples + 7 real references
 docs/                        # per-tool notes, shared standards, update schedule
-tests/                       # 784 tests, stdlib unittest only
+tests/                       # 825 tests, stdlib unittest only
 ```
 
 ## Skills
@@ -168,7 +168,7 @@ The `skills/research/` folders hold the same tools as agent skills: the three to
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -v   # 784 tests, no dependencies
+python3 -m unittest discover -s tests -v   # 825 tests, no dependencies
 ```
 
 ## License

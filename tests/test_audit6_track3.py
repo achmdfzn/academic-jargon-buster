@@ -387,17 +387,20 @@ class TestEnglishKnownMissesAudit6(unittest.TestCase):
     # "management" 3 vs "element" 3 share the same "ement"
     # letters, so no "-ment" rule exists (it would trade one
     # error for another).
+    #
+    # Audit #7 corrections: "unscientific" 5, "adobe" 3,
+    # "phoebe" 2, "chihuahua" 3, "arguing" 3 are FIXED (pinned
+    # in test_audit7_track4.py), so they left this dict.
+    # "gruel" and "nescience" were never misses: the majority
+    # of syllable dictionaries give 2 for both, and the code
+    # already counts 2 — the old "want 1"/"want 3" was wrong.
     KNOWN_MISSES = {
         "management": 4,  # want 3
-        "gruel": 2,  # want 1 ("ue" + "l" fires)
-        "unscientific": 4,  # want 5 ("un-" + "scientific")
-        "nescience": 2,  # want 3
-        "adobe": 2,  # want 3 (pronounced "e" after vowel + "b")
-        "phoebe": 1,  # want 2 (same pattern as "adobe")
-        "chihuahua": 5,  # want 4 ("hua" is /wa:/, one sound)
-        "iou": 2,  # want 3 (abbreviation, three vowel sounds)
-        "arguing": 2,  # want 3 ("ui" has no rule: suit 1 vs
-        # ruin 2 — genuinely ambiguous)
+        # "iou" 2: Cambridge/Oxford IPA has three vowel nuclei
+        # (eye-oh-you), suggesting 3 — but no syllable
+        # dictionary lists it, so it stays 2 as an open item
+        # (audit #7 decision; do not guess it to 3).
+        "iou": 2,
         # Dialect variants, deliberately unforced (N-7).
         "extraordinary": 6,  # AmE 5, BrE 6
     }

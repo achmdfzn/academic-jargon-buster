@@ -114,13 +114,17 @@ class TestCountSyllablesAudit4(unittest.TestCase):
         "daun": 2, "dedaunan": 4, "air": 2, "berair": 3,
     }
 
-    # Words that must NOT change: real diphthongs. "baik" and "kau"
-    # used to be listed here at 1 — audit #5, H-2 proved them
-    # hiatus (ba·ik, ka·u = 2) and they moved to
-    # tests/test_audit5_syllables.py as regressions.
+    # Words that must NOT change: real diphthongs. "baik"
+    # used to be listed here at 1 — audit #5, H-2 proved it
+    # hiatus (ba·ik = 2) and it moved to
+    # tests/test_audit5_syllables.py as a regression. "kau"
+    # and "mau" changed in audit #8 instead: "kau" is 1
+    # after all (KBBI-based "Suku Kata" doc, [kaw]) and
+    # "mau" is hiatus (ma·u = 2, KBBI) — both now pinned in
+    # tests/test_audit8_syllables.py.
     UNCHANGED_ID = {
         "survei": 2, "atau": 2, "boikot": 2,
-        "mau": 1, "pulau": 2, "danau": 2, "sungai": 2, "pantai": 2,
+        "pulau": 2, "danau": 2, "sungai": 2, "pantai": 2,
         "pandai": 2, "geiser": 2, "domain": 2,
     }
 

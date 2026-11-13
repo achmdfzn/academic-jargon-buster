@@ -14,8 +14,9 @@ This file pins every fix:
   fixes: "gruel" 2 and "nescience" 2 — the audit's "want 1" /
   "want 3" were wrong (the majority of syllable dictionaries give
   2, the code already counts 2); "bauh", "maul", "maik" are not in
-  KBBI at all and stay at the plain-rule count 1; "iou" stays 2
-  (no syllable-dictionary entry, do not guess 3).
+  KBBI at all and stay at the plain-rule count 1; "iou" is 3
+  (Oxford /ˌaɪ əʊ ˈjuː/, Cambridge /ˌaɪ.əʊˈjuː/, WebDictionary
+  3 syllables — audit #8 H-4 resolved the open item).
 - N-1 (T-1): intro words (lihat juga, bandingkan, cf., lihat)
   after a separator in a multi-citation author-year group — but
   NOT at the start of a group: audit #6 pins "(lihat Field,
@@ -188,10 +189,12 @@ class TestSyllablePinsAudit7(unittest.TestCase):
         # of syllable dictionaries give 2 for both, and the code
         # already counts 2.
         "gruel": 2, "nescience": 2,
-        # Open item (no syllable-dictionary entry): stays 2,
-        # do not guess 3.
-        "iou": 2,
-        "management": 4, "extraordinary": 6, "interesting": 4,
+        # Audit #8 H-4: "iou" is 3 (Oxford, Cambridge,
+        # WebDictionary) — the audit #7 open item is resolved.
+        "iou": 3,
+        # Audit #8 H-2: "management" is 3 (guarded "-ment"
+        # rule); "element" still 3 (the "l" guard).
+        "management": 3, "extraordinary": 6, "interesting": 4,
         "element": 3, "scientific": 4,
     }
 
@@ -686,6 +689,11 @@ class TestServeAudit7(unittest.TestCase):
     # -- N-7: id=+1 ------------------------------------------------
 
     def test_library_analysis_plus_one(self):
+        # Audit #8 N-2: the "+" must be URL-encoded (%2B) here.
+        # A literal "+" in a query string decodes to a SPACE
+        # (parse_qs), so "?id=+1" arrives as " 1" — and the
+        # strict parser rightly rejects a space. The N-7
+        # decision itself is unchanged: the VALUE "+1" is id 1.
         with tempfile.TemporaryDirectory() as tmp:
             db = os.path.join(tmp, "library.db")
             with patch.dict(os.environ, {"ACADEMIC_LIBRARY_DB": db}):
@@ -693,11 +701,11 @@ class TestServeAudit7(unittest.TestCase):
                                         {"text": TEXT, "save": True})
                 self.assertEqual(status, 200)
                 status, body = _request(
-                    self.base, "GET", "/api/library/analysis?id=+1")
+                    self.base, "GET", "/api/library/analysis?id=%2B1")
                 self.assertEqual(status, 200)
                 self.assertEqual(json.loads(body)["analysis"]["id"], 1)
                 for raw, want in (("abc", 400), ("1.5", 400),
-                                  ("-1", 400), ("0", 404), ("+99", 404)):
+                                  ("-1", 400), ("0", 404), ("%2B99", 404)):
                     status, _ = _request(
                         self.base, "GET",
                         f"/api/library/analysis?id={raw}")

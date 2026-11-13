@@ -983,8 +983,11 @@ class TestServeHardening1261(unittest.TestCase):
 
     def test_unsupported_methods_get_501_with_security_headers(self):
         # N-2: the stdlib 501 page carries the same three headers.
+        # HEAD left this list in audit #8 N-1: do_HEAD now exists,
+        # so HEAD routes like GET (200/404) instead of 501 — see
+        # tests/test_audit8_t5.py::TestAudit8Head.
         host, port = self.server.server_address[:2]
-        for method in ("PUT", "DELETE", "OPTIONS", "HEAD"):
+        for method in ("PUT", "DELETE", "OPTIONS"):
             conn = http.client.HTTPConnection(host, port, timeout=10)
             try:
                 resp, _ = self._headers(conn, method, "/api/detect",

@@ -35,7 +35,10 @@ class TestHiatusRootsAudit5(unittest.TestCase):
         "berkaitan": 4, "saingi": 3, "saingan": 3, "persaingan": 4,
         "kaidah": 3, "gairah": 3, "cairan": 3, "keairan": 4,
         "perairan": 4, "laut": 2, "lautan": 3, "bau": 2, "bauan": 3,
-        "kau": 2, "kaupun": 3, "maukah": 3, "koin": 2, "poin": 2,
+        # "kau" 1: audit #8 corrected audit #5 — a KBBI-based
+        # "Suku Kata" document lists "kau" under "Satu suku
+        # kata" and Wiktionary gives [kaw]; one syllable.
+        "kau": 1, "kaupun": 3, "maukah": 3, "koin": 2, "poin": 2,
         "poinnya": 3, "heroik": 3, "stoik": 2, "naik": 2, "cair": 2,
         "raih": 2, "jauh": 2, "dimainkan": 4, "mainkan": 3,
         "mempermainkan": 5, "permainkan": 4, "kebaikanmu": 5,

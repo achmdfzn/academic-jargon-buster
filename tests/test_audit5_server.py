@@ -198,51 +198,60 @@ class TestAudit5DeepJson(_ServerCase):
 
 
 class TestAudit5HeadError(_ServerCase):
-    """T-5 / H-11: send_error writes no body for HEAD, and sends
-    `Connection: close` when the connection is being closed."""
+    """T-5 / H-11: a HEAD error response carries no body bytes.
+
+    Audit #8 N-1 added do_HEAD, so the old route is gone: HEAD
+    used to hit the stdlib 501 (no do_HEAD) and the H-11 guard in
+    send_error kept its body out of the socket. Now HEAD routes
+    like GET — /api/prompts is a 200, /nope a JSON 404 — and the
+    body is skipped by _send_json/_send_page instead. The
+    send_error guard stays as defense-in-depth (no HEAD request
+    can reach send_error with the command set any more: a bad
+    request line or version fails before command is assigned,
+    and those responses are header-less HTTP/0.9-style on
+    Python <=3.12 by stdlib design)."""
 
     def test_head_error_has_no_body(self):
-        # HEAD /api/prompts is a 501 from the stdlib (no do_HEAD).
-        # Before the fix send_error wrote the 84-byte error page
-        # anyway; a HEAD client discards the body per spec, so
-        # those bytes stayed in the socket and poisoned the next
-        # response on the same connection.
-        s = socket.create_connection((self.host, self.port), timeout=5)
+        # HEAD /nope is the JSON 404 now: same Content-Length as
+        # the GET 404 body, zero body bytes on the wire.
+        conn = http.client.HTTPConnection(self.host, self.port,
+                                         timeout=10)
         try:
-            s.sendall(b"HEAD /api/prompts HTTP/1.1\r\nHost: x\r\n\r\n")
-            data, eof = _recv_all(s)
-            self.assertTrue(eof, "connection must close after the 501")
-            head, _, body = data.partition(b"\r\n\r\n")
-            self.assertTrue(head.startswith(b"HTTP/1.1 501"))
-            headers = {}
-            for line in head.split(b"\r\n")[1:]:
-                if b":" in line:
-                    key, value = line.split(b":", 1)
-                    headers[key.decode("latin-1").strip().lower()] = \
-                        value.decode("latin-1").strip()
-            self.assertEqual(headers.get("content-length"), "84")
-            self.assertEqual(headers.get("connection"), "close")
-            self.assertEqual(body, b"",
-                             "HEAD must carry zero body bytes")
+            conn.request("GET", "/nope")
+            resp = conn.getresponse()
+            get_body = resp.read()
+            self.assertEqual(resp.status, 404)
+            conn.request("HEAD", "/nope")
+            resp = conn.getresponse()
+            self.assertEqual(resp.status, 404)
+            self.assertEqual(resp.read(), b"")
+            self.assertEqual(resp.getheader("Content-Length"),
+                             str(len(get_body)))
+            self.assertIsNotNone(
+                resp.getheader("Content-Security-Policy"))
+            self.assertEqual(
+                resp.getheader("X-Content-Type-Options"), "nosniff")
+            self.assertEqual(
+                resp.getheader("X-Frame-Options"), "DENY")
         finally:
-            s.close()
+            conn.close()
 
     def test_get_after_head_on_same_connection(self):
         # Reuse is not broken by the HEAD fix: the next request
-        # on the same connection gets its own response (http.client
-        # reconnects transparently after `Connection: close`).
+        # on the same connection gets its own response.
         conn = http.client.HTTPConnection(self.host, self.port,
                                          timeout=10)
         try:
             conn.request("HEAD", "/api/prompts")
             resp = conn.getresponse()
-            self.assertEqual(resp.status, 501)
+            self.assertEqual(resp.status, 200)
             self.assertEqual(resp.read(), b"")
-            self.assertEqual(resp.getheader("Content-Length"), "84")
+            head_length = resp.getheader("Content-Length")
             conn.request("GET", "/api/prompts")
             resp = conn.getresponse()
             data = resp.read()
             self.assertEqual(resp.status, 200)
+            self.assertEqual(head_length, str(len(data)))
             self.assertEqual(len(json.loads(data)["prompts"]), 18)
         finally:
             conn.close()

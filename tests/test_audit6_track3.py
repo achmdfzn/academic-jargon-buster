@@ -380,9 +380,13 @@ class TestEnglishGuardsAudit6(unittest.TestCase):
 
 
 class TestEnglishKnownMissesAudit6(unittest.TestCase):
-    """Documented misses — pinned at the CURRENT (wrong) count
-    so a future fix round notices if the count moves. Do not
-    "fix" these by changing the expectation; fix the code."""
+    """Documented misses — pinned at the CURRENT count so a
+    future fix round notices if the count moves. Do not "fix"
+    these by changing the expectation; fix the code. Only the
+    deliberate dialect variant is left: every other miss this
+    class once held ("management", "iou", "unscientific",
+    "adobe", "phoebe", "chihuahua", "arguing") was fixed in
+    audit #7/#8 and moved to its own test file."""
 
     # "management" 3 vs "element" 3 share the same "ement"
     # letters, so no "-ment" rule exists (it would trade one
@@ -391,16 +395,14 @@ class TestEnglishKnownMissesAudit6(unittest.TestCase):
     # Audit #7 corrections: "unscientific" 5, "adobe" 3,
     # "phoebe" 2, "chihuahua" 3, "arguing" 3 are FIXED (pinned
     # in test_audit7_track4.py), so they left this dict.
-    # "gruel" and "nescience" were never misses: the majority
-    # of syllable dictionaries give 2 for both, and the code
-    # already counts 2 — the old "want 1"/"want 3" was wrong.
+    # Audit #8 corrections: "management" 3 and "iou" 3 are
+    # FIXED too (the guarded "-ment" rule + the "iou" pin —
+    # pinned in tests/test_audit8_syllables.py), so they left
+    # as well. "gruel" and "nescience" were never misses: the
+    # majority of syllable dictionaries give 2 for both, and
+    # the code already counts 2 — the old "want 1"/"want 3"
+    # was wrong.
     KNOWN_MISSES = {
-        "management": 4,  # want 3
-        # "iou" 2: Cambridge/Oxford IPA has three vowel nuclei
-        # (eye-oh-you), suggesting 3 — but no syllable
-        # dictionary lists it, so it stays 2 as an open item
-        # (audit #7 decision; do not guess it to 3).
-        "iou": 2,
         # Dialect variants, deliberately unforced (N-7).
         "extraordinary": 6,  # AmE 5, BrE 6
     }

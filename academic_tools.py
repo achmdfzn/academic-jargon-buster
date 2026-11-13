@@ -118,14 +118,14 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.27.5"
+__version__ = "1.27.6"
 JARGON_VERSION = "1.0.9"
-CITATION_VERSION = "1.5.7"
+CITATION_VERSION = "1.5.8"
 PROMPTS_VERSION = "1.1.0"
-QUALITY_VERSION = "1.2.15"
+QUALITY_VERSION = "1.2.16"
 DETECTOR_VERSION = "1.0.3"
-READABILITY_VERSION = "1.0.4"
-CLI_VERSION = "1.18.4"
+READABILITY_VERSION = "1.0.5"
+CLI_VERSION = "1.18.5"
 
 # ======================================================================
 # Jargon Buster
@@ -837,6 +837,23 @@ def jargon_main(argv=None, *, version=None) -> int:
     p.add_argument("--version", action="version",
                    version=f"%(prog)s {version or __version__}")
     args = p.parse_args(argv)
+
+    if args.field is not None and not (args.update_dictionary
+                                       and args.from_file):
+        # Audit #8 H-3: like the server (audit #7 N-8), an
+        # unknown field is a clean error, not a silent empty
+        # result ("No known jargon terms found", exit 0). The
+        # known fields come from the merged dictionary
+        # (built-in + user-added), so a field a user added in
+        # dictionary.json stays valid. The one exemption is
+        # --update-dictionary --from: there --field is the
+        # field new terms are ADDED under (a filter on the
+        # incoming file), so a not-yet-existing field is
+        # legitimate. (main() turns this ValueError into a
+        # clean stderr message + exit 1.)
+        known = {v[1] for v in load_dictionary().values()}
+        if args.field not in known:
+            raise ValueError(f"bidang tidak dikenal: {args.field}")
 
     if args.list_terms:
         for item in list_terms(field=args.field):
@@ -1848,6 +1865,13 @@ def export_ris(references: dict) -> str:
 # that cannot be reached is "unreachable", not "alive".
 _CITE_PATTERN = re.compile(r"(?:\[cite:([^\]]+)\]|\\cite\{([^}]+)\})")
 
+# An intro word right before a narrative "Family (year)": the
+# word (plus its trailing space) at the very end of the text
+# before the match (audit #8 N-3). The \b keeps "dilihat" from
+# counting as "lihat".
+_NARRATIVE_INTRO_RE = re.compile(
+    r"\b(?:lihat juga|bandingkan|cf\.?|lihat)\s*$", re.IGNORECASE)
+
 
 def _author_year_keys(text: str, references: dict) -> list:
     """Bibliography keys cited in author-year form, in first-appearance
@@ -1857,7 +1881,11 @@ def _author_year_keys(text: str, references: dict) -> list:
     2018)" and "(Field, 2018, Creswell, 2018)" both credit every
     unit inside the group — and a unit may carry a short intro word
     after the separator ("(Field, 2018; lihat juga Creswell, 2018)";
-    the list is fixed: lihat juga, bandingkan, cf., lihat).
+    the list is fixed: lihat juga, bandingkan, cf., lihat). The
+    intro match is case-insensitive ("LIHAT JUGA" works), and a
+    narrative "Family (year)" is NOT credited when an intro word
+    stands right before the family name ("Menurut lihat Field
+    (2018)" is not a citation — audit #8 N-3).
 
     Only the first author's family name and the year are matched, so
     this is NOT a full audit: it cannot tell which of two entries by
@@ -1898,8 +1926,11 @@ def _author_year_keys(text: str, references: dict) -> list:
         # false positives. The intro is allowed ONLY after ';'
         # or ',' — NOT at the start of a group: audit #6 pins
         # "(lihat Field, 2018)" as NOT a citation, and that
-        # negative still stands.
-        intro = r"(?:lihat juga|bandingkan|cf\.?|lihat)\s+"
+        # negative still stands. The intro match is
+        # case-insensitive (audit #8 N-3: "LIHAT JUGA" works) —
+        # a scoped (?i:...) flag, so the family name itself
+        # stays case-sensitive.
+        intro = r"(?i:lihat juga|bandingkan|cf\.?|lihat)\s+"
         unit = re.compile(
             r"(?:^|[;,]\s*(?:" + intro + r")?)\s*" + fam
             + r"(?:\s+et al\.?)?\s*,?\s*" + yr
@@ -1909,7 +1940,17 @@ def _author_year_keys(text: str, references: dict) -> list:
         in_paren = any(
             unit.search(group)
             for group in re.findall(r"\(([^()]*)\)", text))
-        if in_paren or narrative.search(text):
+        # The narrative form must not be credited when an intro
+        # word stands right before the family name ("Menurut
+        # lihat Field (2018)" is not a citation — audit #8 N-3;
+        # the audit #6 negative "(lihat Field, 2018)" only held
+        # inside parentheses). Every occurrence is checked: one
+        # intro-prefixed occurrence does not hide a clean one
+        # later in the text.
+        in_narrative = any(
+            not _NARRATIVE_INTRO_RE.search(text[:m.start()])
+            for m in narrative.finditer(text))
+        if in_paren or in_narrative:
             found.append(key)
     return found
 
@@ -2142,17 +2183,25 @@ _ABBREVIATIONS = ("Dr.", "Prof.", "Drs.", "Bpk.", "Sdr.", "Tn.",
                   "Ny.", "Nn.", "Sdri.", "Yth.", "Ir.", "Hj.",
                   "Jln.", "Jl.", "Gg.", "Rt.", "Rw.",
                   "Ed.", "Vol.", "Cet.",
-                  "e.g.", "i.e.", "hal.", "hlm.", "No.")
+                  "e.g.", "i.e.", "hal.", "hlm.", "No.",
+                  # Informal Indonesian abbreviations (audit #8
+                  # H-5): "cth." (contoh), "spt." (seperti),
+                  # "dng." (dengan).
+                  "cth.", "spt.", "dng.")
 _ABBREV_PLACEHOLDER = "\ue000"
 # Every period inside an abbreviation is hidden, not just the last
 # one: "e.g." used to survive as "e.g<placeholder>", whose remaining
 # period still split the sentence. Matched at a word boundary so a
 # word that merely ends in the same letters ("perihal.") is not
 # protected by mistake. Longest first so "Drs." wins over "Dr.".
+# Matched case-insensitively (audit #8 H-5): lowercase "dr.",
+# "prof.", "bpk." are the same titles, and informal text writes
+# them that way — "dr. Budi pergi. Ia senang." is two sentences,
+# not three.
 _ABBREV_RE = re.compile(
     r"\b(?:" + "|".join(
         re.escape(a) for a in sorted(_ABBREVIATIONS, key=len, reverse=True)
-    ) + r")")
+    ) + r")", re.IGNORECASE)
 # List abbreviations (dll./dst./dkk./dsb.): protected only when the
 # next word starts with a lowercase letter (audit #5 H-6; "dsb."
 # joins them in audit #6 H-8). A capitalised next word — or the end
@@ -2171,14 +2220,18 @@ _LIST_ABBREV_RE = re.compile(r"\b(?:dll|dst|dkk|dsb)\.")
 # capitalised next word ends the sentence, because a date can
 # genuinely close one ("Rapat pada 12 Jan. Besok libur." is two
 # sentences). This is the one new class that is conditional rather
-# than unconditional (audit #6 H-8).
+# than unconditional (audit #6 H-8). Matched case-insensitively
+# (audit #8 H-5): lowercase "tgl." gets the same treatment.
 _DATE_ABBREV_RE = re.compile(
-    r"\b(?:Tgl|Th|Jan|Feb|Mar|Apr|Jun|Jul|Agu|Sep|Okt|Nov|Des)\.")
+    r"\b(?:Tgl|Th|Jan|Feb|Mar|Apr|Jun|Jul|Agu|Sep|Okt|Nov|Des)\.",
+    re.IGNORECASE)
 # A chained academic degree ("Dr. rer. nat."): the whole phrase
 # is one title, so all of its periods are protected (audit #6
 # H-8). Matched as a phrase, not as standalone "rer."/"nat.",
-# which are not abbreviations on their own.
-_CHAINED_DEGREE_RE = re.compile(r"\bDr\.\s+rer\.\s+nat\.")
+# which are not abbreviations on their own. Matched
+# case-insensitively (audit #8 H-5) so "dr. rer. nat." works
+# like "Dr. rer. nat.".
+_CHAINED_DEGREE_RE = re.compile(r"\bDr\.\s+rer\.\s+nat\.", re.IGNORECASE)
 # A dotted academic degree (M.Si., S.Pd., S.Si., M.Pd.): a capital
 # letter, a period, a capital letter with optional lowercase
 # letters, a period (audit #5 N-11). Protected like an abbreviation
@@ -2273,7 +2326,11 @@ def _split_sentences(text: str) -> list[str]:
     "Rt.", "Rw.", "Ed.", "Vol.", "Cet.", ...) and single capital
     initials ("A." in "Dr. A. Budi") never split a sentence, and
     neither do dotted degrees ("M.Si.", "S.Pd.") or the chained
-    degree "Dr. rer. nat.". List abbreviations ("dll.", "dst.",
+    degree "Dr. rer. nat.". Abbreviations are matched
+    case-insensitively (audit #8 H-5), so lowercase "dr.",
+    "prof.", "bpk.", "tgl." and the informal "cth." (contoh),
+    "spt." (seperti), "dng." (dengan) are protected like their
+    capital forms. List abbreviations ("dll.", "dst.",
     "dkk.", "dsb.") are only protected when the next word starts
     lowercase; a capitalised next word (or the end of the text)
     ends the sentence. Date abbreviations ("Tgl.", "Th." and the
@@ -2289,10 +2346,13 @@ def _split_sentences(text: str) -> list[str]:
     starts with a capital, e.g. "Nilainya A. Ia senang." stays one
     sentence — an initial and a sentence-final capital cannot be
     told apart without a dictionary of names. The same applies to
-    an unconditional abbreviation at the very end of a sentence
-    ("Gelarnya Dr. rer. nat. Ia mengajar." stays one sentence):
-    titles and addresses are never sentence-final in real text,
-    so the protection is worth the trade-off.
+    a dotted degree or honorific at the very end of a sentence
+    (audit #8 N-5 — not just the chained degree: "Gelarnya Dr.
+    rer. nat. Ia mengajar.", "Gelarnya M.Si. Ia mengajar.",
+    "Nama saya Budi, S.Si. Saya peneliti." and "Hubungi Bpk. Ia
+    ada." all stay one sentence): titles, degrees and addresses
+    are never sentence-final in real text, so the protection is
+    worth the trade-off.
     """
     protected = _protect_abbreviations(text.strip())
     # Scan for sentence ends instead of splitting: a closing quote
@@ -2321,7 +2381,14 @@ def _split_sentences(text: str) -> list[str]:
         pos = m.end()
     tail = protected[pos:].strip()
     if tail:
-        out.append(tail)
+        # Audit #8 N-6: the tail is a fragment without a
+        # terminator, but a protected abbreviation's dot survived
+        # in it ("Ia pergi. Dr." came back as ['Ia pergi',
+        # 'Dr.']) — the docstring promises sentences without a
+        # terminator, so a trailing placeholder (an
+        # abbreviation's hidden dot) is dropped, like the loop's
+        # rstrip(".!?") above.
+        out.append(tail.rstrip(_ABBREV_PLACEHOLDER))
     return [s.replace(_ABBREV_PLACEHOLDER, ".") for s in out]
 
 
@@ -2841,7 +2908,9 @@ def _apply_one(text: str, sug: dict) -> str:
     created at the splice is collapsed, and a sentence-initial letter
     is capitalized only when the edit itself starts a sentence or
     ends one (a "yang mana" split). Text the suggestion does not
-    cover is left exactly as it was.
+    cover is left exactly as it was. "Starts a sentence" is read
+    off _sentence_spans (abbreviation-aware), never off a raw "."
+    before the edit — see audit #8 B-1.
     """
     start, end = sug["start"], sug["end"]
     repl = sug["replacement"] or ""
@@ -2857,8 +2926,21 @@ def _apply_one(text: str, sug: dict) -> str:
         elif not repl and (not left or left.endswith(" ")):
             right = right[1:]
     new = left + repl + right
-    before = text[:start].rstrip()
-    at_sent_start = not before or before[-1] in ".!?"
+    # Audit #8 B-1: sentence-start is decided from _sentence_spans,
+    # not from the raw character before the edit — a period inside
+    # an abbreviation or degree ("M.Si.", "S.Pd.", "Dr.") is not a
+    # sentence boundary, so "Budi, M.Si. melakukan ..." must stay
+    # lowercase. The edit starts a sentence exactly when its start
+    # coincides with a span start (or the text before it is only
+    # whitespace, i.e. the very first sentence).
+    at_sent_start = not text[:start].strip()
+    if not at_sent_start:
+        for s, _e, _sent in _sentence_spans(text):
+            if s == start:
+                at_sent_start = True
+                break
+            if s > start:
+                break
     ends_sentence = bool(repl) and repl[-1] in ".!?"
     target = None
     if ends_sentence:
@@ -4681,8 +4763,12 @@ _SYLLABLE_EXCEPTIONS = {
     "daun": ("au",),
     "laut": ("au",),
     "jauh": ("au",),
+    # "bau" stays hiatus (ber·bau, mem·ba·u·i — KBBI, audit #8).
+    # "kau" was listed here until v1.27.6 (audit #8): a
+    # KBBI-based "Suku Kata" document lists "kau" under "Satu
+    # suku kata" and Wiktionary gives IPA [kaw] — one syllable,
+    # a real diphthong, so it is back to the plain rule (1).
     "bau": ("au",),
-    "kau": ("au",),
     "paus": ("au",),
     "saus": ("au",),
     "kaus": ("au",),
@@ -4706,6 +4792,15 @@ _SYLLABLE_EXCEPTIONS = {
     "pauk": ("au",),  # pa·uk (KBBI: la·uk-pa·uk; pe·ma·uk)
     "taul": ("au",),  # ta·ul (KBBI, ark: me·na·ul)
     "gaut": ("au",),  # ga·ut (KBBI, Mk: dalam frasa "gaut gapai")
+    # "au" is hiatus in these roots (audit #8 H-1/H-4).
+    # "gaul" is ga·ul (KBBI: ber·ga·ul, per·ga·ul·an) and
+    # "raut" is ra·ut (KBBI: me·ra·ut, ra·ut·an); "mau" is
+    # ma·u (KBBI: me·ma·u·kan, ke·ma·u·an, ma·u·pun) — so
+    # "maunya" is 3, not 2: the enclitic carve-out below only
+    # applies to true diphthongs ("pulaunya" is 3).
+    "gaul": ("au",),
+    "raut": ("au",),
+    "mau": ("au",),
     # "ei" is hiatus in these roots (audit #6 H-3/T-6):
     # pro·te·in, ka·se·in, de·is·me, te·is·me — the "ei"
     # straddles two syllables, so it is not the EYD diphthong.
@@ -4809,8 +4904,9 @@ _SUFFIXES = (
 # A root-final diphthong splits before these suffixes
 # ("capai" + "-an" is ca-pa-i-an = 4, "mau" + "-kah" is
 # ma-u-kah = 3), but NOT before the possessive enclitics
-# -nya/-ku/-mu ("maunya" is 2, "pulaunya" is 3: the diphthong
-# stays intact there).
+# -nya/-ku/-mu ("pulaunya" is 3, "danaunya" is 3: the diphthong
+# stays intact there). "mau" is a hiatus root (ma·u, KBBI),
+# so "maunya" is 3 anyway.
 _SPLIT_SUFFIXES = frozenset({"kan", "an", "i", "lah", "kah", "pun"})
 
 # English hiatus words where a vowel pair is two syllables
@@ -4879,6 +4975,19 @@ _ENGLISH_EXCEPTIONS = {
     "chihuahua": 3, "chihuahuas": 3,
     "adobe": 3, "phoebe": 2, "unscientific": 5,
     "interest": 2, "interested": 3,
+    # Audit #8 H-4: "iou" is 3 (Oxford /ˌaɪ əʊ ˈjuː/,
+    # Cambridge /ˌaɪ.əʊˈjuː/, WebDictionary 3 syllables) —
+    # the audit #7 open item is now resolved: the plain
+    # vowel-run count sees one group for "iou".
+    "iou": 3,
+    # Audit #8 N-4: "re-" + vowel-stem words are pinned
+    # lexically, never by a rule — a blanket rule would break
+    # "read", "reason", "really" (the "ea"/"eo" runs there
+    # are one syllable). "reissue" is 3 (re-is-sue) and
+    # "reiterate" is 4 (re-it-er-ate).
+    "reassess": 3, "reassessment": 4,
+    "reapply": 3, "reappear": 3, "reaffirm": 3, "rearrange": 3,
+    "reissue": 3, "reopen": 3, "reiterate": 4,
 }
 
 
@@ -5061,10 +5170,26 @@ def _en_medial_silent_e(w: str, groups: int) -> int:
     ("rely" has two groups, so the "-ly" case also needs
     groups > 2; "freely" keeps its "ee"), and "-ful" fires on
     the substring alone ("rueful"/"woeful" have the silent "e"
-    after a vowel). No rule for "-ment": "management" (want 3)
-    and "element" (want 3) share the same "ement" letters, so
-    that pair stays a known miss rather than trading one error
-    for another.
+    after a vowel). "-ment" (audit #8 H-2): the "e" of a
+    "manage"-type stem stays silent before the "-ment" suffix
+    ("management" 3, "statement" 2, "basement" 2) — but only
+    when the stem really ends in silent "e": the word must end
+    in consonant + "e" + "ment", the consonant must not be "l"
+    ("element", "supplement", "implement", "puzzlement",
+    "battlement", "settlement" keep their "e"), and one of the
+    two letters before that consonant must be a vowel (the
+    magic-e syllable: "management" has "a" before "g",
+    "announcement" has "u" two back). That last guard is what
+    saves "cement" (the consonant is word-initial, no vowel
+    before it at all) — and words ending in "crement"
+    ("increment", "decrement", "excrement", "recrement") are
+    excluded outright: the "e" there is a real schwa after
+    the "cr" onset, not a silent stem "e" (the two-back
+    vowel test alone would misfire on "decrement", whose
+    first syllable "de-" puts a vowel two back). A trailing
+    "s" is stripped first,
+    so plurals ("managements" 3, "statements" 2) count the
+    same as the singular.
     """
     if groups <= 1:
         return 0
@@ -5081,6 +5206,17 @@ def _en_medial_silent_e(w: str, groups: int) -> int:
         # test.
         if i > 0 and w[i - 1] not in _VOWELS and w[i - 1] != "y":
             return 1
+    # "-ment": the stem-final silent "e" before the suffix.
+    # base[-5] is the "e", base[-6] the consonant before it,
+    # base[-8:-6] the two letters before that consonant — one
+    # of them must be a vowel (see the docstring guards).
+    base = w[:-1] if w.endswith("s") and not w.endswith("ss") else w
+    if (len(base) >= 6 and base.endswith("ment")
+            and base[-5] == "e" and base[-6] not in _VOWELS
+            and base[-6] != "y" and base[-6] != "l"
+            and not base.endswith("crement")
+            and any(c in _VOWELS for c in base[-8:-6])):
+        return 1
     return 0
 
 
@@ -5215,8 +5351,10 @@ def _count_syllables(word: str, lang: str = "id") -> int:
     before a derivational suffix or particle
     (-kan, -an, -i, -lah, -kah, -pun: "capai" + "-an" is
     ca-pa-i-an = 4, "mau" + "-kah" is ma-u-kah = 3), but NOT
-    before the possessive enclitics -nya/-ku/-mu ("maunya" is
-    2, "pulaunya" is 3). Hyphenated reduplication is counted
+    before the possessive enclitics -nya/-ku/-mu ("pulaunya" is
+    3, "danaunya" is 3). "mau" is itself a hiatus root (KBBI
+    ma·u), so "maunya" is 3 — the enclitic carve-out only
+    applies to true diphthongs. Hyphenated reduplication is counted
     per part ("baik-baik" is 4). The list is curated, not
     complete — anything unlisted falls back to the plain
     diphthong rule.
@@ -5241,17 +5379,33 @@ def _count_syllables(word: str, lang: str = "id") -> int:
     ("centre" 2) — see _en_silent_final_e. A medial "e" stays
     silent before "-ly"/"-ful"/"-less"/"-ness" ("widely" 2,
     "hopeful" 2, "careless" 2, "awareness" 3) — see
-    _en_medial_silent_e — but there is no "-ment" rule
-    ("management" counts 4, want 3; "element" is 3, and the
-    same letters cannot tell them apart). "-ed" after a
+    _en_medial_silent_e — and before "-ment" when the stem
+    ends in silent "e" ("management" 3, "statement" 2,
+    "basement" 2, audit #8 H-2): the word must end in
+    consonant + "e" + "ment", the consonant not "l"
+    ("element", "supplement", "implement" keep their "e"),
+    and one of the two letters before that consonant must be
+    a vowel — that guard saves "cement" (no vowel before the
+    consonant at all); words ending in "crement"
+    ("increment", "decrement", "excrement") are excluded
+    outright, since the "e" there is a real schwa after the
+    "cr" onset. "-ed" after a
     consonant is silent ("walked" 1) except after t/d
     ("wanted" 2), and only when the "e" starts its own vowel
     group ("enjoyed" 2, "delayed" 2 — the "e" inside a run
-    like "oye" is already counted as one). Known misses:
-    "management", "adobe", "phoebe", "gruel", "unscientific",
-    "nescience", "extraordinary" (AmE 5, BrE 6), "casually"
-    is 4 and "spiritually" is 5 — both correct, the "-ually"
-    "ua" always splits.
+    like "oye" is already counted as one). "gruel" and
+    "nescience" are 2 (audit #7's "want 1"/"want 3" were
+    wrong — the majority of syllable dictionaries give 2);
+    "extraordinary" is 6 (BrE) vs 5 (AmE), deliberately left
+    at 6; "casually" is 4 and "spiritually" is 5 — both
+    correct, the "-ually" "ua" always splits. The "interest"
+    family is pinned per word, not per family (audit #8 N-8):
+    "interest" 2 and "interested" 3 are the common REDUCED
+    pronunciations (Cambridge /ˈɪn.trest/, /ˈɪn.trə.stɪd/;
+    Oxford) while the full forms (3/4, howmanysyllables.com)
+    are real variants — so "interesting" is deliberately left
+    at its full 4 and "interestedly" at 5, each word on its
+    own evidence, not by analogy with its relatives.
 
     A word with no vowel (a number, an abbreviation) counts as 1.
     Non-letters at the ends of the word are stripped first; the
@@ -5830,9 +5984,15 @@ def save_analysis(text: str, result: dict,
         for key, ref in references.items():
             try:
                 json.dumps(ref, ensure_ascii=False)
-            except (TypeError, ValueError) as e:
+            except (TypeError, ValueError):
+                # Generic message, defense-in-depth (audit #8): the
+                # raw exception would leak a Python internals string
+                # ("Object of type ... is not JSON serializable").
+                # Not reachable via the API — references there come
+                # from json.loads, so they are always serializable —
+                # but a library caller can pass anything.
                 raise ValueError(
-                    f"referensi '{key}' tidak bisa disimpan: {e}")
+                    f"referensi '{key}' tidak bisa disimpan")
     if title is None:
         first_line = text.strip().splitlines()[0] if text.strip() else ""
         title = first_line[:60] or "tanpa judul"
@@ -7067,6 +7227,7 @@ STRINGS = {
         "stats": "Statistik pustaka",
         "analysis_id": "Nomor analisis (#)",
         "analysis_missing": "Tidak ada analisis",
+        "analysis_id_invalid": "ID analisis tidak valid",
         "search_query": "Kata kunci (judul/penulis/DOI)",
         "imported": "Diimpor",
         "added_count": "ditambahkan",
@@ -7148,6 +7309,7 @@ STRINGS = {
         "stats": "Library statistics",
         "analysis_id": "Analysis number (#)",
         "analysis_missing": "No such analysis",
+        "analysis_id_invalid": "Invalid analysis id",
         "search_query": "Keyword (title/author/DOI)",
         "imported": "Imported",
         "added_count": "added",
@@ -7643,18 +7805,31 @@ class CLI:
                 self.pause()
             elif choice == 2:
                 raw = self.ask(self.t["analysis_id"])
-                try:
-                    # Audit #7 N-7: int() accepts a leading "+"
-                    # ("+1" is id 1) where .isdigit() skipped it.
-                    analysis_id = int(raw.strip())
-                except ValueError:
-                    analysis_id = -1
-                if analysis_id >= 1:
-                    analysis = get_analysis(analysis_id)
-                    if analysis is None:
-                        print(f"{self.t['analysis_missing']} {raw}")
+                # Audit #8 N-7: an invalid id used to be silent
+                # (nothing printed, just the Enter pause) — now
+                # every bad input gets a message. Like the API
+                # (audit #8 N-2), only ASCII digits with an
+                # optional leading "+" are accepted: "1_0" is
+                # rejected instead of silently meaning 10, and a
+                # full-width "１" likewise. Whitespace around
+                # the number is still stripped — an interactive
+                # prompt is forgiving about that, unlike the API.
+                # Zero is a valid number but no analysis: it gets
+                # the "no such analysis" message, like id=0 on
+                # the API (404).
+                stripped = raw.strip()
+                if not re.fullmatch(r"\+?[0-9]+", stripped):
+                    print(f"{self.t['analysis_id_invalid']} {raw}")
+                else:
+                    analysis_id = int(stripped)
+                    if analysis_id >= 1:
+                        analysis = get_analysis(analysis_id)
+                        if analysis is None:
+                            print(f"{self.t['analysis_missing']} {raw}")
+                        else:
+                            print(f"\n{format_analysis_detail(analysis)}")
                     else:
-                        print(f"\n{format_analysis_detail(analysis)}")
+                        print(f"{self.t['analysis_missing']} {raw}")
                 self.pause()
             elif choice == 3:
                 query = self.ask(self.t["search_query"])
@@ -9232,6 +9407,23 @@ def _json_text(body: dict) -> str:
     return text
 
 
+def _strict_int(raw: str, message: str) -> int:
+    r"""A query-string integer, strictly parsed (audit #8 N-2).
+
+    int() is too loose for ids and limits: "1_0" parses as 10,
+    "１" (full-width U+FF11) as 1, " 1" as 1. Only ASCII digits
+    are accepted — spelled [0-9], not \d: Python's \d matches
+    Unicode digits, so \d would still accept "１". One
+    deliberate exception, an optional leading "+" ("+1" is id
+    1, kept from audit #7 N-7, which the audit #8 regression
+    list confirms). Anything else raises ValueError with the
+    caller's message.
+    """
+    if not re.fullmatch(r"\+?[0-9]+", raw or ""):
+        raise ValueError(message)
+    return int(raw)
+
+
 class _UIHandler(http.server.BaseHTTPRequestHandler):
     """Serves the embedded page plus a small JSON API for the five tabs."""
 
@@ -9337,7 +9529,8 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self._security_headers()
         self.end_headers()
-        self.wfile.write(data)
+        if self.command != "HEAD":
+            self.wfile.write(data)
 
     def _send_page(self) -> None:
         data = WEB_UI_HTML.replace(
@@ -9350,7 +9543,18 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self._security_headers()
         self.end_headers()
-        self.wfile.write(data)
+        if self.command != "HEAD":
+            self.wfile.write(data)
+
+    def do_HEAD(self):
+        # Audit #8 N-1: HEAD is GET without a body — a `curl -I`
+        # health check used to get 501 from the stdlib default
+        # (no do_HEAD at all). do_GET does the routing;
+        # _send_json/_send_page skip the body when the command
+        # is HEAD (same pattern as send_error, audit #7 H-11) —
+        # headers, including Content-Length of the would-be body,
+        # are identical to GET.
+        self.do_GET()
 
     def do_GET(self):
         parts = urlsplit(self.path)
@@ -9394,10 +9598,9 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         raw = (query.get(name) or [None])[0]
         if raw is None:
             return default
-        try:
-            value = int(raw)
-        except ValueError:
-            raise ValueError(f"{name} harus angka")
+        # Audit #8 N-2: _strict_int, not int() — "1_0" is 10
+        # under int(), "１" and " 1" are 1.
+        value = _strict_int(raw, f"{name} harus angka")
         return max(1, min(100, value))
 
     def _library_history(self, query: dict) -> dict:
@@ -9408,18 +9611,14 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         raw = (query.get("id") or [None])[0]
         if raw is None:
             raise ValueError("id analisis harus angka")
-        try:
-            # Audit #7 N-7: int() accepts a leading "+" ("+1" is
-            # id 1) where the old .isdigit() check rejected it.
-            # A negative id is not a valid analysis id (400);
-            # zero falls through to get_analysis, which returns
-            # None, so id=0 still answers 404 like before
-            # (audit #6 T-1 pins that).
-            analysis_id = int(raw)
-        except (TypeError, ValueError):
-            raise ValueError("id analisis harus angka")
-        if analysis_id < 0:
-            raise ValueError("id analisis harus angka")
+        # Audit #8 N-2: _strict_int, not int() — "1_0" used to
+        # answer 404 (meaning 10), "１" (full-width) and " 1"
+        # used to answer 200. A leading "+" is still accepted
+        # (audit #7 N-7: id=+1 is id 1). A negative id is not a
+        # valid analysis id (400); zero falls through to
+        # get_analysis, which returns None, so id=0 still
+        # answers 404 like before (audit #6 T-1 pins that).
+        analysis_id = _strict_int(raw, "id analisis harus angka")
         analysis = get_analysis(analysis_id)
         if analysis is None:
             raise KeyError(f"tidak ada analisis #{raw}")
@@ -9648,13 +9847,29 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         return detect_ai(text, lang=lang)
 
     def _fill_prompt(self, body: dict) -> dict:
-        prompt_id = str(body.get("id") or "")
+        # Audit #8 H-6: like _json_text in the other handlers,
+        # no str() coercion here — a non-string id or a
+        # non-string value used to be formatted into the output
+        # ("{'a': 1}", "None", "['a', 'b']", "True") with a 200.
+        # A missing id still means "" ("prompt tidak dikenal: ",
+        # as before); a present non-string id is a plain 400.
+        # The web UI always sends strings, so it is unaffected.
+        prompt_id = body.get("id")
+        if prompt_id is None:
+            prompt_id = ""
+        if not isinstance(prompt_id, str):
+            raise ValueError("id harus berupa string")
         prompt = get_prompt(prompt_id)
         if prompt is None:
             raise ValueError(f"prompt tidak dikenal: {prompt_id}")
-        values = body.get("values") or {}
+        values = body.get("values")
+        if values is None:
+            values = {}
         if not isinstance(values, dict):
             raise ValueError("values harus berupa objek {kunci: nilai}")
+        for key, value in values.items():
+            if not isinstance(value, str):
+                raise ValueError(f"nilai '{key}' harus berupa string")
         lang = body.get("lang") or "id"
         if lang not in ("id", "en"):
             raise ValueError("lang harus 'id' atau 'en'")

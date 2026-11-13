@@ -1,7 +1,7 @@
 ---
 name: ai-detector
 description: "Heuristic AI-text detector (stdlib only, no language model): burstiness, template phrases, lexical diversity, repeated sentence starters."
-version: 1.0.2
+version: 1.0.3
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]

@@ -10,7 +10,7 @@ import os
 import tempfile
 import unittest
 import urllib.error
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
 import academic_tools as tools
@@ -198,12 +198,16 @@ class TestCiteMainLookup(unittest.TestCase):
                 self.assertIn("lecun2015", buf.getvalue())
                 self.assertIn("lecun2015", tools.load_references(path))
 
-    def test_cite_main_lookup_not_found_exits_2(self):
+    def test_cite_main_lookup_not_found_exits_1(self):
+        # Audit #6 N-6: a confirmed 404 is an ordinary failure,
+        # exit 1 with a plain message — not argparse's exit 2.
+        err = io.StringIO()
         with patch.object(tools, "_lookup_get",
-                          side_effect=tools.LookupNotFoundError("not found (HTTP 404)")):
-            with self.assertRaises(SystemExit) as cm:
-                tools.cite_main(["--lookup", "10.9999/tidak-ada"])
-        self.assertEqual(cm.exception.code, 2)
+                          side_effect=tools.LookupNotFoundError("not found (HTTP 404)")), \
+                redirect_stderr(err):
+            code = tools.cite_main(["--lookup", "10.9999/tidak-ada"])
+        self.assertEqual(code, 1)
+        self.assertIn("not found (HTTP 404)", err.getvalue())
 
 
 class TestLoadReferencesValidation(unittest.TestCase):

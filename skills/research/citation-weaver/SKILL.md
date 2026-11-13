@@ -1,7 +1,7 @@
 ---
 name: citation-weaver
 description: "Weave citations into narrative text automatically."
-version: 1.5.5
+version: 1.5.6
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]

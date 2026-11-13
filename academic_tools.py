@@ -118,14 +118,14 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-__version__ = "1.27.3"
-JARGON_VERSION = "1.0.8"
-CITATION_VERSION = "1.5.5"
+__version__ = "1.27.4"
+JARGON_VERSION = "1.0.9"
+CITATION_VERSION = "1.5.6"
 PROMPTS_VERSION = "1.1.0"
 QUALITY_VERSION = "1.2.14"
-DETECTOR_VERSION = "1.0.2"
-READABILITY_VERSION = "1.0.2"
-CLI_VERSION = "1.18.2"
+DETECTOR_VERSION = "1.0.3"
+READABILITY_VERSION = "1.0.3"
+CLI_VERSION = "1.18.3"
 
 # ======================================================================
 # Jargon Buster
@@ -292,25 +292,25 @@ DICTIONARY = {
         "whether a test or study actually measures what it claims to measure, "
         "rather than something else",
         "research-methods",
-        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
     ),
     "validitas": (
         "whether a test or study actually measures what it claims to measure, "
         "rather than something else",
         "research-methods",
-        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
     ),
     "reliability": (
         "whether a test or study gives the same result when repeated "
         "under the same conditions",
         "research-methods",
-        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
     ),
     "reliabilitas": (
         "whether a test or study gives the same result when repeated "
         "under the same conditions",
         "research-methods",
-        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
     ),
     "triangulation": (
         "checking one finding with more than one method, data source, "
@@ -340,7 +340,7 @@ DICTIONARY = {
         "a clear statement of exactly how a variable is measured "
         "or observed in a study",
         "research-methods",
-        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
     ),
     "literature review": (
         "a survey of the research already done on a topic, showing "
@@ -570,7 +570,7 @@ DICTIONARY = {
         "really measures what it should, usually by correlating each "
         "item score with the total score",
         "research-methods",
-        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
     ),
     "uji reliabilitas": (
         "the procedure for checking whether an instrument gives "
@@ -578,7 +578,7 @@ DICTIONARY = {
         "that is typically between 0 and 1 but can be negative, "
         "where higher means more consistent",
         "research-methods",
-        "Creswell & Creswell 2018, 'Research Design' (5th ed.)",
+        "Creswell & Creswell 2018, 'Research Design' (5th ed., ISBN 978-1-5063-8670-6)",
     ),
     "t-test": (
         "a test for whether the averages of two groups are really "
@@ -719,10 +719,14 @@ def update_dictionary(from_file: str, field: str | None = None):
 # Characters allowed immediately before a dictionary match (H-7):
 # whitespace is checked with str.isspace(); these are the opening
 # brackets and quotes, plus punctuation that separates two terms in
-# running text (", ; : / ?" and the dashes). A period is deliberately
-# NOT in the set, so ".anova" still does not match (audit #4), and a
-# hyphen still blocks, so "pre-t-test" stays empty.
-_MATCH_START_CHARS = "([{'\",;:/?—–"
+# running text (", ; : / ? !" and the dashes, the ellipsis, and the
+# closing brackets — a term can follow them with no space, as in
+# "korelasi!validitas" or "“korelasi”"). Curly quotes (“”‘’«»)
+# join the set because Word/Google Docs produce them by default.
+# A period is deliberately NOT in the set, so ".anova" still does
+# not match (audit #4), and a hyphen still blocks, so
+# "pre-t-test" stays empty.
+_MATCH_START_CHARS = "([{'\",;:/?!—–“”‘’«»…])"
 
 
 def _iter_matches(text: str, field: str | None = None):
@@ -975,10 +979,17 @@ def load_references(path: str):
     Authors are stored as ["Family, Given", ...].
 
     Raises ValueError with a plain message when the file is not
-    valid JSON or the data is not a well-formed {key: ref} object.
+    valid JSON or the data is not a well-formed {key: ref} object —
+    and when the file does not exist at all, so `cite` (every
+    branch: weave, --audit, --verify, --export-bibtex/ris) exits 1
+    with "File tidak ditemukan" instead of a FileNotFoundError
+    traceback (audit #6 H-11).
     """
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        raise ValueError(f"File tidak ditemukan: {path}") from None
     return _validate_references(data)
 
 
@@ -1510,8 +1521,11 @@ def format_reference(ref, style: str) -> str:
     raise ValueError(f"unknown style: {style}")
 
 
-def _in_text(ref, style: str, number: int) -> str:
-    authors = ref.get("authors", [])
+def _in_text(ref, style: str, number: int, key: str = "") -> str:
+    # Normalised like format_reference: a lone authors string is
+    # [string], not a character sequence — "Field, Andy" must give
+    # "(Field, 2018)", not "(F et al., 2018)".
+    authors = _authors_list(ref.get("authors"), key)
     year = ref.get("year", "n.d.")
     first = _family(authors[0]) if authors else "Anon."
     etal = " et al." if len(authors) > 2 else ""
@@ -1554,7 +1568,7 @@ def weave(text: str, references: dict, style: str = "apa", lang: str = "id"):
             return f"[{msg['missing']}: {key}]"
         if key not in order:
             order.append(key)
-        return _in_text(references[key], style, order.index(key) + 1)
+        return _in_text(references[key], style, order.index(key) + 1, key)
 
     pattern = re.compile(r"(?:\[cite:([^\]]+)\]|\\cite\{([^}]+)\})")
     woven = pattern.sub(replace, text)
@@ -1831,7 +1845,10 @@ _CITE_PATTERN = re.compile(r"(?:\[cite:([^\]]+)\]|\\cite\{([^}]+)\})")
 def _author_year_keys(text: str, references: dict) -> list:
     """Bibliography keys cited in author-year form, in first-appearance
     order: parenthetical "(Field, 2018)" / "(Field et al., 2018)" and
-    narrative "Field (2018)" / "Menurut Field (2018)".
+    narrative "Field (2018)" / "Menurut Field (2018)". A parenthetical
+    group may hold several citations — "(Field, 2018; Creswell,
+    2018)" and "(Field, 2018, Creswell, 2018)" both credit every
+    unit inside the group.
 
     Only the first author's family name and the year are matched, so
     this is NOT a full audit: it cannot tell which of two entries by
@@ -1856,11 +1873,22 @@ def _author_year_keys(text: str, references: dict) -> list:
             continue
         fam = re.escape(family)
         yr = re.escape(str(year).strip())
-        paren = re.compile(
-            r"\(\s*" + fam + r"(?:\s+et al\.?)?\s*,?\s*" + yr + r"\s*\)")
+        # One unit inside a parenthetical group: anchored at the
+        # start of the group or after ';' / ',', and ending at ';' /
+        # ',' / group end. The old regex demanded ')' right after
+        # the year, so a multi-citation group matched nothing at
+        # all; the trailing separator (instead of ')') is also what
+        # keeps "(Field, 2019)" from matching a 2018 entry and a
+        # bare "Field, 2018" outside parens from being claimed.
+        unit = re.compile(
+            r"(?:^|[;,])\s*" + fam + r"(?:\s+et al\.?)?\s*,?\s*" + yr
+            + r"\s*(?:[;,]|$)")
         narrative = re.compile(
             r"\b" + fam + r"(?:\s+et al\.?)?\s*\(\s*" + yr + r"\s*\)")
-        if paren.search(text) or narrative.search(text):
+        in_paren = any(
+            unit.search(group)
+            for group in re.findall(r"\(([^()]*)\)", text))
+        if in_paren or narrative.search(text):
             found.append(key)
     return found
 
@@ -1872,7 +1900,9 @@ def audit_citations(text: str, references: dict) -> dict:
     "unused": [...], "author_year": [...]}. `cited` keeps
     first-appearance order; `missing` and `unused` are sorted.
     `author_year` lists the bibliography keys matched only in
-    author-year form ("(Field, 2018)", "Field (2018)"): those keys
+    author-year form ("(Field, 2018)", "Field (2018)"), including
+    multi-citation groups ("(Field, 2018; Creswell, 2018)",
+    "(Field, 2018, Creswell, 2018)"): those keys
     count as cited and are NOT reported as "unused", but the match
     is name + year only, so author-year style is NOT fully audited —
     a same-family, same-year entry can be credited to the wrong key,
@@ -2073,12 +2103,25 @@ _YANG_MANA_RE = re.compile(r"\byang mana\b|\bdimana\b", re.IGNORECASE)
 # "hal." is the Indonesian abbreviation for "halaman" (page);
 # "hlm." is the standard KBBI abbreviation for the same word.
 # Honorifics (Bpk./Sdr./Tn./Ny./Nn.) join the list (audit #5 H-7).
+# Audit #6 H-8 adds more honorifics (Sdri./Yth./Ir./Hj.), the
+# address abbreviations (Jln./Jl./Gg./Rt./Rw.) and the
+# edition/volume abbreviations (Ed./Vol./Cet.): all of them are
+# followed by a name, a number or a Roman numeral, never by the
+# end of a sentence, so they are protected unconditionally like
+# Dr./Bpk./hlm. (and like "No.", which is also digit-followed).
 # The list abbreviations dll./dst./dkk. are NOT here: they are only
 # protected when the next word starts lowercase (audit #5 H-6) —
 # "dll. Kemudian" ends a sentence, "dll. kemudian" does not — so
 # they get their own conditional protection below.
+# The date abbreviations (Tgl./Th. and the months) are NOT here
+# either: unlike a title or an address, a date CAN end a sentence
+# ("Rapat pada 12 Jan."), so they get their own conditional
+# protection below (digit or lowercase next word).
 _ABBREVIATIONS = ("Dr.", "Prof.", "Drs.", "Bpk.", "Sdr.", "Tn.",
-                  "Ny.", "Nn.", "e.g.", "i.e.", "hal.", "hlm.", "No.")
+                  "Ny.", "Nn.", "Sdri.", "Yth.", "Ir.", "Hj.",
+                  "Jln.", "Jl.", "Gg.", "Rt.", "Rw.",
+                  "Ed.", "Vol.", "Cet.",
+                  "e.g.", "i.e.", "hal.", "hlm.", "No.")
 _ABBREV_PLACEHOLDER = "\ue000"
 # Every period inside an abbreviation is hidden, not just the last
 # one: "e.g." used to survive as "e.g<placeholder>", whose remaining
@@ -2089,16 +2132,32 @@ _ABBREV_RE = re.compile(
     r"\b(?:" + "|".join(
         re.escape(a) for a in sorted(_ABBREVIATIONS, key=len, reverse=True)
     ) + r")")
-# List abbreviations (dll./dst./dkk.): protected only when the next
-# word starts with a lowercase letter (audit #5 H-6). A capitalised
-# next word — or the end of the text — means the abbreviation closed
-# the sentence ("Ia membeli buku, dll. Kemudian pulang." is two
-# sentences; "Buku itu dst. dibaca semua." is one). Matched at a word
-# boundary so a word that merely ends in the same letters is not
-# protected by mistake; the lowercase check is done in
-# _split_sentences with str.islower(), so it covers non-ASCII
-# lowercase letters too.
-_LIST_ABBREV_RE = re.compile(r"\b(?:dll|dst|dkk)\.")
+# List abbreviations (dll./dst./dkk./dsb.): protected only when the
+# next word starts with a lowercase letter (audit #5 H-6; "dsb."
+# joins them in audit #6 H-8). A capitalised next word — or the end
+# of the text — means the abbreviation closed the sentence ("Ia
+# membeli buku, dll. Kemudian pulang." is two sentences; "Buku itu
+# dst. dibaca semua." is one). Matched at a word boundary so a word
+# that merely ends in the same letters is not protected by mistake;
+# the lowercase check is done in _split_sentences with
+# str.islower(), so it covers non-ASCII lowercase letters too.
+_LIST_ABBREV_RE = re.compile(r"\b(?:dll|dst|dkk|dsb)\.")
+# Date abbreviations (Tgl./Th. and the months that end in a
+# period; "Mei" has none, so it is not here): protected only when
+# the next token is a digit — the year or day that normally
+# follows ("12 Jan. 2020", "Tgl. 12") — or a lowercase word (the
+# dll. rule: "Jan. lalu", "Jan. adalah bulan pertama"). A
+# capitalised next word ends the sentence, because a date can
+# genuinely close one ("Rapat pada 12 Jan. Besok libur." is two
+# sentences). This is the one new class that is conditional rather
+# than unconditional (audit #6 H-8).
+_DATE_ABBREV_RE = re.compile(
+    r"\b(?:Tgl|Th|Jan|Feb|Mar|Apr|Jun|Jul|Agu|Sep|Okt|Nov|Des)\.")
+# A chained academic degree ("Dr. rer. nat."): the whole phrase
+# is one title, so all of its periods are protected (audit #6
+# H-8). Matched as a phrase, not as standalone "rer."/"nat.",
+# which are not abbreviations on their own.
+_CHAINED_DEGREE_RE = re.compile(r"\bDr\.\s+rer\.\s+nat\.")
 # A dotted academic degree (M.Si., S.Pd., S.Si., M.Pd.): a capital
 # letter, a period, a capital letter with optional lowercase
 # letters, a period (audit #5 N-11). Protected like an abbreviation
@@ -2114,8 +2173,11 @@ _INITIAL_RE = re.compile(r"\b[A-Z]\.(?=\s+[A-Z])")
 # ends a sentence, not just "'Pergi!'"), followed by whitespace or
 # the end of the text. Only terminators are scanned for — the
 # previous pattern also scanned "[^.!?]*" from every position,
-# which was quadratic on text without a terminator.
-_TERMINATOR_RE = re.compile(r"[.!?]+['\"”’)]*(?=\s|$)")
+# which was quadratic on text without a terminator. The closing
+# run is captured (group 1) so _split_sentences can tell a
+# terminator WITH closers from one without: audit #6 H-9 only
+# applies after closers.
+_TERMINATOR_RE = re.compile(r"[.!?]+(['\"”’)]*)(?=\s|$)")
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -2123,27 +2185,48 @@ def _split_sentences(text: str) -> list[str]:
 
     A closing quote (or parenthesis) after the terminator belongs
     to the sentence that just ended, so "'Jangan!' Begitu ..." is
-    three sentences, not two. Sentences come back without their
-    terminator but with any closing quote kept ("'Jangan!'"), a
-    trailing fragment without a terminator is kept as its own
-    sentence, and empty text gives [].
+    three sentences, not two — UNLESS the continuation starts
+    lowercase, in which case the quoted/paren material and the
+    continuation are one sentence (audit #6 H-9): "Dia berkata,
+    'Saya takut!' sambil menangis." is one sentence, while
+    "'Jangan!' Begitu katanya." is still two. Without a closing
+    quote or parenthesis the lowercase rule does not apply ("Dia
+    pergi. sambil menangis." still splits). Sentences come back
+    without their terminator but with any closing quote kept
+    ("'Jangan!'"), a trailing fragment without a terminator is kept
+    as its own sentence, and empty text gives [].
 
     Abbreviations ("Dr.", "e.g.", "i.e.", "hal.", "hlm.", "Bpk.",
-    "Tn.", ...) and single capital initials ("A." in "Dr. A. Budi")
-    never split a sentence, and neither do dotted degrees ("M.Si.",
-    "S.Pd."). List abbreviations ("dll.", "dst.", "dkk.") are only
-    protected when the next word starts lowercase; a capitalised
-    next word (or the end of the text) ends the sentence. Linear
-    time: only terminators are matched, then the text is sliced
-    between matches.
+    "Tn.", "Sdri.", "Yth.", "Ir.", "Hj.", "Jl.", "Jln.", "Gg.",
+    "Rt.", "Rw.", "Ed.", "Vol.", "Cet.", ...) and single capital
+    initials ("A." in "Dr. A. Budi") never split a sentence, and
+    neither do dotted degrees ("M.Si.", "S.Pd.") or the chained
+    degree "Dr. rer. nat.". List abbreviations ("dll.", "dst.",
+    "dkk.", "dsb.") are only protected when the next word starts
+    lowercase; a capitalised next word (or the end of the text)
+    ends the sentence. Date abbreviations ("Tgl.", "Th." and the
+    months "Jan." ... "Des.") are only protected when the next
+    token is a digit or a lowercase word, because a date can
+    genuinely end a sentence ("Rapat pada 12 Jan. Besok libur."
+    is two sentences; "Rapat 12 Jan. 2020 diadakan." is one).
+    Linear time: only terminators are matched, then the text is
+    sliced between matches.
 
     Limitation: a sentence that genuinely ends in a lone capital
     letter is merged with the next one when the next sentence
     starts with a capital, e.g. "Nilainya A. Ia senang." stays one
     sentence — an initial and a sentence-final capital cannot be
-    told apart without a dictionary of names.
+    told apart without a dictionary of names. The same applies to
+    an unconditional abbreviation at the very end of a sentence
+    ("Gelarnya Dr. rer. nat. Ia mengajar." stays one sentence):
+    titles and addresses are never sentence-final in real text,
+    so the protection is worth the trade-off.
     """
     protected = text.strip()
+    # The chained degree first: _ABBREV_RE below would hide the
+    # period of "Dr.", after which the phrase no longer matches.
+    protected = _CHAINED_DEGREE_RE.sub(
+        lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
     protected = _ABBREV_RE.sub(
         lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
 
@@ -2159,6 +2242,19 @@ def _split_sentences(text: str) -> list[str]:
         return m.group(0)
 
     protected = _LIST_ABBREV_RE.sub(_protect_list_abbrev, protected)
+
+    def _protect_date_abbrev(m):
+        # A date abbreviation is protected only when the next token
+        # is a digit (the year/day that normally follows: "12 Jan.
+        # 2020", "Tgl. 12") or a lowercase word ("Jan. lalu");
+        # a capitalised next word means the date closed the
+        # sentence (audit #6 H-8). Same closure caveat as above.
+        after = protected[m.end():].lstrip()
+        if after and (after[0].isdigit() or after[0].islower()):
+            return m.group(0).replace(".", _ABBREV_PLACEHOLDER)
+        return m.group(0)
+
+    protected = _DATE_ABBREV_RE.sub(_protect_date_abbrev, protected)
     protected = _DEGREE_RE.sub(
         lambda m: m.group(0).replace(".", _ABBREV_PLACEHOLDER), protected)
     protected = _INITIAL_RE.sub(
@@ -2171,6 +2267,18 @@ def _split_sentences(text: str) -> list[str]:
     out: list[str] = []
     pos = 0
     for m in _TERMINATOR_RE.finditer(protected):
+        if m.group(1):
+            # Terminator + closing quote/paren (audit #6 H-9): a
+            # lowercase continuation belongs to the same sentence
+            # ("'Saya takut!' sambil ..." is one sentence), so this
+            # match is not a boundary and the scan continues. A
+            # capitalised continuation (or a digit, or the end of
+            # the text) still ends the sentence ("'Jangan!' Begitu
+            # ..." is two). Without closers the rule does not
+            # apply: "Dia pergi. sambil ..." still splits.
+            after = protected[m.end():].lstrip()
+            if after and after[0].islower():
+                continue
         piece = protected[pos:m.end()].strip().rstrip(".!?")
         if piece:
             out.append(piece)
@@ -3313,6 +3421,8 @@ def _blank_folder_entry(name: str) -> dict:
             "citations_cited": 0, "citations_missing": [],
             "doi_ok": 0, "doi_total": 0, "doi_missing": 0,
             "style_score": None, "duplicates": None,
+            "duplicates_truncated": False,
+            "duplicates_comparisons_spent": None,
             "library_id": None, "error": None}
 
 
@@ -3351,7 +3461,17 @@ def _analyze_one_file(entry: dict, text: str, references=None, *,
     entry["style_score"] = result["style"]["style_score"]
     if duplicates:
         try:
-            entry["duplicates"] = find_duplicates(text, db=db)["count"]
+            # Audit #6 B-1: the folder path used to keep only the
+            # count, silently dropping the truncation flag — the
+            # same silent cut audit #5 B-1 fixed for single files.
+            # Keep "duplicates" as the count (CLI table, API and
+            # web UI read it as a number) and carry the flag and
+            # the spent budget alongside it, like find_duplicates.
+            dup = find_duplicates(text, db=db)
+            entry["duplicates"] = dup["count"]
+            entry["duplicates_truncated"] = dup.get("truncated", False)
+            entry["duplicates_comparisons_spent"] = dup.get(
+                "comparisons_spent")
         except ValueError as e:
             # Record the failure, but still try the save below.
             entry["error"] = str(e)
@@ -3385,10 +3505,13 @@ def analyze_folder(folder: str, references=None, *, lang: str = "id",
     A file entry carries file, text, result (the full analyze pass),
     quality_score, jargon_count, citations_cited, citations_missing,
     doi_ok, doi_total, doi_missing, style_score, duplicates (count, or
-    None when not checked), library_id (or None), and error (None when
-    the file was read and analyzed). A file that cannot be read (bad
-    encoding, permissions) is recorded with its error and the rest
-    still run.
+    None when not checked), duplicates_truncated (True when the
+    duplicates check hit the work budget — the count may be
+    incomplete) and duplicates_comparisons_spent (comparisons
+    actually performed, or None when not checked), library_id
+    (or None), and error (None when the file was read and analyzed).
+    A file that cannot be read (bad encoding, permissions) is recorded
+    with its error and the rest still run.
     """
     names = sorted(
         (n for n in os.listdir(folder)
@@ -3493,6 +3616,16 @@ def format_folder_result(result: dict, lang: str = "id") -> str:
     for e in files:
         if e["error"]:
             lines.append(f"{s['failed']}: {e['file']} — {e['error']}")
+    # Audit #6 B-1: a truncated duplicates check must warn here
+    # too, with the same wording as the single-file path — a
+    # short count in the table is never a complete check.
+    a = _ANALYZE_STRINGS.get(lang, _ANALYZE_STRINGS["id"])
+    for e in files:
+        if e.get("duplicates_truncated"):
+            lines.append(
+                f"{e['file']}: " + a["duplicates_truncated"].format(
+                    spent=e.get("duplicates_comparisons_spent", "?"),
+                    budget=_MAX_DUPLICATE_COMPARISONS))
     return "\n".join(lines) + "\n"
 
 
@@ -3625,7 +3758,8 @@ def _gated_candidates(words: set, entries: list, index: dict,
     return gated
 
 
-def _is_own_run(run: dict, text_hash: str, legacy_hash: str) -> bool:
+def _is_own_run(run: dict, text_hash: str, legacy_hash: str,
+                ws_hash: str | None = None) -> bool:
     """True when a saved run is the text's own copy.
 
     Primary: the stored text_hash column matches the canonical
@@ -3635,12 +3769,19 @@ def _is_own_run(run: dict, text_hash: str, legacy_hash: str) -> bool:
     fallback also rescues runs saved by v1.27.1, whose stored hash
     was taken after a second strip (see _canonical_text): with the
     idempotent canonical form, hashing their stored text now gives
-    the same value as hashing the text being checked.
+    the same value as hashing the text being checked. Last
+    fallback (audit #6 N-5): the whitespace-collapsed hash — a run
+    re-typed with double spaces or tabs inside is still its own
+    copy, even though its byte-exact hash differs.
     """
     stored = run.get("text_hash")
     if stored in (text_hash, legacy_hash):
         return True
-    return _stored_hash(run.get("text") or "") == text_hash
+    if _stored_hash(run.get("text") or "") == text_hash:
+        return True
+    if ws_hash is not None:
+        return _ws_collapsed_hash(run.get("text") or "") == ws_hash
+    return False
 
 
 # Work budget for find_duplicates (audit #4, N-15): the number of
@@ -3697,10 +3838,15 @@ def find_duplicates(text: str, db=None, *, threshold: float = 0.8,
         # Exclude the text's own saved copy by its stored hash —
         # the canonical hash, or the v1.25.2 legacy hash for runs
         # saved before the canonical form existed (see _is_own_run).
+        # The whitespace-collapsed hash is passed along so a copy
+        # re-typed with different internal spacing is still
+        # recognised as its own run (audit #6 N-5).
         text_hash = _stored_hash(text)
         legacy_hash = _legacy_stored_hash(text)
+        ws_hash = _ws_collapsed_hash(text)
         past_runs = [r for r in _past_texts(db)
-                     if not _is_own_run(r, text_hash, legacy_hash)]
+                     if not _is_own_run(r, text_hash, legacy_hash,
+                                        ws_hash)]
     normalized = [_normalize_sentence(s) for s in sentences]
     word_sets = [set(n.split()) for n in normalized]
 
@@ -4045,7 +4191,7 @@ _DETECT_STRINGS = {
         "capped": ("Kesimpulan dibatasi ke Campuran: hanya {n} dari 4 "
                    "sinyal yang berlaku — skor tinggi dari dua sinyal "
                    "keseragaman saja belum cukup untuk menyebut teks ini AI."),
-        "capped_limit": ("Batas detektor: teks pendek (<100 kata atau "
+        "capped_limit": ("Batas detektor: teks pendek (<100 kata dan "
                          "<6 kalimat) tidak pernah bisa mendapat "
                          "'Kemungkinan besar AI' — keragaman kosakata "
                          "hanya berlaku pada ≥100 kata dan pengulangan "
@@ -4066,7 +4212,7 @@ _DETECT_STRINGS = {
         "capped": ("Verdict capped at Mixed: only {n} of 4 signals "
                    "apply — a high score from two uniformity signals "
                    "alone is not enough to call this text AI."),
-        "capped_limit": ("Detector limit: a short text (<100 words or "
+        "capped_limit": ("Detector limit: a short text (<100 words and "
                          "<6 sentences) can never reach 'Likely AI' — "
                          "lexical diversity only applies at ≥100 words "
                          "and starter repetition only at ≥6 sentences."),
@@ -4448,6 +4594,15 @@ _SYLLABLE_EXCEPTIONS = {
     "saing": ("ai",),
     "kaidah": ("ai",),
     "gairah": ("ai",),
+    # "ai" is hiatus in these roots (audit #6 H-3/H-4/T-6).
+    "kail": ("ai",),
+    "bait": ("ai",),
+    "laik": ("ai",),
+    "aib": ("ai",),
+    "sair": ("ai",),
+    "kais": ("ai",),
+    "syair": ("ai",),
+    "mozaik": ("ai",),
     # "au" is hiatus in these roots.
     "daun": ("au",),
     "laut": ("au",),
@@ -4461,11 +4616,62 @@ _SYLLABLE_EXCEPTIONS = {
     "kaum": ("au",),
     "maut": ("au",),
     "dedaun": ("au",),
+    # "au" is hiatus in these roots (audit #6 H-3/H-4).
+    "paut": ("au",),
+    "taut": ("au",),
+    "lauk": ("au",),
+    "kaut": ("au",),
+    "gaun": ("au",),
+    "aum": ("au",),
+    "raup": ("au",),
+    # "ei" is hiatus in these roots (audit #6 H-3/T-6):
+    # pro·te·in, ka·se·in, de·is·me, te·is·me — the "ei"
+    # straddles two syllables, so it is not the EYD diphthong.
+    "protein": ("ei",),
+    "kasein": ("ei",),
+    "deisme": ("ei",),
+    "teisme": ("ei",),
     # "oi" is hiatus in these roots.
     "koin": ("oi",),
     "poin": ("oi",),
     "heroik": ("oi",),
     "stoik": ("oi",),
+}
+
+# What is left of a hiatus root after a nasal prefix assimilates
+# (meluluh) its initial consonant — audit #6 H-4. meng-/peng- +
+# k- leaves "ait" from "kait" ("mengait", "pengait"), meny-/peny-
+# + s- leaves "yair" from "sair" ("penyair") and "yaing" from
+# "saing" ("menyaingi", "penyaing"), pe- + r- leaves "aih" from
+# "raih" ("peraih" — longest-first strips "per", not "pe") and
+# "aup" from "raup" ("peraup"), and men- + t- leaves "naut" from
+# "taut" ("menautkan": "men" cannot strip before a vowel, so "me"
+# strips instead). The remnant's vowel pair is the root's hiatus,
+# not a diphthong — but ONLY for these listed remnants. A blanket
+# "split the first vowel pair after a nasal prefix" would break
+# real diphthongs ("memandai" is mem- + pandai, 3, not 4), so the
+# fix is lexical, like _SYLLABLE_EXCEPTIONS. Matched on the
+# stripped ROOT only, never as a substring. Counts checked against
+# KBBI syllabification (kbbi.web.id, 2026-11-13): me·nga·it,
+# pe·nga·it, me·nga·il, pe·nga·il, me·nga·is, me·nga·is·kan,
+# me·nga·ut, pe·nya·ir, me·nya·ingi, pe·nya·ing, me·na·ut·kan,
+# pe·ra·up. NOT listed: "ain" (no meng- derivative of "kain" in
+# KBBI), "aidah" (no meng- derivative of "kaidah"), "moin"/"oin"
+# ("memoin"/"mengoin" unverified; "poin"/"koin" have no
+# kbbi.web.id entry at all). "aib" is a real root (a·ib, via
+# meng·a·ib·kan), so it lives in _SYLLABLE_EXCEPTIONS, not here.
+_NASAL_REMNANTS = {
+    # "ai" is hiatus in these remnants.
+    "ait": ("ai",),    # kait
+    "ail": ("ai",),    # kail
+    "ais": ("ai",),    # kais
+    "aih": ("ai",),    # raih
+    "yaing": ("ai",),  # saing
+    "yair": ("ai",),   # sair
+    # "au" is hiatus in these remnants.
+    "aut": ("au",),    # kaut
+    "aup": ("au",),    # raup
+    "naut": ("au",),   # taut
 }
 
 # Pairs that count as ONE syllable (EYD V diphthongs ai, au,
@@ -4523,7 +4729,249 @@ _ENGLISH_EXCEPTIONS = {
     "idea": 3, "area": 3, "real": 2, "poem": 2,
     "science": 2, "rhythm": 2,
     "aisle": 1, "isle": 1,
+    # Audit #6 H-5: "oe"/"oo"/"ui" are genuinely ambiguous
+    # ("book" 1 vs "cooperate" 4, "suit" 1 vs "ruin" 2), so no
+    # rule can split them safely — these words are pinned here
+    # instead of guessed by a rule. ("ea" has a narrow rule
+    # now: only before "ct", as in "reaction".)
+    "create": 2, "created": 2, "creating": 3, "creator": 3,
+    "ideal": 3, "reality": 4, "theatre": 3, "theater": 3,
+    "realize": 3, "realise": 3, "realistic": 4,
+    "diarrhea": 4, "diarrhoea": 4,
+    "poet": 2, "poems": 2,
+    "cooperate": 4, "coordinate": 4, "cooperation": 5,
+    "ruin": 2, "fluid": 2, "genuine": 3,
+    # Audit #6 H-5: "-ed" is pronounced as its own syllable in
+    # these words, so the silent-"-ed" rule below must not touch
+    # them ("naked" 2 vs "walked" 1, "beloved" 3, "hatred" 2).
+    "naked": 2, "wicked": 2, "rugged": 2, "beloved": 3,
+    "learned": 2, "blessed": 2, "aged": 2, "dogged": 2,
+    "jagged": 2, "sacred": 2, "crooked": 2, "wretched": 2,
+    "ragged": 2, "hatred": 2, "hundred": 2, "kindred": 2,
+    # Audit #6 N-7: irregular words no rule reaches. "chaotic"
+    # (3) and "february" (4) are NOT listed: the "ao"/"ua" rules
+    # below already count them right.
+    "business": 2, "every": 2, "evening": 2, "definitely": 4,
+    "wednesday": 2, "colonel": 2, "literature": 3, "vegetable": 3,
+    # "Laos" is 1 (the "ao" rule would give 2: "chaos" 2 splits,
+    # "Laos" does not — same letters, different word).
+    "laos": 1,
+    # "gue"/"que" is silent ("vague" 1, "antique" 2), except
+    # these two, where the "u" is a real vowel: "argue" 2
+    # (the "u" is /ju:/) and "segue" 2 (the "ue" is /weI/).
+    "argue": 2, "segue": 2,
+    # "eu" has no rule: it is one sound word-initially
+    # ("eulogy" 3) but two sounds across the re- boundary
+    # ("reunion" 3, "reuse" 2, "reunite" 3, "reusable" 4,
+    # "reunification" 6) and in "museum" 3 (mu-se-um). Pinned.
+    "reunion": 3, "reuse": 2, "reunite": 3, "reusable": 4,
+    "reunification": 6, "museum": 3,
+    # "trial" 2 (tri-al): the only "t" + "ia" word where the
+    # "ia" splits — the -tial rule would give 1 ("partial" 2
+    # is one sound, "trial" is two).
+    "trial": 2,
 }
+
+
+def _en_hiatus_extra(w: str) -> int:
+    """Extra syllables from English vowel pairs that split.
+
+    English spelling hides hiatus: "various" is var-i-ous (3),
+    "media" is me-di-a (3), "theory" is the-o-ry (3) — but the
+    plain vowel-run count sees one group for the pair. This scans
+    the word left to right; when a listed pair fires it counts
+    one extra syllable and consumes the pair, so a three-vowel
+    run splits exactly once ("iou" in "various" is i + ou = 2,
+    "iai" in "liaison" is i + ai = 2). Pairs that do NOT split
+    are left alone:
+    - "ia"/"io" after c/s/t are one syllable ("special",
+      "official", "dictionary", "version" — the -cial/-tial/
+      -tion/-sion endings), and "io" after c/t/x before "u" is
+      one syllable ("precious", "cautious", "anxious" — the
+      -cious/-tious/-xious endings). A word-initial "sc" before
+      the pair is a real /s/ + vowel, not /ʃ/ ("scientific",
+      "scion", "sciatic"), so it DOES split there.
+    - "ua" after q/g is one syllable ("quality", "language",
+      "guard"), and before "v" ("suave"); "-ually" always
+      splits ("usually", "actually", "gradually", "casually",
+      "spiritually" — the "ua" is /u/ + /@/ in every case).
+    - "ue" splits before "l"/"n"/"t" ("cruel", "fuel",
+      "fluent", "duet") and not after "q" ("sequel").
+    - "ie" splits only before "t" + vowel/end ("diet", "quiet",
+      "variety", "society") or before "nce"/"nt" when not after
+      c/s/t ("experience", "audience", "client" — but not
+      "patience", "ancient", "science").
+    - "eo" splits except before "p" ("people", "leopard").
+    - "ea" splits only before "ct" ("reaction", "reactor",
+      "reactive", "react" — the "ea" straddles the re-/act-
+      boundary; everywhere else it is one sound: "meal",
+      "great", "measure", "peacock").
+    - "ao" splits only before a consonant ("chaos", "chaotic";
+      "Mao" stays 1).
+    "oe", "oo", "ui" have no rule — they are genuinely
+    ambiguous, so those words live in _ENGLISH_EXCEPTIONS.
+    "io" after "n" is one syllable ("opinion", "companion",
+    "union", "senior", "junior" — the "io" is /j@/).
+    Known misses (documented, not guessed): "unscientific" 4
+    (want 5 — "un-" + "scientific" keeps /saɪ/ but the rule
+    only trusts a word-initial "sc"), "nescience" 2 (want 3),
+    "gruel" 2 (want 1), "extraordinary" 6 (AmE 5, BrE 6 —
+    dialect, unpinned), "management" 4 (want 3 — no "-ment"
+    rule, it would break "element" 3), "adobe"/"phoebe"
+    (pronounced final "e" after vowel + "b").
+    """
+    extra = 0
+    i = 0
+    n = len(w)
+    while i + 1 < n:
+        pair = w[i:i + 2]
+        prev = w[i - 1] if i > 0 else ""
+        nxt = w[i + 2] if i + 2 < n else ""
+        # Word-initial "sc" (pair starts at index 2, "sc" at 0-1):
+        # the "c" is /s/, so the following vowel is real — unlike
+        # "ci" after a vowel, which is /ʃ/ ("ancient", "efficient",
+        # "conscience", "suspicion").
+        sc = i == 2 and w[0:2] == "sc"
+        fire = False
+        if pair == "ia":
+            if prev == "g" and w[i + 2:i + 5] == "nce":
+                # "allegiance": the "ia" is /@/, one syllable.
+                fire = False
+            elif prev == "c" and sc and nxt and nxt not in _VOWELS:
+                # "sciatic", "sciatica" — but not "fascia" (sc not
+                # word-initial) or "glacial" (c after a vowel).
+                fire = True
+            elif prev != "" and prev in "cst":
+                # -cial/-tial ("special", "official", "partial",
+                # "essential") are one syllable. Note prev is
+                # checked non-empty: "" in "cst" is True in
+                # Python, so a bare `prev in "cst"` would also
+                # block word-initial "ia" ("iambic", "liaison").
+                fire = False
+            else:
+                fire = True
+        elif pair == "io":
+            if prev != "" and prev in "tsn" and nxt == "n":
+                fire = False
+            elif prev == "c" and nxt == "n":
+                fire = sc  # "scion" splits; "suspicion" does not
+            elif prev != "" and prev in "ctx" and nxt == "u":
+                fire = False
+            elif prev == "n":
+                # "-nion" ("opinion", "companion", "union",
+                # "senior", "junior"): the "io" is /j@/, one sound.
+                fire = False
+            else:
+                fire = True
+        elif pair == "ua":
+            # "-ually" ("usually", "actually", "gradually",
+            # "casually", "spiritually") is always two sounds
+            # (/u/ + /@/): there is no letter rule that separates
+            # the s/t cases from the d/n/c cases, because they are
+            # the same pattern — so no guard here at all.
+            fire = (prev == "" or prev not in "qg") and nxt != "v"
+        elif pair == "ie":
+            if nxt == "t" and (i + 3 >= n or w[i + 3] in _VOWELS
+                               or w[i + 3] == "y"):
+                fire = True
+            elif nxt == "n" and (w[i + 2:i + 5] == "nce"
+                                 or (i + 3 < n and w[i + 3] == "t")):
+                fire = (prev == "" or prev not in "cst"
+                        or (prev == "c" and sc))
+        elif pair == "eo":
+            fire = nxt != "p"
+        elif pair == "ue":
+            # "ue" + l/n/t is two sounds ("cruel", "fluent",
+            # "duet"); "ue" + d/s is one ("suede", "dues"). A
+            # word-final "ue" is one sound ("tissue", "value",
+            # "blue") — the empty next char is NOT in "lnt"
+            # ("" in "lnt" is True in Python, so it is checked
+            # explicitly). "ue" after q is /w/ ("sequel").
+            fire = nxt != "" and nxt in "lnt" and prev != "q"
+        elif pair == "ea":
+            # Only before "ct" ("reaction", "reactor", "reactive",
+            # "react" — the "ea" straddles the re-/act- boundary).
+            # Everywhere else "ea" is one sound ("meal", "great",
+            # "measure", "peacock"), so it has no general rule.
+            fire = w[i + 2:i + 4] == "ct"
+        elif pair == "ao":
+            fire = bool(nxt) and nxt not in _VOWELS
+        if fire:
+            extra += 1
+            i += 2
+        else:
+            i += 1
+    return extra
+
+
+def _en_silent_final_e(w: str) -> bool:
+    """True if a word-final "e" is silent (so it subtracts one).
+
+    The final "e" is pronounced — no subtraction — when it is
+    part of a vowel digraph ("ee" in "agree", "oe" in "canoe",
+    "ie" in "movie", "ae" in "sundae", "ye" in "goodbye"), when
+    it is the "ue" of a real vowel after a consonant ("tissue",
+    "value", "continue", "argue", "rescue" — but NOT "vague",
+    "tongue", "league", "dialogue", where "ue" after a vowel
+    is silent), or when it follows consonant + "r" ("centre",
+    "acre", "fibre" — but not "more", "care", "desire", where
+    the "r" follows a vowel). Caller also requires groups > 1.
+    Known misses: "adobe", "phoebe" (the "e" after vowel + "b"
+    is pronounced, the same letters as silent "globe", "robe").
+    """
+    if not w.endswith("e"):
+        return False
+    if w.endswith(("ee", "oe", "ie", "ae", "ye")):
+        return False
+    if w.endswith(("que", "gue")):
+        # "qu"/"gu" is a glide + consonant ("antique",
+        # "unique", "vague", "tongue", "league", "dialogue"):
+        # the "u" is not a vowel, the "e" is silent. The two
+        # words where the "u" IS a real vowel ("argue" 2,
+        # "segue" 2) live in _ENGLISH_EXCEPTIONS instead.
+        return True
+    if w.endswith("ue") and len(w) >= 3 and w[-3] not in _VOWELS:
+        return False
+    if w.endswith("re") and len(w) >= 3 and w[-3] not in _VOWELS:
+        return False
+    return True
+
+
+def _en_medial_silent_e(w: str, groups: int) -> int:
+    """Syllables to subtract for a silent medial "e" (0 or 1).
+
+    The "e" of the base word stays silent when a consonant-
+    initial suffix follows it: "-ly" ("widely", "completely",
+    "absolutely", "entirely", "carefully", "largely", "closely"),
+    "-ful" ("hopeful", "careful", "useful", "grateful",
+    "shameful", "tasteful", "rueful", "woeful"), "-less"
+    ("careless", "hopeless", "useless", "homeless", "priceless",
+    "timeless"), "-ness" ("awareness", "likeness", "politeness",
+    "forgiveness"). The "e" must be preceded by a consonant
+    ("rely" has two groups, so the "-ly" case also needs
+    groups > 2; "freely" keeps its "ee"), and "-ful" fires on
+    the substring alone ("rueful"/"woeful" have the silent "e"
+    after a vowel). No rule for "-ment": "management" (want 3)
+    and "element" (want 3) share the same "ement" letters, so
+    that pair stays a known miss rather than trading one error
+    for another.
+    """
+    if groups <= 1:
+        return 0
+    if (w.endswith("ely") and len(w) >= 4
+            and w[-4] not in _VOWELS and w[-4] != "y" and groups > 2):
+        return 1
+    for pat in ("eful", "eless", "eness"):
+        i = w.find(pat)
+        # The "e" must start its own vowel group: preceded by a
+        # consonant ("hopeful", "careless", "awareness"). In
+        # "rueful"/"woeful" the "e" sits inside the "ue"/"oe"
+        # run already counted as one, so there is nothing to
+        # subtract — that is why "-ful" is not a bare substring
+        # test.
+        if i > 0 and w[i - 1] not in _VOWELS and w[i - 1] != "y":
+            return 1
+    return 0
 
 
 def _root_ends_with_counted_pair(root: str) -> bool:
@@ -4637,7 +5085,7 @@ def _count_syllables(word: str, lang: str = "id") -> int:
     Indonesian (lang="id", the default): vowels are counted,
     minus one per diphthong/monophthong pair (ai, au, ei, oi,
     plus "eu", the EYD V monophthong [ə]: "seudati" is 3).
-    Two mechanisms keep the pairs honest:
+    Three mechanisms keep the pairs honest:
     (1) a curated list of hiatus ROOTS in _SYLLABLE_EXCEPTIONS
     ("baik", "kain", "laut", "naik", "koin", "gairah", ...),
     where the pair is two syllables; and
@@ -4646,7 +5094,14 @@ def _count_syllables(word: str, lang: str = "id") -> int:
     -an, -i, -nya, -mu, -ku, -lah, -kah, -pun) are peeled off
     and counted separately, so derivatives of a hiatus root
     stay right ("dimainkan" = di- + main + -kan = 4) without
-    listing every derivative. A root-final diphthong splits
+    listing every derivative; and
+    (3) a curated list of assimilation REMNANTS in
+    _NASAL_REMNANTS ("ait" from "kait" in "mengait", "yair"
+    from "sair" in "penyair", "aih" from "raih" in "peraih"):
+    a nasal prefix melts the root's initial consonant, leaving
+    a vowel-initial remnant whose pair is still the root's
+    hiatus. Only listed remnants split — a blanket rule would
+    break real diphthongs ("memandai" is mem- + pandai = 3). A root-final diphthong splits
     before a derivational suffix or particle
     (-kan, -an, -i, -lah, -kah, -pun: "capai" + "-an" is
     ca-pa-i-an = 4, "mau" + "-kah" is ma-u-kah = 3), but NOT
@@ -4662,7 +5117,31 @@ def _count_syllables(word: str, lang: str = "id") -> int:
     a small curated list of hiatus words ("idea" 3, "real" 2,
     "science" 2, "rhythm" 2 — "fire" and "hour" are 1 and
     need no exception). "aisle"/"isle" are 1 (the "-le" rule
-    would otherwise overcount them).
+    would otherwise overcount them). Hiatus pairs that split
+    are counted by _en_hiatus_extra ("ia"/"io"/"ua"/"ie"/"eo"/
+    "ue"/"ao" with guards — "various" 3, "media" 3, "theory" 3,
+    "diet" 2, "chaos" 2 — and "ea" only before "ct", as in
+    "reaction"); "oe"/"oo"/"ui" have no rule (genuinely
+    ambiguous) and live in _ENGLISH_EXCEPTIONS, as do words
+    where "-ed" is pronounced ("naked" 2) and irregular words
+    ("business" 2, "colonel" 2). A final "e" is silent unless
+    it is part of a vowel digraph ("agree", "movie", "canoe",
+    "sundae", "goodbye"), the "ue" of a real vowel after a
+    consonant ("tissue", "value"), or after consonant + "r"
+    ("centre" 2) — see _en_silent_final_e. A medial "e" stays
+    silent before "-ly"/"-ful"/"-less"/"-ness" ("widely" 2,
+    "hopeful" 2, "careless" 2, "awareness" 3) — see
+    _en_medial_silent_e — but there is no "-ment" rule
+    ("management" counts 4, want 3; "element" is 3, and the
+    same letters cannot tell them apart). "-ed" after a
+    consonant is silent ("walked" 1) except after t/d
+    ("wanted" 2), and only when the "e" starts its own vowel
+    group ("enjoyed" 2, "delayed" 2 — the "e" inside a run
+    like "oye" is already counted as one). Known misses:
+    "management", "adobe", "phoebe", "gruel", "unscientific",
+    "nescience", "extraordinary" (AmE 5, BrE 6), "casually"
+    is 4 and "spiritually" is 5 — both correct, the "-ually"
+    "ua" always splits.
 
     A word with no vowel (a number, an abbreviation) counts as 1.
     Non-letters at the ends of the word are stripped first; the
@@ -4681,6 +5160,13 @@ def _count_syllables(word: str, lang: str = "id") -> int:
     if lang == "en":
         if w in _ENGLISH_EXCEPTIONS:
             return _ENGLISH_EXCEPTIONS[w]
+        # Plural of an exception word ("ideas" -> "idea", "poems"
+        # -> "poem", "realities" -> "reality"); anything else falls
+        # through to the normal count.
+        if w.endswith("s") and w[:-1] in _ENGLISH_EXCEPTIONS:
+            return _ENGLISH_EXCEPTIONS[w[:-1]]
+        if w.endswith("ies") and (w[:-3] + "y") in _ENGLISH_EXCEPTIONS:
+            return _ENGLISH_EXCEPTIONS[w[:-3] + "y"]
         groups = 0
         in_group = False
         for ch in w:
@@ -4692,13 +5178,32 @@ def _count_syllables(word: str, lang: str = "id") -> int:
                 in_group = False
         if groups == 0:
             return 1
-        if w.endswith("e") and groups > 1:
+        groups += _en_hiatus_extra(w)
+        if w.endswith("e") and groups > 1 and _en_silent_final_e(w):
             groups -= 1
+        groups -= _en_medial_silent_e(w, groups)
         if len(w) >= 3 and w.endswith("le") and w[-3] not in _VOWELS and w[-3] != "y":
             groups += 1
+        if (w.endswith("ed") and groups > 1 and len(w) >= 4
+                and w[-3] not in _VOWELS and w[-3] != "y"
+                and w[-3] not in "td"):
+            # "-ed" after a consonant is silent ("walked" 1,
+            # "baked" 1, "bored" 1) — except after t/d ("wanted" 2,
+            # "needed" 2, "decided" 3), where it is its own
+            # syllable. The "e" must start its own vowel group:
+            # after a vowel letter or "y" it sits inside a run
+            # already counted as one ("enjoyed" 2, "delayed" 2,
+            # "destroyed" 2, "indeed" 2), so no subtraction.
+            # Words where "-ed" is pronounced anyway ("naked",
+            # "beloved", "hatred") live in _ENGLISH_EXCEPTIONS.
+            groups -= 1
         return max(1, groups)
     root, affixes, split = _strip_id_affixes(w)
     skip = _SYLLABLE_EXCEPTIONS.get(root, ())
+    if not skip:
+        # A nasal-assimilation remnant ("ait" in "mengait"):
+        # the pair is the melted root's hiatus, not a diphthong.
+        skip = _NASAL_REMNANTS.get(root, ())
     vowels = sum(1 for ch in root if ch in _VOWELS)
     if vowels == 0:
         return max(1, affixes + 1)
@@ -4924,8 +5429,25 @@ def open_library(db: str | None = None, *,
     one — a read must never conjure a library into existence.
     A corrupt or unreadable file raises ValueError with a plain
     message instead of leaking a sqlite3 traceback to the user.
+    The message names only the file's basename, never the absolute
+    path (audit #6 N-3): the library lives under the user's home
+    directory, and the full path is local detail the error does
+    not need to disclose.
     """
     path = library_path(db)
+    if path == ":memory:":
+        # A real in-memory database (audit #6 T-7): ":memory:" is a
+        # legitimate sqlite3 path, not a corrupt file — the old code
+        # opened it as a URI in read-write mode, found no tables,
+        # and reported the misleading "pustaka rusak: :memory:".
+        # An in-memory database is always fresh, so the schema is
+        # created unconditionally; nothing on disk is ever touched,
+        # and create=False still returns an (empty) library rather
+        # than raising.
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript(_LIBRARY_SCHEMA)
+        return conn
     conn = None
     try:
         if create:
@@ -4943,25 +5465,25 @@ def open_library(db: str | None = None, *,
         if conn is not None:
             conn.close()
         if not create:
-            raise FileNotFoundError(f"pustaka belum ada: {path}")
+            raise FileNotFoundError(f"pustaka belum ada: {os.path.basename(path)}")
         raise ValueError(
-            f"pustaka rusak: {path} — hapus atau ganti file databasenya")
+            f"pustaka rusak: {os.path.basename(path)} — hapus atau ganti file databasenya")
     except sqlite3.Error:
         if conn is not None:
             conn.close()
         raise ValueError(
-            f"pustaka rusak: {path} — hapus atau ganti file databasenya")
+            f"pustaka rusak: {os.path.basename(path)} — hapus atau ganti file databasenya")
     try:
         for table, columns in _LIBRARY_COLUMNS.items():
             actual = {row[1] for row in conn.execute(
                 f"PRAGMA table_info({table})")}
             if not columns <= actual:
                 raise ValueError(
-                    f"pustaka rusak: {path} — hapus atau ganti file databasenya")
+                    f"pustaka rusak: {os.path.basename(path)} — hapus atau ganti file databasenya")
     except (ValueError, sqlite3.Error):
         conn.close()
         raise ValueError(
-            f"pustaka rusak: {path} — hapus atau ganti file databasenya")
+            f"pustaka rusak: {os.path.basename(path)} — hapus atau ganti file databasenya")
     return conn
 
 
@@ -5051,10 +5573,37 @@ def _stored_hash(text: str) -> str:
 
     _canonical_text is idempotent, so hashing a text that is
     already in stored form gives the hash of those exact bytes —
-    the same value save_analysis stores for it.
+    the same value save_analysis stores for it. A lone surrogate
+    (e.g. "\\ud800" from a JSON body) cannot be UTF-8-encoded:
+    that is a plain ValueError with a clean message, never the
+    raw codec error (audit #6 N-2).
     """
-    return hashlib.sha256(
-        _canonical_text(text).encode("utf-8")).hexdigest()
+    try:
+        return hashlib.sha256(
+            _canonical_text(text).encode("utf-8")).hexdigest()
+    except UnicodeEncodeError:
+        raise ValueError(
+            "teks mengandung karakter surrogate yang tidak valid") from None
+
+
+def _ws_collapsed_hash(text: str) -> str:
+    """SHA-256 of a text with every internal whitespace run collapsed
+    to one space — for own-run COMPARISON only (audit #6 N-5).
+
+    This is deliberately NOT _canonical_text and NOT
+    _normalize_sentence: the stored form (and its hash) must stay
+    byte-exact — sha256(stored_text) == text_hash (audit #5 B-2) —
+    and the comparison must stay case- and punctuation-sensitive,
+    collapsing whitespace only. A run saved from "a  b" and a query
+    of "a b" are the same manuscript typed with different spacing.
+    """
+    collapsed = re.sub(r"\s+", " ", text)
+    try:
+        return hashlib.sha256(
+            _canonical_text(collapsed).encode("utf-8")).hexdigest()
+    except UnicodeEncodeError:
+        raise ValueError(
+            "teks mengandung karakter surrogate yang tidak valid") from None
 
 
 def _legacy_stored_hash(text: str) -> str:
@@ -5062,10 +5611,15 @@ def _legacy_stored_hash(text: str) -> str:
 
     Kept only so runs saved by v1.25.2 are still recognised as
     their own text (see find_duplicates). New runs use
-    _stored_hash.
+    _stored_hash. Same clean error as _stored_hash on a lone
+    surrogate (audit #6 N-2).
     """
-    return hashlib.sha256(
-        text[:_MAX_STORED_TEXT].strip().encode("utf-8")).hexdigest()
+    try:
+        return hashlib.sha256(
+            text[:_MAX_STORED_TEXT].strip().encode("utf-8")).hexdigest()
+    except UnicodeEncodeError:
+        raise ValueError(
+            "teks mengandung karakter surrogate yang tidak valid") from None
 
 
 def save_analysis(text: str, result: dict,
@@ -5124,6 +5678,18 @@ def save_analysis(text: str, result: dict,
             "hasil analisis tidak valid: 'suggestions' harus berupa "
             "objek")
     text = _canonical_text(text)
+    # Hash of the stored bytes themselves (text is already canonical
+    # here): never canonicalise again, or a cut landing on whitespace
+    # would hash a shorter string than the one stored (audit #4,
+    # B-2). A lone surrogate cannot be UTF-8-encoded: that is a
+    # plain ValueError with a clean message, never the raw codec
+    # error (audit #6 N-2) — raised here, before any connection is
+    # opened, so no partial row is ever written.
+    try:
+        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    except UnicodeEncodeError:
+        raise ValueError(
+            "teks mengandung karakter surrogate yang tidak valid") from None
     if references is not None:
         # Shape first (a non-dict reference is a ValueError, never
         # a bare AttributeError from deep inside the upsert), before
@@ -5157,11 +5723,7 @@ def save_analysis(text: str, result: dict,
              sum(1 for v in with_doi if v.get("verdict") == "ok"),
              len(with_doi), result["style"]["style_score"],
              result.get("suggestions", {}).get("count", 0),
-             # Hash of the stored bytes themselves (text is already
-             # canonical here): never canonicalise again, or a cut
-             # landing on whitespace would hash a shorter string
-             # than the one stored (audit #4, B-2).
-             hashlib.sha256(text.encode("utf-8")).hexdigest(), text))
+             text_hash, text))
         analysis_id = cur.lastrowid
         if references:
             # Every reference enters the personal bibliography, not
@@ -5203,7 +5765,17 @@ def list_analyses(db: str | None = None, limit: int = 20) -> list[dict]:
 
 def get_analysis(analysis_id: int,
                  db: str | None = None) -> dict | None:
-    """One run in full: the row, its cited reference keys, the text."""
+    """One run in full: the row, its cited reference keys, the text.
+
+    An id outside SQLite's signed 64-bit range can never match a
+    row — and binding it raises OverflowError, which used to escape
+    as a live 500 on GET /api/library/analysis (audit #6 T-1):
+    it is simply "not found" here, like any other absent id.
+    """
+    if not isinstance(analysis_id, int) \
+            or isinstance(analysis_id, bool) \
+            or not -(2 ** 63) <= analysis_id <= 2 ** 63 - 1:
+        return None
     try:
         conn = open_library(db, create=False)
     except FileNotFoundError:
@@ -5578,6 +6150,13 @@ def cite_main(argv=None, *, version=None) -> int:
     if args.lookup:
         try:
             ref = lookup_reference(args.lookup)
+        except LookupNotFoundError as e:
+            # A confirmed 404 is an ordinary failure, not a usage
+            # error: exit 1 with a plain message, like every other
+            # subcommand's failures (audit #6 N-6) — not argparse's
+            # exit 2.
+            print(f"cite: error: {e}", file=sys.stderr)
+            return 1
         except LookupError as e:
             p.error(str(e))
         if args.add_to:
@@ -5593,8 +6172,11 @@ def cite_main(argv=None, *, version=None) -> int:
         references = load_references(args.refs)
         bib = export_bibtex(references)
         if args.out:
-            with open(args.out, "w", encoding="utf-8") as f:
-                f.write(bib)
+            try:
+                with open(args.out, "w", encoding="utf-8") as f:
+                    f.write(bib)
+            except FileNotFoundError:
+                raise ValueError(f"File tidak ditemukan: {args.out}")
             print(f"Wrote {len(references)} entries to {args.out}")
         else:
             sys.stdout.write(bib)
@@ -5606,8 +6188,11 @@ def cite_main(argv=None, *, version=None) -> int:
         references = load_references(args.refs)
         ris = export_ris(references)
         if args.out:
-            with open(args.out, "w", encoding="utf-8") as f:
-                f.write(ris)
+            try:
+                with open(args.out, "w", encoding="utf-8") as f:
+                    f.write(ris)
+            except FileNotFoundError:
+                raise ValueError(f"File tidak ditemukan: {args.out}")
             print(f"Wrote {len(references)} entries to {args.out}")
         else:
             sys.stdout.write(ris)
@@ -5619,6 +6204,8 @@ def cite_main(argv=None, *, version=None) -> int:
         if args.text:
             text = args.text
         elif args.input:
+            if not os.path.isfile(args.input):
+                raise ValueError(f"File tidak ditemukan: {args.input}")
             with open(args.input, encoding="utf-8") as f:
                 text = f.read()
         else:
@@ -5653,6 +6240,8 @@ def cite_main(argv=None, *, version=None) -> int:
     if args.text:
         text = args.text
     elif args.input:
+        if not os.path.isfile(args.input):
+            raise ValueError(f"File tidak ditemukan: {args.input}")
         with open(args.input, encoding="utf-8") as f:
             text = f.read()
     else:
@@ -7721,6 +8310,15 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       });
       h += '</tbody></table>';
     }
+    // Audit #6 B-1: a truncated duplicates check must warn here
+    // too, with the same wording as the single-file card — the
+    // count in the table may be incomplete. num() with no max:
+    // the spent count is never clamped (audit #6 H-2).
+    f.files.forEach(function (e) {
+      if (e.duplicates_truncated) {
+        h += '<p><strong>\u26a0\ufe0f Peringatan (' + esc(e.file) + '): pemeriksaan duplikasi berhenti setelah ' + num(e.duplicates_comparisons_spent) + ' perbandingan (batas 2000) \u2014 hasil mungkin tidak lengkap; sebagian kalimat belum dibandingkan.</strong></p>';
+      }
+    });
     if (res.skipped && res.skipped.length) {
       h += '<p>Dilewati:</p><ul>';
       res.skipped.forEach(function (s) {
@@ -7891,7 +8489,7 @@ WEB_UI_HTML = r"""<!DOCTYPE html>
       // Audit #5 B-1: when the work budget ran out the list below
       // is only partial — say so in the card, in both branches, so
       // a short or empty list is never mistaken for a complete check.
-      var truncWarn = d.truncated ? '<p><strong>\u26a0\ufe0f Peringatan: pemeriksaan berhenti setelah ' + num(d.comparisons_spent, 0) + ' perbandingan (batas 2000) \u2014 hasil mungkin tidak lengkap; sebagian kalimat belum dibandingkan.</strong></p>' : '';
+      var truncWarn = d.truncated ? '<p><strong>\u26a0\ufe0f Peringatan: pemeriksaan berhenti setelah ' + num(d.comparisons_spent) + ' perbandingan (batas 2000) \u2014 hasil mungkin tidak lengkap; sebagian kalimat belum dibandingkan.</strong></p>' : '';
       if (d.duplicates.length) {
         h += '<div class="card"><h2>Duplikasi <span class="meta">' + d.duplicates.length + ' kalimat berulang</span></h2>' + truncWarn + '<ul>';
         d.duplicates.forEach(function (x) {
@@ -8226,8 +8824,16 @@ def _load_ui_references(payload: dict) -> dict | None:
         return None
     try:
         return load_references(DEFAULT_REFS)
-    except FileNotFoundError:
-        raise ValueError("contoh bibliografi tidak ditemukan di folder ini")
+    except ValueError as e:
+        # load_references reports a missing file as ValueError
+        # ("File tidak ditemukan", audit #6 H-11); the UI keeps its
+        # own friendlier wording for the shipped sample file, while
+        # a genuinely malformed sample file still reports its own
+        # error instead of being masked as "not found".
+        if str(e).startswith("File tidak ditemukan"):
+            raise ValueError(
+                "contoh bibliografi tidak ditemukan di folder ini") from None
+        raise
 
 
 def _read_body(handler, max_body: int, drain_cap: int,
@@ -8520,8 +9126,29 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
         pass
 
     def _send_json(self, status: int, payload: dict) -> None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        try:
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        except UnicodeEncodeError:
+            # A lone surrogate in the payload (an echoed input text,
+            # e.g. /api/humanize + apply) cannot be UTF-8-encoded:
+            # answer 400 with a clean message instead of leaking
+            # the raw codec error (audit #6 N-2). The fallback
+            # payload is plain ASCII, so it always encodes.
+            status = 400
+            payload = {"error":
+                       "teks mengandung karakter surrogate yang tidak valid"}
+            data = json.dumps(payload).encode("utf-8")
         self.send_response(status)
+        # Audit #6 H-1: like send_error, say so when the connection
+        # is being closed (bad framing, oversize body, timeout) —
+        # without this header a reusing client gets EOF instead.
+        if self.close_connection:
+            self.send_header("Connection", "close")
+        elif self.request_version == "HTTP/1.0":
+            # HTTP/1.0 defaults to close, so a client that asked to
+            # keep the connection alive needs the header to know the
+            # reuse is honoured (audit #6 N-8).
+            self.send_header("Connection", "keep-alive")
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self._security_headers()
@@ -8705,6 +9332,12 @@ class _UIHandler(http.server.BaseHTTPRequestHandler):
             if "/" in rel:
                 skipped.append({"file": name,
                                 "reason": "bukan file tingkat atas"})
+                continue
+            if name.startswith("."):
+                # Like `analyze <folder>` on the CLI (audit #6 N-4):
+                # dotfiles are not manuscripts.
+                skipped.append({"file": name,
+                                "reason": "file tersembunyi"})
                 continue
             if not name.lower().endswith(_FOLDER_EXTENSIONS):
                 skipped.append({"file": name,
